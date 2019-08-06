@@ -1,0 +1,1 @@
+AVAIL_MEDIA_TYPES = ['mp3', 'ogg', 'wav', 'flac', ]
