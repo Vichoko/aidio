@@ -98,7 +98,12 @@ class VoiceActivationFeatureExtractor(FeatureExtractor):
             from leglaive_lstm import frame_level_predict
             print('info: predictor imported succesfully!')
 
-            x_pred, y_pred = frame_level_predict(VOICE_DETECTION_MODEL_NAME, raw_path / x, cache=True)
+            try:
+                x_pred, y_pred = frame_level_predict(VOICE_DETECTION_MODEL_NAME, raw_path / x, cache=True)
+            except FileNotFoundError as e:
+                if x in str(e):
+                    return
+                raise e
 
             print('info: predicted !')
             pred = np.asarray([x_pred, y_pred])
@@ -115,8 +120,7 @@ class VoiceActivationFeatureExtractor(FeatureExtractor):
         return super(VoiceActivationFeatureExtractor, self).parallel_transform(feature_name=self.feature_name,
                                                                                out_path=self.out_path,
                                                                                new_labels=self.new_labels,
-                                                                               raw_path=self.raw_path,
-                                                                               parallel=False)
+                                                                               raw_path=self.raw_path)
 
 
 if __name__ == '__main__':
