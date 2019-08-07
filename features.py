@@ -95,10 +95,7 @@ class VoiceActivationFeatureExtractor(FeatureExtractor):
             y = data[1]
             sys.path.append(VOICE_DETECTION_PATH)
             print('info: importing predictor')
-            try:
-                from leglaive_lstm import frame_level_predict
-            except ImportError as e:
-                raise e
+            from leglaive_lstm import frame_level_predict
             print('info: predictor imported succesfully!')
 
             x_pred, y_pred = frame_level_predict(VOICE_DETECTION_MODEL_NAME, raw_path / x, cache=True)
