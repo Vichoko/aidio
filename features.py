@@ -112,13 +112,15 @@ class VoiceActivationFeatureExtractor(FeatureExtractor):
             np.save(out_path / filename, pred)
             new_labels.append([filename, y])
             print('info: {} transformed and saved!'.format(filename))
+
         return __process_element
 
     def parallel_transform(self, **kwargs):
         return super(VoiceActivationFeatureExtractor, self).parallel_transform(feature_name=self.feature_name,
                                                                                out_path=self.out_path,
                                                                                new_labels=self.new_labels,
-                                                                               raw_path=self.raw_path)
+                                                                               raw_path=self.raw_path,
+                                                                               parallel=False)
 
 
 if __name__ == '__main__':
@@ -126,7 +128,8 @@ if __name__ == '__main__':
     parser.add_argument('--source_path', help='Source path where data files is stored', default=RAW_DATA_PATH)
     parser.add_argument('--out_path', help='Output path where exported data will be placed', default=FEATURES_DATA_PATH)
     parser.add_argument('--label_filename', help='Source path where label file is stored', default='labels.csv')
-    parser.add_argument('--feature', help='name of the feature to be extracted (options: mfsc, leglaive)', default='leglaive')
+    parser.add_argument('--feature', help='name of the feature to be extracted (options: mfsc, leglaive)',
+                        default='leglaive')
 
     args = parser.parse_args()
     source_path = pathlib.Path(args.source_path)
