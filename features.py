@@ -1,5 +1,5 @@
 from _ast import Not
-
+import os
 import librosa
 import sys
 
@@ -93,17 +93,15 @@ class VoiceActivationFeatureExtractor(FeatureExtractor):
             print('prosessing {}'.format(data))
             x = data[0]
             y = data[1]
+
+            if not os.path.exists(raw_path / x):
+                return
+
             sys.path.append(VOICE_DETECTION_PATH)
             print('info: importing predictor')
             from leglaive_lstm import frame_level_predict
-            print('info: predictor imported succesfully!')
 
-            try:
-                x_pred, y_pred = frame_level_predict(VOICE_DETECTION_MODEL_NAME, raw_path / x, cache=True)
-            except FileNotFoundError as e:
-                if x in str(e):
-                    return
-                raise e
+            x_pred, y_pred = frame_level_predict(VOICE_DETECTION_MODEL_NAME, raw_path / x, cache=True)
 
             print('info: predicted !')
             pred = np.asarray([x_pred, y_pred])
