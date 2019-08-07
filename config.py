@@ -36,5 +36,5 @@ FMAX = None  # Highest frequency (in Hz)
 
 
 # -- sINGING vOICE dETECTION --#
-VOICE_DETECTION_PATH = pathlib.Path('/home/voyanedel/data/code/ismir2018-revisiting-svd')
+VOICE_DETECTION_PATH = '/home/voyanedel/data/code/ismir2018-revisiting-svd/'
 VOICE_DETECTION_MODEL_NAME = 'june2019'
