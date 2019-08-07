@@ -6,6 +6,8 @@ from functools import partial
 
 import pandas as pd
 import numpy as np
+
+
 class ClassificationModel:
     def __init__(self, name):
         self.name = name
@@ -85,14 +87,18 @@ class FeatureExtractor:
     def process_element(**kwargs):
         raise NotImplemented
 
-    def concurrent_transform(self, feature_name, **kwargs):
+    def parallel_transform(self, feature_name, new_labels, parallel=True, **kwargs):
         data = np.asarray([self.x, self.y]).swapaxes(0, 1)
-        with concurrent.futures.ThreadPoolExecutor(max_workers=CPU_WORKERS) as executor:
-            fun = self.process_element(feature_name=feature_name, **kwargs)
-            executor.map(fun, data)
-        df = pd.DataFrame(np.asarray(self.new_labels))
+
+        fun = self.process_element(feature_name=feature_name, new_labels=new_labels, **kwargs)
+        if parallel:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=CPU_WORKERS) as executor:
+                executor.map(fun, data)
+        else:
+            for data_element in data:
+                fun(data_element)
+
+        df = pd.DataFrame(np.asarray(new_labels))
         df.columns = ['filename', 'label']
 
         df.to_csv(self.out_path / 'new_labels.{}.npy'.format(feature_name), index=False)
-
-

@@ -73,10 +73,10 @@ class MFCCFeatureExtractor(FeatureExtractor):
 
         return __process_element
 
-    def concurrent_transform(self, **kwargs):
-        return super(MFCCFeatureExtractor, self).concurrent_transform(feature_name=self.feature_name,
-                                                                      out_path=self.out_path,
-                                                                      new_labels=self.new_labels)
+    def parallel_transform(self, **kwargs):
+        return super(MFCCFeatureExtractor, self).parallel_transform(feature_name=self.feature_name,
+                                                                    out_path=self.out_path,
+                                                                    new_labels=self.new_labels)
 
 
 class VoiceActivationFeatureExtractor(FeatureExtractor):
@@ -111,11 +111,12 @@ class VoiceActivationFeatureExtractor(FeatureExtractor):
             print('info: {} transformed and saved!'.format(filename))
         return __process_element
 
-    def concurrent_transform(self, **kwargs):
-        return super(VoiceActivationFeatureExtractor, self).concurrent_transform(feature_name=self.feature_name,
-                                                                                 out_path=self.out_path,
-                                                                                 new_labels=self.new_labels,
-                                                                                 raw_path=self.raw_path)
+    def parallel_transform(self, **kwargs):
+        return super(VoiceActivationFeatureExtractor, self).parallel_transform(feature_name=self.feature_name,
+                                                                               out_path=self.out_path,
+                                                                               new_labels=self.new_labels,
+                                                                               raw_path=self.raw_path,
+                                                                               parallel=False)
 
 
 if __name__ == '__main__':
@@ -138,4 +139,4 @@ if __name__ == '__main__':
         extractor = MFCCFeatureExtractor.from_label_file(label_path, out_path=out_path, raw_path=source_path)
     else:
         raise NotImplemented('{} feature not implemented'.format(feature_name))
-    extractor.concurrent_transform()
+    extractor.parallel_transform()
