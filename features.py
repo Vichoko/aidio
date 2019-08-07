@@ -120,7 +120,8 @@ class VoiceActivationFeatureExtractor(FeatureExtractor):
         return super(VoiceActivationFeatureExtractor, self).parallel_transform(feature_name=self.feature_name,
                                                                                out_path=self.out_path,
                                                                                new_labels=self.new_labels,
-                                                                               raw_path=self.raw_path)
+                                                                               raw_path=self.raw_path,
+                                                                               parallel=False)
 
 
 if __name__ == '__main__':
