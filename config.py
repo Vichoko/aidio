@@ -16,6 +16,7 @@ SOURCE_DATA_PATH = pathlib.Path('C:\\Users\\Vichoko\\Music\\in')
 RAW_DATA_PATH = pathlib.Path('./data/raw/')
 FEATURES_DATA_PATH = pathlib.Path('./data/features/')
 DIGEST_DATA_PATH = pathlib.Path('./data/digest/')
+MODELS_DATA_PATH = pathlib.Path('./data/models/')
 
 makedirs(RAW_DATA_PATH)
 makedirs(FEATURES_DATA_PATH)
@@ -38,3 +39,14 @@ FMAX = None  # Highest frequency (in Hz)
 # -- sINGING vOICE dETECTION --#
 VOICE_DETECTION_PATH = '/home/voyanedel/data/code/ismir2018-revisiting-svd/'
 VOICE_DETECTION_MODEL_NAME = 'june2019'
+RNN_INPUT_SIZE_VOICE_ACTIVATION = 218  # 7sec/(256/16000)
+RNN_OVERLAP_VOICE_ACTIVATION = 10
+
+# -- HPSS FEATURE EXTRACTION --
+SR_HPSS = 16000
+N_MELS_HPSS = 40
+
+N_FFT_HPSS_1 = 4096
+N_HOP_HPSS_1 = 2048
+N_FFT_HPSS_2 = 512
+N_HOP_HPSS_2 = 256

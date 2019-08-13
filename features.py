@@ -1,86 +1,23 @@
-from _ast import Not
 import os
 import librosa
-import sys
+
+from librosa import frames_to_time
 
 from config import SR, RAW_DATA_PATH, FEATURES_DATA_PATH, HOP_LENGTH, N_FFT, N_MELS, FMIN, FMAX, POWER, \
-    VOICE_DETECTION_PATH, VOICE_DETECTION_MODEL_NAME
+    VOICE_DETECTION_MODEL_NAME, N_FFT_HPSS_1, N_HOP_HPSS_1, N_FFT_HPSS_2, N_HOP_HPSS_2, SR_HPSS, \
+    N_MELS_HPSS, MODELS_DATA_PATH, RNN_INPUT_SIZE_VOICE_ACTIVATION
 from interfaces import FeatureExtractor
 import argparse
 import pathlib
 import numpy as np
 
+from util.leglaive.audio import ono_hpss, log_melgram
 
-#
-# def process_single_audio_double_hpss(audio_file):
-#     ''' Compute double stage HPSS for the given audio file
-#     Args :
-#         audio_file : path to audio file
-#     Return :
-#         mel_D2_total : concatenated melspectrogram of percussive, harmonic components of double stage HPSS. Shape=(2 * n_bins, total_frames) ex. (80, 2004)
-#     '''
-#
-#     audio_src, _ = librosa.load(audio_file, sr=SR)
-#     # Normalize audio signal
-#     audio_src = librosa.util.normalize(audio_src)
-#     # first HPSS
-#     D_harmonic, D_percussive = ono_hpss(audio_src, N_FFT1, N_HOP1)
-#     # second HPSS
-#     D2_harmonic, D2_percussive = ono_hpss(D_percussive, N_FFT2, N_HOP2)
-#
-#     assert D2_harmonic.shape == D2_percussive.shape
-#     print(D2_harmonic.shape, D2_percussive.shape)
-#
-#     # compute melgram
-#     mel_harmonic = log_melgram(D2_harmonic, SR, N_FFT2, N_HOP2, N_MELS)
-#     mel_percussive = log_melgram(D2_percussive, SR, N_FFT2, N_HOP2, N_MELS)
-#     # concat
-#     mel_total = np.vstack((mel_harmonic, mel_percussive))
-#
-#     print(mel_total.shape)
-#     return mel_total
+class SVS:
+    pass
 
-
-class MFCCFeatureExtractor(FeatureExtractor):
+class MelSpectralCoefficientsFeatureExtractor(FeatureExtractor):
     feature_name = 'spec'
-
-    @staticmethod
-    def process_element(feature_name, new_labels, out_path):
-        def __process_element(data):
-            """
-            :param x: filename (str)
-            :param y: label (str)
-            :return:
-            """
-            print('prosessing {}'.format(data))
-            x = data[0]
-            y = data[1]
-            wav, _ = librosa.load(RAW_DATA_PATH / x, sr=SR)
-            # Normalize audio signal
-            wav = librosa.util.normalize(wav)
-            # Get Mel-Spectrogram
-            melspec = librosa.feature.melspectrogram(wav, sr=SR, n_fft=N_FFT, hop_length=HOP_LENGTH, n_mels=N_MELS,
-                                                     fmin=FMIN,
-                                                     fmax=FMAX, power=POWER)
-            melspec = librosa.power_to_db(melspec).astype(np.float32)
-
-            # this is kind-of standard
-            name = '.'.join(x.split('.')[:-1])
-            filename = '{}.{}.npy'.format(name, feature_name)
-            np.save(out_path / filename, melspec)
-            new_labels.append([filename, y])
-            print('info: {} transformed and saved!'.format(filename))
-
-        return __process_element
-
-    def parallel_transform(self, **kwargs):
-        return super(MFCCFeatureExtractor, self).parallel_transform(feature_name=self.feature_name,
-                                                                    out_path=self.out_path,
-                                                                    new_labels=self.new_labels)
-
-
-class VoiceActivationFeatureExtractor(FeatureExtractor):
-    feature_name = 'voice_activation'
 
     @staticmethod
     def process_element(feature_name, new_labels, out_path, raw_path, **kwargs):
@@ -93,34 +30,175 @@ class VoiceActivationFeatureExtractor(FeatureExtractor):
             print('prosessing {}'.format(data))
             x = data[0]
             y = data[1]
-
-            if not os.path.exists(raw_path / x):
-                return
-
-            sys.path.append(VOICE_DETECTION_PATH)
-            print('info: importing predictor')
-            from leglaive_lstm import frame_level_predict
-
-            x_pred, y_pred = frame_level_predict(VOICE_DETECTION_MODEL_NAME, raw_path / x, cache=True)
-
-            print('info: predicted !')
-            pred = np.asarray([x_pred, y_pred])
-
+            wav, _ = librosa.load(raw_path / x, sr=SR)
+            # Normalize audio signal
+            wav = librosa.util.normalize(wav)
+            # Get Mel-Spectrogram
+            melspec = librosa.feature.melspectrogram(wav, sr=SR, n_fft=N_FFT, hop_length=HOP_LENGTH, n_mels=N_MELS,
+                                                     fmin=FMIN,
+                                                     fmax=FMAX, power=POWER)
+            melspec = librosa.power_to_db(melspec).astype(np.float32)
             # this is kind-of standard
-            name = '.'.join(x.split('.')[:-1])
-            filename = '{}.{}.npy'.format(name, feature_name)
-            np.save(out_path / filename, pred)
-            new_labels.append([filename, y])
-            print('info: {} transformed and saved!'.format(filename))
+            FeatureExtractor.save_feature(melspec, feature_name, out_path, x, y, new_labels)
 
         return __process_element
 
     def parallel_transform(self, **kwargs):
-        return super(VoiceActivationFeatureExtractor, self).parallel_transform(feature_name=self.feature_name,
-                                                                               out_path=self.out_path,
-                                                                               new_labels=self.new_labels,
-                                                                               raw_path=self.raw_path,
-                                                                               parallel=False)
+        # the parameters of parallel_transform are passed to process_element and process_elements methods
+        return super(MelSpectralCoefficientsFeatureExtractor, self).parallel_transform()
+
+
+class DoubleHPSSFeatureExtractor(FeatureExtractor):
+    feature_name = '2hpss'
+
+    @staticmethod
+    def process_element(feature_name, new_labels, out_path, raw_path, **kwargs):
+        def __process_element(data):
+            """
+            Compute double stage HPSS for the given audio file
+            extracted from https://github.com/kyungyunlee/ismir2018-revisiting-svd/blob/master/leglaive_lstm/audio_processor.py
+            :param x: filename (str)
+            :param y: label (str)
+            :return: mel_D2_total : concatenated melspectrogram of percussive, harmonic components of double stage HPSS. Shape=(2 * n_bins, total_frames) ex. (80, 2004)
+            """
+            print('prosessing {}'.format(data))
+            x = data[0]
+            y = data[1]
+
+            audio_src, _ = librosa.load(raw_path / x, sr=SR_HPSS)
+            # Normalize audio signal
+            audio_src = librosa.util.normalize(audio_src)
+            # first HPSS
+            D_harmonic, D_percussive = ono_hpss(audio_src, N_FFT_HPSS_1, N_HOP_HPSS_1)
+            # second HPSS
+            D2_harmonic, D2_percussive = ono_hpss(D_percussive, N_FFT_HPSS_2, N_HOP_HPSS_2)
+
+            # compute melgram
+            mel_harmonic = log_melgram(D2_harmonic, SR_HPSS, N_FFT_HPSS_2, N_HOP_HPSS_2, N_MELS_HPSS)
+            mel_percussive = log_melgram(D2_percussive, SR_HPSS, N_FFT_HPSS_2, N_HOP_HPSS_2, N_MELS_HPSS)
+            # concat
+            mel_total = np.vstack((mel_harmonic, mel_percussive))
+
+            # this is kind-of standard
+            FeatureExtractor.save_feature(mel_total, feature_name, out_path, x, y, new_labels)
+
+        return __process_element
+
+
+class VoiceActivationFeatureExtractor(FeatureExtractor):
+    feature_name = 'voice_activation'
+
+    def __init__(self, filenames, labels, out_path, raw_path):
+        super().__init__(filenames, labels, out_path, raw_path)
+        print("""warning: 
+        VoiceActivation Feature source folder is commonly FEATURES_DATA_PATH config
+        because it need HPSS feature as source, receeived {} instead.""".format(
+            raw_path)) if raw_path != FEATURES_DATA_PATH else None
+        print("""warning:
+        VoiceActivation Feature source filenames are commonly formatted like <name>.hpss.npy, received {} instead
+        """.format(filenames[0])) if '.2hpss.npy' not in filenames[0] else None
+
+    @staticmethod
+    def frame_level_predict(y_pred, number_of_mel_samples):
+        """
+        Predict Voice Activity Regions at a Frame Level for a given song.
+        For each frame of the MFCC a Voice Detection Probability is predicted, then the output have shape: (n_frames, 1)
+
+        :param model_name: name of the trained model
+        :param filename:  path to the music file to be predicted
+        :param cache: flag to optimize heavy operations with caching in disk
+        :param plot: flag to plot MFCCs and SVD in an aligned plot if GUI available.
+        :return: (Time, Predictions): SVD probabilities at frame level with time markings
+        """
+        # transform raw predictions to frame level
+        aligned_y_pred = [[] for _ in range(number_of_mel_samples)]
+        for first_frame_idx, window_prediction in enumerate(y_pred):
+            # for each prediction
+            for offset, frame_prediction in enumerate(window_prediction):
+                # accumulate overlapped predictions in a list
+                aligned_y_pred[first_frame_idx + offset].append(frame_prediction[0])
+
+        # frame_level_y_pred = []
+        # for _, predictions in enumerate(aligned_y_pred[:-1]):
+        #     # -1 because last element is empty
+        #     # reduce the overlapped predictions to a single value
+        #     frame_level_y_pred.append(min(predictions))
+
+        time = frames_to_time(range(number_of_mel_samples), sr=SR_HPSS, n_fft=N_FFT_HPSS_2,
+                              hop_length=N_HOP_HPSS_2)
+
+        print('info: done')
+        return time, aligned_y_pred
+
+    @staticmethod
+    def post_process(input, number_of_mel_samples):
+        """
+        Export in a time-dependant domain instead of sample-domain; as sample rate change between methods.
+        :param input:
+        :return:
+        """
+        return np.asarray(VoiceActivationFeatureExtractor.frame_level_predict(input, number_of_mel_samples))
+
+    @staticmethod
+    def proccess_elements(feature_name, new_labels, out_path, raw_path, fun=None, model_name=VOICE_DETECTION_MODEL_NAME,
+                          **kwargs):
+        def __process_elements(data):
+            """
+            :param data: shape (#_songs, 2) the axis 1 corresponds to the filename/label pair
+            :return:
+            """
+            x = data[:, 0]
+            y = data[:, 1]
+
+            from keras.models import load_model
+            from keras import backend
+
+            if len(backend.tensorflow_backend._get_available_gpus()) > 0:
+                # set gpu number
+                os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+
+            # load mode
+            loaded_model = load_model(str(MODELS_DATA_PATH / 'leglaive' / 'rnn_{}.h5'.format(model_name)))
+            print("loaded model")
+            print(loaded_model.summary())
+
+            mean_std = np.load(MODELS_DATA_PATH / 'leglaive' / 'train_mean_std_{}.npy'.format(model_name))
+            mean = mean_std[0]
+            std = mean_std[1]
+
+            for idx, x_i in enumerate(x):
+                # this is kind-of standard
+                y_i = y[idx]
+                _, file_name = FeatureExtractor.get_file_name(x_i, feature_name, out_path)
+                try:
+                    # try to load if file already exist
+                    np.load(out_path / file_name, allow_pickle=True)
+                    print('info: {} loaded from .npy !'.format(file_name))
+                    new_labels.append([file_name, y_i])
+                except FileNotFoundError or OSError or EOFError:
+                    # OSError and EOFError are raised if file are inconsistent
+                    hpss = np.load(raw_path / x_i)  # _data, #_coefs, #_samples)
+
+                    number_of_mel_samples = hpss.shape[1]
+                    total_x = np.array([hpss[:, i: i + RNN_INPUT_SIZE_VOICE_ACTIVATION]
+                                        for i in range(0, number_of_mel_samples - RNN_INPUT_SIZE_VOICE_ACTIVATION, 1)])
+                    # final_shape: (#_hops, #_mel_filters, #_window)
+
+                    total_x_norm = (total_x - mean) / std
+                    total_x_norm = np.swapaxes(total_x_norm, 1, 2)
+                    # final_shape: (#_hops, #_window, #_mel_filters)
+
+                    x_test = total_x_norm
+                    y_pred = loaded_model.predict(x_test, verbose=1)  # Shape=(total_frames,)
+                    time, aligned_y_pred = VoiceActivationFeatureExtractor.post_process(y_pred, number_of_mel_samples)
+                    print('info: predicted!')
+                    result_array = np.asarray([time, aligned_y_pred])
+                    FeatureExtractor.save_feature(result_array, feature_name, out_path, x_i, y_i, new_labels)
+
+        return __process_elements
+
+    def parallel_transform(self, **kwargs):
+        return super(VoiceActivationFeatureExtractor, self).parallel_transform(parallel=False)
 
 
 if __name__ == '__main__':
@@ -139,9 +217,15 @@ if __name__ == '__main__':
 
     print('info: from {} to {}'.format(source_path, out_path))
     if feature_name == 'leglaive':
+        # leglaive use hpss as input
+        source_path = FEATURES_DATA_PATH
+        label_path = source_path / '2hpss' / 'labels.csv'
         extractor = VoiceActivationFeatureExtractor.from_label_file(label_path, out_path=out_path, raw_path=source_path)
     elif feature_name == 'mfsc':
-        extractor = MFCCFeatureExtractor.from_label_file(label_path, out_path=out_path, raw_path=source_path)
+        extractor = MelSpectralCoefficientsFeatureExtractor.from_label_file(label_path, out_path=out_path,
+                                                                            raw_path=source_path)
+    elif feature_name == '2hpss':
+        extractor = DoubleHPSSFeatureExtractor.from_label_file(label_path, out_path=out_path, raw_path=source_path)
     else:
         raise NotImplemented('{} feature not implemented'.format(feature_name))
     extractor.parallel_transform()
