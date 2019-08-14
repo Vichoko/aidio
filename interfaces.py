@@ -1,6 +1,6 @@
 import os
 import concurrent.futures
-from config import CPU_WORKERS, FEATURES_DATA_PATH, RAW_DATA_PATH
+from config import CPU_WORKERS, FEATURES_DATA_PATH, RAW_DATA_PATH, makedirs
 
 from functools import partial
 
@@ -68,6 +68,7 @@ class FeatureExtractor:
         self.x = x
         self.y = y
         self.out_path = out_path / self.feature_name
+        makedirs(self.out_path)
         self.raw_path = raw_path
         self.new_labels = []
 
@@ -153,7 +154,7 @@ class FeatureExtractor:
 
         df = pd.DataFrame(np.asarray(self.new_labels))
         df.columns = ['filename', 'label']
-        df.to_csv(self.out_path / 'labels.csv'.format(self.feature_name), index=False)
+        df.to_csv(self.out_path / 'labels.{}.csv'.format(self.feature_name), index=False)
 
     @staticmethod
     def get_file_name(x, feature_name, out_path):
@@ -166,7 +167,7 @@ class FeatureExtractor:
         """
         # this is kind-of standard
         name = '.'.join(x.split('.')[:-1])
-        filename = '{}.npy'.format(name)
+        filename = '{}.{}.npy'.format(name, feature_name)
         return filename
 
     @staticmethod

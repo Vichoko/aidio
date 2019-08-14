@@ -1,22 +1,11 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-from config import FEATURES_DATA_PATH, SR_HPSS
-
-
-def pad_this(expected_len, array_2d_like):
-    def process_element(array):
-        if len(array) < expected_len:
-            padding_len = expected_len - len(array)
-            pad = np.pad(array, (0, padding_len), 'constant')
-            return pad
-        return np.asarray(array)
-
-    return np.asarray([process_element(array) for array in array_2d_like])
-
+from config import FEATURES_DATA_PATH
+from util.nparray_util import pad_this
 
 if __name__ == "__main__":
-    x = np.load(FEATURES_DATA_PATH / '248_Jeth_Aqua.2hpss.voice_activation.npy', allow_pickle=True)  # ashes to ashes
+    x = np.load(FEATURES_DATA_PATH / '316_Jeth_Stan.2hpss.voice_activation.npy', allow_pickle=True)  # ashes to ashes
     activations = x[1]
     time = x[0]
     max_len = np.max([len(array) for array in activations])

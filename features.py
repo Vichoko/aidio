@@ -13,8 +13,83 @@ import numpy as np
 
 from util.leglaive.audio import ono_hpss, log_melgram
 
-class SVS:
-    pass
+
+class SVDPonderatedVolumeFeatureExtractor(FeatureExtractor):
+    feature_name = 'svd_ponderated_volume'
+
+    def __init__(self, filenames, labels, out_path, raw_path):
+        super().__init__(filenames, labels, out_path, raw_path)
+        dependency_feature_name = VoiceActivationFeatureExtractor.feature_name
+        print("""warning: 
+        SVSPonderatedVolume Feature source folder is commonly FEATURES_DATA_PATH/{} config
+        because it need {} feature as source, receeived {} instead.""".format(
+            dependency_feature_name, dependency_feature_name, raw_path)) if raw_path != (
+                FEATURES_DATA_PATH / DoubleHPSSFeatureExtractor.feature_name) else None
+        print("""warning:
+        SVSPonderatedVolume Feature source filenames are commonly formatted like <name>.{}.npy, received {} instead
+        """.format(dependency_feature_name, filenames[0])) if '.{}.npy'.format(
+            dependency_feature_name) not in filenames[0] else None
+
+    @staticmethod
+    def process_element(feature_name, new_labels, out_path, raw_path, **kwargs):
+        def __process_element(data):
+            """
+
+            """
+            print('prosessing {}'.format(data))
+            x_i = data[0]
+            y_i = data[1]
+
+            voice_activation = np.load(raw_path / x_i, allow_pickle=True)
+            mean_voice_activation = np.mean(voice_activation)
+
+            print("asd")
+            # this is kind-of standard
+            FeatureExtractor.save_feature(None, feature_name, out_path, x_i, y_i, new_labels)
+
+        return __process_element
+
+    def parallel_transform(self, **kwargs):
+        return super(SVDPonderatedVolumeFeatureExtractor, self).parallel_transform(parallel=False)
+
+
+class MeanSVDFeatureExtractor(FeatureExtractor):
+    feature_name = 'mean_svd'
+
+    def __init__(self, filenames, labels, out_path, raw_path):
+        super().__init__(filenames, labels, out_path, raw_path)
+        dependency_feature_name = VoiceActivationFeatureExtractor.feature_name
+        print("""warning: 
+        MeanSVD Feature source folder is commonly FEATURES_DATA_PATH/{} config
+        because it need {} feature as source, receeived {} instead.""".format(
+            dependency_feature_name, dependency_feature_name, raw_path)) if raw_path != (
+                FEATURES_DATA_PATH / DoubleHPSSFeatureExtractor.feature_name) else None
+        print("""warning:
+        MeanSVD Feature source filenames are commonly formatted like <name>.{}.npy, received {} instead
+        """.format(dependency_feature_name, filenames[0])) if '.{}.npy'.format(
+            dependency_feature_name) not in filenames[0] else None
+
+    @staticmethod
+    def process_element(feature_name, new_labels, out_path, raw_path, **kwargs):
+        def __process_element(data):
+            """
+
+            """
+            print('prosessing {}'.format(data))
+            x_i = data[0]
+            y_i = data[1]
+
+            voice_activation = np.load(raw_path / x_i, allow_pickle=True)
+            mean_voice_activation = np.asarray([np.mean(elem) for elem in voice_activation[1]])
+            mean_voice_activation = np.nan_to_num(mean_voice_activation)
+            # this is kind-of standard
+            FeatureExtractor.save_feature(mean_voice_activation, feature_name, out_path, x_i, y_i, new_labels)
+
+        return __process_element
+
+    def parallel_transform(self, **kwargs):
+        return super(MeanSVDFeatureExtractor, self).parallel_transform(parallel=True)
+
 
 class MelSpectralCoefficientsFeatureExtractor(FeatureExtractor):
     feature_name = 'spec'
@@ -62,10 +137,10 @@ class DoubleHPSSFeatureExtractor(FeatureExtractor):
             :return: mel_D2_total : concatenated melspectrogram of percussive, harmonic components of double stage HPSS. Shape=(2 * n_bins, total_frames) ex. (80, 2004)
             """
             print('prosessing {}'.format(data))
-            x = data[0]
-            y = data[1]
+            x_i = data[0]
+            y_i = data[1]
 
-            audio_src, _ = librosa.load(raw_path / x, sr=SR_HPSS)
+            audio_src, _ = librosa.load(raw_path / x_i, sr=SR_HPSS)
             # Normalize audio signal
             audio_src = librosa.util.normalize(audio_src)
             # first HPSS
@@ -80,7 +155,7 @@ class DoubleHPSSFeatureExtractor(FeatureExtractor):
             mel_total = np.vstack((mel_harmonic, mel_percussive))
 
             # this is kind-of standard
-            FeatureExtractor.save_feature(mel_total, feature_name, out_path, x, y, new_labels)
+            FeatureExtractor.save_feature(mel_total, feature_name, out_path, x_i, y_i, new_labels)
 
         return __process_element
 
@@ -207,7 +282,7 @@ if __name__ == '__main__':
     parser.add_argument('--out_path', help='Output path where exported data will be placed', default=FEATURES_DATA_PATH)
     parser.add_argument('--label_filename', help='Source path where label file is stored', default='labels.csv')
     parser.add_argument('--feature', help='name of the feature to be extracted (options: mfsc, leglaive)',
-                        default='leglaive')
+                        default='mean_svd')
 
     args = parser.parse_args()
     source_path = pathlib.Path(args.source_path)
@@ -218,14 +293,30 @@ if __name__ == '__main__':
     print('info: from {} to {}'.format(source_path, out_path))
     if feature_name == 'leglaive':
         # leglaive use hpss as input
+        src_feature_name = DoubleHPSSFeatureExtractor.feature_name
         source_path = FEATURES_DATA_PATH
-        label_path = source_path / '2hpss' / 'labels.csv'
+        label_path = source_path / src_feature_name / 'labels.{}.csv'.format(src_feature_name)
         extractor = VoiceActivationFeatureExtractor.from_label_file(label_path, out_path=out_path, raw_path=source_path)
     elif feature_name == 'mfsc':
         extractor = MelSpectralCoefficientsFeatureExtractor.from_label_file(label_path, out_path=out_path,
                                                                             raw_path=source_path)
     elif feature_name == '2hpss':
         extractor = DoubleHPSSFeatureExtractor.from_label_file(label_path, out_path=out_path, raw_path=source_path)
+    elif feature_name == 'svd_ponderated_volume':
+        # leglaive use SVD as input
+        src_feature_name = VoiceActivationFeatureExtractor.feature_name
+        source_path = FEATURES_DATA_PATH / src_feature_name
+        label_path = source_path / 'labels.{}.csv'.format(src_feature_name)
+        extractor = SVDPonderatedVolumeFeatureExtractor.from_label_file(label_path, out_path=out_path,
+                                                                        raw_path=source_path)
+    elif feature_name == 'mean_svd':
+        # leglaive use SVD as input
+        # todo: unify this behaviour
+        src_feature_name = VoiceActivationFeatureExtractor.feature_name
+        source_path = FEATURES_DATA_PATH / src_feature_name
+        label_path = source_path / 'labels.{}.csv'.format(src_feature_name)
+        extractor = MeanSVDFeatureExtractor.from_label_file(label_path, out_path=out_path,
+                                                                        raw_path=source_path)
     else:
         raise NotImplemented('{} feature not implemented'.format(feature_name))
     extractor.parallel_transform()
