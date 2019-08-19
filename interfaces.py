@@ -1,6 +1,9 @@
 import os
 import concurrent.futures
-from config import CPU_WORKERS, FEATURES_DATA_PATH, RAW_DATA_PATH, makedirs
+
+import librosa
+
+from config import CPU_WORKERS, FEATURES_DATA_PATH, RAW_DATA_PATH, makedirs, SR
 
 from functools import partial
 
@@ -72,6 +75,19 @@ class FeatureExtractor:
         self.raw_path = raw_path
         self.new_labels = []
 
+    def trigger_dependency_warnings_if_needed(self, dependency_feature_name, filenames, raw_path):
+        print("""warning: 
+        {} Feature source folder is commonly FEATURES_DATA_PATH/{} config
+        because it need {} feature as source, receeived {} instead.""".format(self.feature_name,
+                                                                              dependency_feature_name,
+                                                                              dependency_feature_name,
+                                                                              raw_path)) if raw_path != (
+                FEATURES_DATA_PATH / dependency_feature_name) else None
+        print("""warning:
+        {} Feature source filenames are commonly formatted like <name>.{}.npy, received {} instead
+        """.format(self.feature_name, dependency_feature_name, filenames[0])) if '.{}.npy'.format(
+            dependency_feature_name) not in filenames[0] else None
+
     @staticmethod
     def clean_references(x, y, raw_path):
         """
@@ -127,6 +143,7 @@ class FeatureExtractor:
             new_labels.append([filename, y])
             print('info: {} transformed and saved!'.format(filename))
             raise NotImplemented
+
         # stub
         return __process_element
 
@@ -135,6 +152,7 @@ class FeatureExtractor:
         def __process_elements(data):
             for data_element in data:
                 fun(data_element)
+
         return __process_elements
 
     def parallel_transform(self, parallel=True, **kwargs):
@@ -157,17 +175,17 @@ class FeatureExtractor:
         df.to_csv(self.out_path / 'labels.{}.csv'.format(self.feature_name), index=False)
 
     @staticmethod
-    def get_file_name(x, feature_name, out_path):
+    def get_file_name(x, feature_name, ext='npy'):
         """
         Feature File System logic is here
+        :param ext:
         :param x:
         :param feature_name:
-        :param out_path:
         :return:
         """
         # this is kind-of standard
         name = '.'.join(x.split('.')[:-1])
-        filename = '{}.{}.npy'.format(name, feature_name)
+        filename = '{}.{}.{}'.format(name, feature_name, ext)
         return filename
 
     @staticmethod
@@ -182,8 +200,26 @@ class FeatureExtractor:
         :return:
         """
         # this is kind-of standard
-        filename = filename or FeatureExtractor.get_file_name(x, feature_name, out_path)
+        filename = filename or FeatureExtractor.get_file_name(x, feature_name)
         np.save(out_path / filename, ndarray)
+        new_labels.append([filename, y])
+        print('info: {} transformed and saved!'.format(filename))
+        return filename
+
+    @staticmethod
+    def save_audio(ndarray, feature_name, out_path, x, y, new_labels, filename=None):
+        """
+        Save any numpy object in Feature File System.
+        :param ndarray:
+        :param feature_name:
+        :param out_path:
+        :param x:
+        :param filename:
+        :return:
+        """
+        # this is kind-of standard
+        filename = filename or FeatureExtractor.get_file_name(x, feature_name, 'wav')
+        librosa.output.write_wav(out_path / filename, ndarray, sr=SR, norm=True)
         new_labels.append([filename, y])
         print('info: {} transformed and saved!'.format(filename))
         return filename
