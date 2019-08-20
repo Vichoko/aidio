@@ -1,0 +1,7 @@
+import pathlib
+
+TEST_STATIC_FILES_PATH = pathlib.Path('./tests/static/')
+TEST_RAW_DATA_PATH = TEST_STATIC_FILES_PATH / 'data/raw/'
+TEST_FEATURES_DATA_PATH = TEST_STATIC_FILES_PATH / 'data/features/'
+TEST_DIGEST_DATA_PATH = TEST_STATIC_FILES_PATH / 'data/digest/'
+TEST_MODELS_DATA_PATH = TEST_STATIC_FILES_PATH / 'data/models/'

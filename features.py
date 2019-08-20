@@ -14,78 +14,6 @@ import numpy as np
 from util.leglaive.audio import ono_hpss, log_melgram
 
 
-class SVDPonderatedVolumeFeatureExtractor(FeatureExtractor):
-    feature_name = 'svd_ponderated_volume'
-
-    def __init__(self, filenames, labels, out_path, raw_path):
-        super().__init__(filenames, labels, out_path, raw_path)
-        dependency_feature_name = MeanSVDFeatureExtractor.feature_name
-        self.trigger_dependency_warnings_if_needed(dependency_feature_name, filenames, raw_path)
-
-    @staticmethod
-    def process_element(feature_name, new_labels, out_path, raw_path, **kwargs):
-        def __process_element(data):
-            """
-
-            """
-            print('prosessing {}'.format(data))
-            x_i = data[0]
-            y_i = data[1]
-
-            mean_voice_activation = np.load(raw_path / x_i, allow_pickle=True)
-            audio_src, _ = librosa.load(RAW_DATA_PATH / '{}.mp3'.format(x_i.split('.')[0]),
-                                        sr=SR)  # todo: support other formats
-
-            time = mean_voice_activation[0]
-            voice_activation_prob = mean_voice_activation[1]
-
-            last_sample = 0
-            for idx, time_tick in enumerate(time):
-                voice_prob = voice_activation_prob[idx]
-                init_sample = last_sample
-                last_sample = int(time_tick * SR)
-                audio_src[init_sample:last_sample] *= voice_prob
-            # this is kind-of standard
-            FeatureExtractor.save_audio(audio_src, feature_name, out_path, x_i, y_i, new_labels)
-
-        return __process_element
-
-    def parallel_transform(self, **kwargs):
-        return super(SVDPonderatedVolumeFeatureExtractor, self).parallel_transform(parallel=False)
-
-
-class MeanSVDFeatureExtractor(FeatureExtractor):
-    feature_name = 'mean_svd'
-
-    def __init__(self, filenames, labels, out_path, raw_path):
-        super().__init__(filenames, labels, out_path, raw_path)
-        dependency_feature_name = VoiceActivationFeatureExtractor.feature_name
-        self.trigger_dependency_warnings_if_needed(dependency_feature_name, filenames, raw_path)
-
-    @staticmethod
-    def process_element(feature_name, new_labels, out_path, raw_path, **kwargs):
-        def __process_element(data):
-            """
-            Flatten overlapped prediction by Leglaive SVD prediction by calculating mean for every frame.
-            """
-            print('prosessing {}'.format(data))
-            x_i = data[0]
-            y_i = data[1]
-
-            voice_activation = np.load(raw_path / x_i, allow_pickle=True)
-            mean_voice_activation = np.asarray([np.mean(elem) for elem in voice_activation[
-                1]])  # calculate mean for each frame predictions (~218 per frame)
-            mean_voice_activation = np.nan_to_num(mean_voice_activation)  # remove NaNs product of mean of empty frame
-            # this is kind-of standard
-            FeatureExtractor.save_feature([voice_activation[0], mean_voice_activation], feature_name, out_path, x_i,
-                                          y_i, new_labels)
-
-        return __process_element
-
-    def parallel_transform(self, **kwargs):
-        return super(MeanSVDFeatureExtractor, self).parallel_transform(parallel=True)
-
-
 class MelSpectralCoefficientsFeatureExtractor(FeatureExtractor):
     feature_name = 'spec'
 
@@ -118,6 +46,7 @@ class MelSpectralCoefficientsFeatureExtractor(FeatureExtractor):
         return super(MelSpectralCoefficientsFeatureExtractor, self).parallel_transform()
 
 
+# Singing Voice Detection Pipeline
 class DoubleHPSSFeatureExtractor(FeatureExtractor):
     feature_name = '2hpss'
 
@@ -157,16 +86,7 @@ class DoubleHPSSFeatureExtractor(FeatureExtractor):
 
 class VoiceActivationFeatureExtractor(FeatureExtractor):
     feature_name = 'voice_activation'
-
-    def __init__(self, filenames, labels, out_path, raw_path):
-        super().__init__(filenames, labels, out_path, raw_path)
-        print("""warning: 
-        VoiceActivation Feature source folder is commonly FEATURES_DATA_PATH config
-        because it need HPSS feature as source, receeived {} instead.""".format(
-            raw_path)) if raw_path != FEATURES_DATA_PATH else None
-        print("""warning:
-        VoiceActivation Feature source filenames are commonly formatted like <name>.hpss.npy, received {} instead
-        """.format(filenames[0])) if '.2hpss.npy' not in filenames[0] else None
+    dependency_feature_name = DoubleHPSSFeatureExtractor.feature_name
 
     @staticmethod
     def frame_level_predict(y_pred, number_of_mel_samples):
@@ -269,6 +189,70 @@ class VoiceActivationFeatureExtractor(FeatureExtractor):
 
     def parallel_transform(self, **kwargs):
         return super(VoiceActivationFeatureExtractor, self).parallel_transform(parallel=False)
+
+
+class MeanSVDFeatureExtractor(FeatureExtractor):
+    feature_name = 'mean_svd'
+    dependency_feature_name = VoiceActivationFeatureExtractor.feature_name
+
+    @staticmethod
+    def process_element(feature_name, new_labels, out_path, raw_path, **kwargs):
+        def __process_element(data):
+            """
+            Flatten overlapped prediction by Leglaive SVD prediction by calculating mean for every frame.
+            """
+            print('prosessing {}'.format(data))
+            x_i = data[0]
+            y_i = data[1]
+
+            voice_activation = np.load(raw_path / x_i, allow_pickle=True)
+            mean_voice_activation = np.asarray([np.mean(elem) for elem in voice_activation[
+                1]])  # calculate mean for each frame predictions (~218 per frame)
+            mean_voice_activation = np.nan_to_num(mean_voice_activation)  # remove NaNs product of mean of empty frame
+            # this is kind-of standard
+            FeatureExtractor.save_feature([voice_activation[0], mean_voice_activation], feature_name, out_path, x_i,
+                                          y_i, new_labels)
+
+        return __process_element
+
+    def parallel_transform(self, **kwargs):
+        return super(MeanSVDFeatureExtractor, self).parallel_transform(parallel=True)
+
+
+class SVDPonderatedVolumeFeatureExtractor(FeatureExtractor):
+    feature_name = 'svd_ponderated_volume'
+    dependency_feature_name = MeanSVDFeatureExtractor.feature_name
+
+    @staticmethod
+    def process_element(feature_name, new_labels, out_path, raw_path, **kwargs):
+        def __process_element(data):
+            """
+
+            """
+            print('prosessing {}'.format(data))
+            x_i = data[0]
+            y_i = data[1]
+
+            mean_voice_activation = np.load(raw_path / x_i, allow_pickle=True)
+            audio_src, _ = librosa.load(RAW_DATA_PATH / '{}.mp3'.format(x_i.split('.')[0]),
+                                        sr=SR)  # todo: support other formats
+
+            time = mean_voice_activation[0]
+            voice_activation_prob = mean_voice_activation[1]
+
+            last_sample = 0
+            for idx, time_tick in enumerate(time):
+                voice_prob = voice_activation_prob[idx]
+                init_sample = last_sample
+                last_sample = int(time_tick * SR)
+                audio_src[init_sample:last_sample] *= voice_prob
+            # this is kind-of standard
+            FeatureExtractor.save_audio(audio_src, feature_name, out_path, x_i, y_i, new_labels)
+
+        return __process_element
+
+    def parallel_transform(self, **kwargs):
+        return super(SVDPonderatedVolumeFeatureExtractor, self).parallel_transform(parallel=False)
 
 
 if __name__ == '__main__':
