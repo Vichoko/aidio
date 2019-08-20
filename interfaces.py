@@ -140,7 +140,6 @@ class FeatureExtractor:
                 filename_format_warning_flag = True
         return input_path_warning_flag, filename_format_warning_flag
 
-
     def clean_references(self):
         """
         Remove elements from x and y that doesnt't have a source (raw) file
@@ -158,7 +157,6 @@ class FeatureExtractor:
                 new_y.append(y_i)
         self.x = new_x
         self.y = new_y
-
 
     @staticmethod
     def process_element(feature_name, new_labels, out_path, raw_path, **kwargs):
@@ -185,7 +183,6 @@ class FeatureExtractor:
         # stub
         return __process_element
 
-
     @staticmethod
     def proccess_elements(feature_name, new_labels, out_path, raw_path, fun=None, **kwargs):
         def __process_elements(data):
@@ -193,7 +190,6 @@ class FeatureExtractor:
                 fun(data_element)
 
         return __process_elements
-
 
     def parallel_transform(self, parallel=True, **kwargs):
         self.clean_references()
@@ -214,7 +210,6 @@ class FeatureExtractor:
         df.columns = ['filename', 'label']
         df.to_csv(self.out_path / 'labels.{}.csv'.format(self.feature_name), index=False)
 
-
     @staticmethod
     def get_file_name(x, feature_name, ext='npy'):
         """
@@ -228,7 +223,6 @@ class FeatureExtractor:
         name = '.'.join(x.split('.')[:-1])
         filename = '{}.{}.{}'.format(name, feature_name, ext)
         return filename
-
 
     @staticmethod
     def save_feature(ndarray, feature_name, out_path, x, y, new_labels, filename=None):
@@ -247,7 +241,6 @@ class FeatureExtractor:
         new_labels.append([filename, y])
         print('info: {} transformed and saved!'.format(filename))
         return filename
-
 
     @staticmethod
     def save_audio(ndarray, feature_name, out_path, x, y, new_labels, filename=None):

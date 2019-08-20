@@ -14,6 +14,7 @@ import numpy as np
 from util.leglaive.audio import ono_hpss, log_melgram
 
 
+# MFSC
 class MelSpectralCoefficientsFeatureExtractor(FeatureExtractor):
     feature_name = 'spec'
 

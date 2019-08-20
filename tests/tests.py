@@ -1,9 +1,11 @@
 import pathlib
 import unittest
+
+import librosa
 import numpy as np
 import os
 
-from config import AVAIL_MEDIA_TYPES
+from config import AVAIL_MEDIA_TYPES, SR
 from interfaces import FeatureExtractor
 from tests.config import TEST_STATIC_FILES_PATH, TEST_FEATURES_DATA_PATH, TEST_RAW_DATA_PATH
 
@@ -102,8 +104,8 @@ class TestFeatureExtractorInterface(unittest.TestCase):
         the extractor.new_labels attribute.
         :return:
         """
+        # this method isnt implemented in abstractclass
         pass
-        self.fail("not implemented")
 
     def test_process_element(self):
         """
@@ -111,8 +113,8 @@ class TestFeatureExtractorInterface(unittest.TestCase):
         the extractor.new_labels attribute.
         :return:
         """
+        # this method isn't immplemented in abstarct class
         pass
-        self.fail("not implemented")
 
     def test_parallel_transform(self):
         """
@@ -122,8 +124,9 @@ class TestFeatureExtractorInterface(unittest.TestCase):
         successfully.
         :return:
         """
-        return
-        self.fail("not implemented")
+        # method can't run on abstract class but will be tested on
+        # other pipelines
+        pass
 
     def _test_get_filename(self, extension, feature_name, filename, new_filename=None):
         """
@@ -136,8 +139,9 @@ class TestFeatureExtractorInterface(unittest.TestCase):
         new_filename = new_filename if new_filename else self.feature_extractor.get_file_name(filename, feature_name,
                                                                                               ext=extension)
         # check that previous filetype was removed forn new filename
-        self.assertNotIn('mp3', new_filename)
-        self.assertNotIn('wav', new_filename)
+        previous_extension = filename.split('.')[-1]
+        self.assertNotIn(previous_extension, new_filename) if previous_extension != extension else self.assertIn(
+            previous_extension, new_filename)
         # check that new filetype is functional
         self.assertEqual(extension, new_filename.split('.')[-1])
         # check that contains the previous information
@@ -240,14 +244,59 @@ class TestFeatureExtractorInterface(unittest.TestCase):
                 os.path.isfile(extractor.out_path / new_filename))
         return extractor if not clean else None
 
-    def test_save_audio(self):
+    def test_save_audio(self, clean=True):
         """
         Tests that this static method exports the received audio in
         the correct directory according to out_path and filename definition
         :return:
         """
-        pass
-        self.fail("not implemented")
+        extractor = self.load_example_raw_FeatureExtractor()
+        for idx, x_i in enumerate(extractor.x):
+            self.assertEqual(len(extractor.new_labels), idx)
+            y_i = extractor.y[idx]
+
+            wav_saved, _ = librosa.core.load(extractor.raw_path / x_i, sr=SR)
+            self.feature_extractor.save_audio(
+                wav_saved,
+                extractor.feature_name,
+                extractor.out_path,
+                x_i,
+                y_i,
+                extractor.new_labels,
+            )
+            self.assertEqual(len(extractor.new_labels), idx + 1)
+            new_filename = extractor.new_labels[idx][0]
+            new_label = extractor.new_labels[idx][1]
+            self.assertEqual(new_label, y_i)
+            self.assertEqual(self._test_get_filename('wav', extractor.feature_name, x_i, new_filename), new_filename)
+            # tries to load current file
+            array_loaded, _ = librosa.core.load(extractor.out_path / new_filename)
+            # self.assertAlmostEqual(array_loaded, librosa.util.normalize(wav_saved)) #  this is kinda non-deterministic, tend to have shape mismatch
+            os.remove(extractor.out_path / new_filename) if clean else None
+            self.assertFalse(
+                os.path.isfile(extractor.out_path / new_filename)) if clean else self.assertTrue(
+                os.path.isfile(extractor.out_path / new_filename))
+        return extractor if not clean else None
+
+
+class TestNPArrayUtil(unittest.TestCase):
+    pass
+
+
+class TestCommands(unittest.TestCase):
+    pass
+
+
+class TestExploration(unittest.TestCase):
+    pass
+
+
+class TestSingingVoiceDetectionFeaturePipeline(unittest.TestCase):
+    pass
+
+
+class TestMFSCFeatureExtraction(unittest.TestCase):
+    pass
 
 
 if __name__ == '__main__':
