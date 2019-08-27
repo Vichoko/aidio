@@ -1,0 +1,10 @@
+filename,artist,album,old_name,label
+1_Bar _Foo.mp3,Bar Fight,Foo,01 bar_foo.mp3,bar
+2_Bar _Foo.mp3,Bar Fight,Foo,02 bar_foo.mp3,bar
+3_Bar _Foo.mp3,Bar Fight,Foo,03 bar_foo.mp3,bar
+4_Bar _Foo.mp3,Bar Fight,Foo,04 bar_foo.mp3,bar
+1_Foo _Bar.mp3,Foo Fight,Bar,01 foo_bar.mp3,foo
+2_Foo _Bar.mp3,Foo Fight,Bar,02 foo_bar.mp3,foo
+3_Foo _Bar.mp3,Foo Fight,Bar,03 foo_bar.mp3,foo
+4_Foo _Bar.mp3,Foo Fight,Bar,04 foo_bar.mp3,foo
+5_Foo _Bar.mp3,Foo Fight,Bar,05 foo_bar.mp3,foo

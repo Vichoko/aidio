@@ -5,7 +5,9 @@ import librosa
 import numpy as np
 import os
 
-from config import AVAIL_MEDIA_TYPES, SR
+from config import AVAIL_MEDIA_TYPES, SR, RAW_DATA_PATH, N_MELS, N_MELS_HPSS
+from features import MelSpectralCoefficientsFeatureExtractor, DoubleHPSSFeatureExtractor, \
+    VoiceActivationFeatureExtractor
 from interfaces import FeatureExtractor
 from tests.config import TEST_STATIC_FILES_PATH, TEST_FEATURES_DATA_PATH, TEST_RAW_DATA_PATH
 
@@ -14,7 +16,7 @@ class TestFeatureExtractorInterface(unittest.TestCase):
     feature_extractor = FeatureExtractor
 
     def load_example_raw_FeatureExtractor(self):
-        label_path = TEST_STATIC_FILES_PATH / 'label_file.csv'
+        label_path = TEST_RAW_DATA_PATH / 'labels.csv'
         extractor = self.feature_extractor.from_label_file(
             label_path,
             out_path=TEST_FEATURES_DATA_PATH,
@@ -95,8 +97,39 @@ class TestFeatureExtractorInterface(unittest.TestCase):
         between the expected dependency feature and the received.
         :return:
         """
-        pass
-        self.fail("not implemented")
+
+        base_extractor = self.load_example_raw_FeatureExtractor()
+
+        filenames = base_extractor.x
+        labels = base_extractor.y
+        out_path = TEST_FEATURES_DATA_PATH
+
+        first_positive = RAW_DATA_PATH
+        first_negative = TEST_RAW_DATA_PATH
+
+        second_positive = filenames
+        second_negative = [''.join(filename.split('.')[:-1]) + '.npy' for filename in filenames]
+
+        # perfect case
+        extractor = FeatureExtractor(second_positive, labels, out_path, first_positive)
+        first_flag, second_flag = extractor.trigger_dependency_warnings_if_needed()
+        self.assertFalse(first_flag)
+        self.assertFalse(second_flag)
+        # First fail
+        extractor = FeatureExtractor(second_positive, labels, out_path, first_negative)
+        first_flag, second_flag = extractor.trigger_dependency_warnings_if_needed()
+        self.assertTrue(first_flag)
+        self.assertFalse(second_flag)
+        # Second Fail
+        extractor = FeatureExtractor(second_negative, labels, out_path, first_positive)
+        first_flag, second_flag = extractor.trigger_dependency_warnings_if_needed()
+        self.assertFalse(first_flag)
+        self.assertTrue(second_flag)
+        # Both Fails
+        extractor = FeatureExtractor(second_negative, labels, out_path, first_negative)
+        first_flag, second_flag = extractor.trigger_dependency_warnings_if_needed()
+        self.assertTrue(first_flag)
+        self.assertTrue(second_flag)
 
     def test_process_elements(self):
         """
@@ -126,7 +159,22 @@ class TestFeatureExtractorInterface(unittest.TestCase):
         """
         # method can't run on abstract class but will be tested on
         # other pipelines
-        pass
+        extractor = self.load_example_raw_FeatureExtractor()
+        with self.assertRaises(NotImplementedError):
+            extractor._parallel_transform()
+
+    def test_transform(self):
+        """
+        Tests that this method process existing x & y,
+        according to process_element(s) functions
+        and resulting new_labels are exported
+        successfully.
+        :return:
+        """
+
+        extractor = self.load_example_raw_FeatureExtractor()
+        with self.assertRaises(NotImplementedError):
+            extractor.transform()
 
     def _test_get_filename(self, extension, feature_name, filename, new_filename=None):
         """
@@ -295,9 +343,93 @@ class TestSingingVoiceDetectionFeaturePipeline(unittest.TestCase):
     pass
 
 
-class TestMFSCFeatureExtraction(unittest.TestCase):
-    pass
+class _TestFeatureExtractor(unittest.TestCase):
+
+    def _test_feature_element(self, x_i):
+        raise NotImplementedError()
+
+    def test_parallel_creation(self, clean=True):
+        extractor = self.create_extractor()
+        transform_fun = extractor._parallel_transform
+        self._transform_load_test(clean, extractor, transform_fun)
+
+    def _transform_load_test(self, clean, extractor, transform_fun):
+        self.assertEqual(len(extractor.new_labels), 0)
+        transform_fun()
+        self.assertGreater(len(extractor.new_labels), 0)
+        extracted_data = np.asarray(extractor.new_labels)
+        feature_filenames = extracted_data[:, 0]
+        # feature_labels = extracted_data[:, 1]
+        for filename in feature_filenames:
+            x_i = np.load(extractor.out_path / filename, allow_pickle=True)
+            self._test_feature_element(x_i)
+        self.remove_feature_files(extractor, feature_filenames) if clean else None
+
+    def test_sequential_transform(self, clean=True):
+        extractor = self.create_extractor()
+        transform_fun = extractor._sequential_transform
+        self._transform_load_test(clean, extractor, transform_fun)
+
+    def remove_feature_files(self, extractor, feature_filenames):
+        [os.remove(extractor.out_path / filename) for filename in feature_filenames]
+        os.remove(extractor.out_path / 'labels.{}.csv'.format(extractor.feature_name))
+
+    def create_extractor(self):
+        return NotImplemented
 
 
+class TestMFSCFeatureExtraction(_TestFeatureExtractor):
+
+    def _test_feature_element(self, x_i):
+        self.assertEqual(x_i.shape[0], N_MELS)
+
+    def create_extractor(self):
+        extractor = MelSpectralCoefficientsFeatureExtractor.from_label_file(
+            TEST_RAW_DATA_PATH / 'labels.csv',
+            out_path=TEST_FEATURES_DATA_PATH,
+            raw_path=TEST_RAW_DATA_PATH
+        )
+        return extractor
+
+
+# Singing Voice Detection Pipeline
+class TestVoiceActivationFeatureExtraction(_TestFeatureExtractor):
+
+    def _test_feature_element(self, x_i):
+        print('voice: {}'.format(x_i.shape))
+        pass
+
+    def create_extractor(self):
+        self.extractor_dep = DoubleHPSSFeatureExtractor.from_label_file(
+            TEST_RAW_DATA_PATH / 'labels.csv',
+            out_path=TEST_FEATURES_DATA_PATH,
+            raw_path=TEST_RAW_DATA_PATH
+        )
+        self.extractor_dep.transform()
+
+        str_feature_name = self.extractor_dep.feature_name
+        source_path = self.extractor_dep.out_path
+        label_path = source_path / 'labels.{}.csv'.format(str_feature_name)
+
+        extractor = VoiceActivationFeatureExtractor.from_label_file(
+            label_path,
+            out_path=TEST_FEATURES_DATA_PATH,
+            raw_path=source_path
+        )
+        return extractor
+
+    def test_parallel_creation(self, clean=True):
+        with self.assertRaises(NotImplementedError):
+            super().test_parallel_creation(clean=False)
+
+    def remove_feature_files(self, extractor, feature_filenames):
+        # clean dependency feature files
+        extracted_data = np.asarray(self.extractor_dep.new_labels)
+        feature_filenames_dep = extracted_data[:, 0]
+        super().remove_feature_files(self.extractor_dep, feature_filenames_dep)
+        # clean this one as naturally
+        super().remove_feature_files(extractor, feature_filenames)
+
+del _TestFeatureExtractor
 if __name__ == '__main__':
     unittest.main()

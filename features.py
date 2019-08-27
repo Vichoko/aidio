@@ -42,10 +42,6 @@ class MelSpectralCoefficientsFeatureExtractor(FeatureExtractor):
 
         return __process_element
 
-    def parallel_transform(self, **kwargs):
-        # the parameters of parallel_transform are passed to process_element and process_elements methods
-        return super(MelSpectralCoefficientsFeatureExtractor, self).parallel_transform()
-
 
 # Singing Voice Detection Pipeline
 class DoubleHPSSFeatureExtractor(FeatureExtractor):
@@ -160,7 +156,7 @@ class VoiceActivationFeatureExtractor(FeatureExtractor):
             for idx, x_i in enumerate(x):
                 # this is kind-of standard
                 y_i = y[idx]
-                _, file_name = FeatureExtractor.get_file_name(x_i, feature_name)
+                file_name = FeatureExtractor.get_file_name(x_i, feature_name)
                 try:
                     # try to load if file already exist
                     np.load(out_path / file_name, allow_pickle=True)
@@ -169,10 +165,15 @@ class VoiceActivationFeatureExtractor(FeatureExtractor):
                 except FileNotFoundError or OSError or EOFError:
                     # OSError and EOFError are raised if file are inconsistent
                     hpss = np.load(raw_path / x_i)  # _data, #_coefs, #_samples)
-
+                    padding = RNN_INPUT_SIZE_VOICE_ACTIVATION - hpss.shape[1]
+                    if padding > 0:
+                        # if hpss is shorter that RNN input shape, then add padding on axis=1
+                        hpss = np.pad(hpss, ((0, 0), (0, padding)), mode='constant')
                     number_of_mel_samples = hpss.shape[1]
+                    # at least should have 1 window
+                    number_of_steps = max(number_of_mel_samples - RNN_INPUT_SIZE_VOICE_ACTIVATION, 1)
                     total_x = np.array([hpss[:, i: i + RNN_INPUT_SIZE_VOICE_ACTIVATION]
-                                        for i in range(0, number_of_mel_samples - RNN_INPUT_SIZE_VOICE_ACTIVATION, 1)])
+                                        for i in range(0, number_of_steps, 1)])
                     # final_shape: (#_hops, #_mel_filters, #_window)
 
                     total_x_norm = (total_x - mean) / std
@@ -188,8 +189,10 @@ class VoiceActivationFeatureExtractor(FeatureExtractor):
 
         return __process_elements
 
-    def parallel_transform(self, **kwargs):
-        return super(VoiceActivationFeatureExtractor, self).parallel_transform(parallel=False)
+    def transform(self, parallel=False, **kwargs):
+        if parallel:
+            raise Exception('error: {} cannot be ran in paralel'.format(self.feature_name))
+        return super().transform(parallel, **kwargs)
 
 
 class MeanSVDFeatureExtractor(FeatureExtractor):
@@ -215,9 +218,6 @@ class MeanSVDFeatureExtractor(FeatureExtractor):
                                           y_i, new_labels)
 
         return __process_element
-
-    def parallel_transform(self, **kwargs):
-        return super(MeanSVDFeatureExtractor, self).parallel_transform(parallel=True)
 
 
 class SVDPonderatedVolumeFeatureExtractor(FeatureExtractor):
@@ -251,9 +251,6 @@ class SVDPonderatedVolumeFeatureExtractor(FeatureExtractor):
             FeatureExtractor.save_audio(audio_src, feature_name, out_path, x_i, y_i, new_labels)
 
         return __process_element
-
-    def parallel_transform(self, **kwargs):
-        return super(SVDPonderatedVolumeFeatureExtractor, self).parallel_transform(parallel=False)
 
 
 if __name__ == '__main__':
@@ -299,4 +296,4 @@ if __name__ == '__main__':
                                                             raw_path=source_path)
     else:
         raise NotImplemented('{} feature not implemented'.format(feature_name))
-    extractor.parallel_transform()
+    extractor._parallel_transform()

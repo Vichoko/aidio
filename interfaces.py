@@ -5,7 +5,6 @@ import librosa
 
 from config import CPU_WORKERS, FEATURES_DATA_PATH, RAW_DATA_PATH, makedirs, SR, AVAIL_MEDIA_TYPES
 
-from functools import partial
 
 import pandas as pd
 import numpy as np
@@ -52,7 +51,7 @@ class AudioButcher:
         :param data:
         :return:
         """
-        raise NotImplemented
+        raise NotImplemented()
 
     def transform(self, data, options):
         """
@@ -61,7 +60,7 @@ class AudioButcher:
         :param options:
         :return:
         """
-        raise NotImplemented
+        raise NotImplemented()
 
 
 class FeatureExtractor:
@@ -103,41 +102,45 @@ class FeatureExtractor:
         :return: (input_warning, filename_warning) [tuple of booleans] True if corresponding warning
                         was triggered in this method. A warning is printed when this flag is True.
         """
-        input_path_warning_flag = False
-        filename_format_warning_flag = False
+        input_path_warning_flag = True \
+            if (self.dependency_feature_name and self.raw_path != (FEATURES_DATA_PATH / self.dependency_feature_name)) \
+               or \
+               (not self.dependency_feature_name and self.raw_path != RAW_DATA_PATH) else False
+        filename_format_warning_flag = True \
+            if (self.dependency_feature_name and '.{}.npy'.format(self.dependency_feature_name) not in self.x[0]) \
+               or \
+               (not self.dependency_feature_name and self.x[0].split('.')[-1] not in AVAIL_MEDIA_TYPES) else False
+
         if self.dependency_feature_name:
             # """
             # If this parameter is given, the input is a feature in the Feature folder.
             # """
-            if self.raw_path != (FEATURES_DATA_PATH / self.dependency_feature_name):
+            if input_path_warning_flag:
                 print("""warning: 
                 {} Feature source folder is commonly FEATURES_DATA_PATH/{} config
                 because it need {} feature as source, receeived {} instead.""".format(self.feature_name,
                                                                                       self.dependency_feature_name,
                                                                                       self.dependency_feature_name,
                                                                                       self.raw_path))
-            input_path_warning_flag = True
-            if '.{}.npy'.format(self.dependency_feature_name) not in self.x[0]:
+            if filename_format_warning_flag:
                 print("""warning:
                 {} Feature source filenames are commonly formatted like <name>.{}.npy, received {} instead
                 """.format(self.feature_name, self.dependency_feature_name, self.x[0]))
-                filename_format_warning_flag = True
         else:
             # """
             # If this parameter isn't set, the raw_path should be the RAW_DATA_PATH,
             # also the files should end in an accepted format.
             # """
-            if self.raw_path != RAW_DATA_PATH:
+            if input_path_warning_flag:
                 print('warning: this FeatureExtractor has a modified self.raw_path ({}), '
-                      'but self.dependency_feature_name wasn\'t set. If this path doesn\t contain any audio files, '
+                      'but self.dependency_feature_name wasn\'t set. '.format(self.raw_path))
+                print('If this path doesn\t contain any audio files, '
                       'this extractor will probably fail.'
-                      'Prefer to set RAW_DATA_PATH for using audio files.'.format(self.raw_path))
-                input_path_warning_flag = True
-            if self.x[0].split('.')[-1] not in AVAIL_MEDIA_TYPES:
+                      'Prefer to set RAW_DATA_PATH for using audio files.') if filename_format_warning_flag else None
+            if filename_format_warning_flag:
                 print('warning: No self.dependency_feature_name was set, and '
                       'the parsed filenames (self.x) has an unsupported media type ({}) '.format(
                     self.x[0].split('.')[-1]))
-                filename_format_warning_flag = True
         return input_path_warning_flag, filename_format_warning_flag
 
     def clean_references(self):
@@ -166,19 +169,15 @@ class FeatureExtractor:
             :param y: label (str)
             :return:
             """
-            print('prosessing {}'.format(data))
-            x = data[0]
-            y = data[1]
-            # foo
-            product = 'foo'
-
-            # this is kind-of standard
-            name = '.'.join(x.split('.')[:-1])
-            filename = '{}.{}.npy'.format(name, feature_name)
-            np.save(out_path / filename, product)  # replace x with product
-            new_labels.append([filename, y])
-            print('info: {} transformed and saved!'.format(filename))
-            raise NotImplemented
+            # print('prosessing {}'.format(data))
+            # x = data[0]
+            # y = data[1]
+            # # foo
+            # product = 'foo'
+            #
+            # # this is kind-of standard
+            # FeatureExtractor.save_feature(product, feature_name, out_path, x, y, new_labels)
+            raise NotImplementedError()
 
         # stub
         return __process_element
@@ -191,21 +190,61 @@ class FeatureExtractor:
 
         return __process_elements
 
-    def parallel_transform(self, parallel=True, **kwargs):
+    def _parallel_transform(self, **kwargs):
+        """
+        Extract features in parallel.
+        :param kwargs:
+        :return:
+        """
         self.clean_references()
         data = np.asarray([self.x, self.y]).swapaxes(0, 1)
+        process_element = self.process_element(
+            feature_name=self.feature_name,
+            new_labels=self.new_labels,
+            out_path=self.out_path,
+            raw_path=self.raw_path, **kwargs)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=CPU_WORKERS) as executor:
+            iterator = executor.map(process_element, data)
+        list(iterator)
+        self.export_new_labels()
+        return np.asarray(self.new_labels)
 
-        fun = self.process_element(feature_name=self.feature_name, new_labels=self.new_labels, out_path=self.out_path,
-                                   raw_path=self.raw_path, **kwargs)
+    def transform(self, parallel=True, **kwargs):
+        """
+        Transform the data given in Labels to the inteded features.
+        :param parallel:
+        :param kwargs:
+        :return:
+        """
         if parallel:
-            with concurrent.futures.ThreadPoolExecutor(max_workers=CPU_WORKERS) as executor:
-                executor.map(fun, data)
+            return self._parallel_transform(**kwargs)
         else:
-            fun = self.proccess_elements(feature_name=self.feature_name, new_labels=self.new_labels,
-                                         out_path=self.out_path,
-                                         raw_path=self.raw_path, fun=fun, **kwargs)
-            fun(data)
+            return self._sequential_transform(**kwargs)
 
+    def _sequential_transform(self, **kwargs):
+        """
+        Extract features sequentially.
+        :param kwargs:
+        :return:
+        """
+        self.clean_references()
+        data = np.asarray([self.x, self.y]).swapaxes(0, 1)
+        process_element = self.process_element(
+            feature_name=self.feature_name,
+            new_labels=self.new_labels,
+            out_path=self.out_path,
+            raw_path=self.raw_path, **kwargs)
+        process_elements = self.proccess_elements(
+            feature_name=self.feature_name,
+            new_labels=self.new_labels,
+            out_path=self.out_path,
+            raw_path=self.raw_path,
+            fun=process_element, **kwargs)
+        process_elements(data)
+        self.export_new_labels()
+        return np.asarray(self.new_labels)
+
+    def export_new_labels(self):
         df = pd.DataFrame(np.asarray(self.new_labels))
         df.columns = ['filename', 'label']
         df.to_csv(self.out_path / 'labels.{}.csv'.format(self.feature_name), index=False)
