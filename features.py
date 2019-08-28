@@ -1,11 +1,14 @@
 import os
+from math import ceil
+
 import librosa
 
 from librosa import frames_to_time
 
 from config import SR, RAW_DATA_PATH, FEATURES_DATA_PATH, HOP_LENGTH, N_FFT, N_MELS, FMIN, FMAX, POWER, \
     VOICE_DETECTION_MODEL_NAME, N_FFT_HPSS_1, N_HOP_HPSS_1, N_FFT_HPSS_2, N_HOP_HPSS_2, SR_HPSS, \
-    N_MELS_HPSS, MODELS_DATA_PATH, RNN_INPUT_SIZE_VOICE_ACTIVATION
+    N_MELS_HPSS, MODELS_DATA_PATH, RNN_INPUT_SIZE_VOICE_ACTIVATION, TOP_DB_WINDOWED_MFCC, \
+    MIN_INTERVAL_LEN_WINDOWED_MFCC, WINDOW_LEN_WINDOWED_MFCC, WINDOW_HOP_WINDOWED_MFCC
 from interfaces import FeatureExtractor
 import argparse
 import pathlib
@@ -41,6 +44,62 @@ class MelSpectralCoefficientsFeatureExtractor(FeatureExtractor):
             FeatureExtractor.save_feature(melspec, feature_name, out_path, x, y, new_labels)
 
         return __process_element
+
+
+# MFSC
+class WindowedMelSpectralCoefficientsFeatureExtractor(FeatureExtractor):
+    feature_name = 'windowed_spec'
+
+    @staticmethod
+    def process_element(feature_name, new_labels, out_path, raw_path, **kwargs):
+        def __process_element(data):
+            """
+            :param x: filename (str)
+            :param y: label (str)
+            :return:
+            """
+            print('prosessing {}'.format(data))
+            x = data[0]
+            y = data[1]
+
+            # params
+
+            # get song and split
+            wav, _ = librosa.load(raw_path / x, sr=SR)
+            intervals = librosa.effects.split(
+                wav,
+                top_db=TOP_DB_WINDOWED_MFCC
+            )
+            # export intervals as new songs (wav)
+            for interval_idx, interval in enumerate(intervals):
+                if interval[1] - interval[0] < MIN_INTERVAL_LEN_WINDOWED_MFCC:
+                    # if length is lesser that 1 second, discard interval
+                    continue
+
+                number_of_samples = wav.shape[0]
+                number_of_windows = ceil(number_of_samples / WINDOW_LEN_WINDOWED_MFCC)
+                for window_idx in range(number_of_windows):
+                    start_idx = (window_idx * WINDOW_HOP_WINDOWED_MFCC)
+                    end_idx = (start_idx + WINDOW_LEN_WINDOWED_MFCC)
+                    window_wav = wav[start_idx:end_idx]
+
+                    # Get Mel-Spectrogram
+                    melspec = librosa.feature.melspectrogram(window_wav, sr=SR, n_fft=N_FFT, hop_length=HOP_LENGTH,
+                                                             n_mels=N_MELS,
+                                                             fmin=FMIN,
+                                                             fmax=FMAX, power=POWER)
+                    melspec = librosa.power_to_db(melspec).astype(np.float32)
+                    # this is kind-of standard
+                    filename = FeatureExtractor.get_file_name(x, feature_name,
+                                                              ext='{}-{}.npy'.format(interval_idx, window_idx))
+                    FeatureExtractor.save_feature(melspec, feature_name, out_path, x, y, new_labels, filename)
+
+        return __process_element
+
+    # def transform(self, parallel=False, **kwargs):
+    #     if parallel:
+    #         raise Exception('error: {} cannot be ran in paralel'.format(self.feature_name))
+    #     return super().transform(parallel, **kwargs)
 
 
 # Singing Voice Detection Pipeline
@@ -235,8 +294,9 @@ class SVDPonderatedVolumeFeatureExtractor(FeatureExtractor):
             y_i = data[1]
 
             mean_voice_activation = np.load(raw_path / x_i, allow_pickle=True)
-            audio_src, _ = librosa.load(RAW_DATA_PATH / '{}.mp3'.format(x_i.split('.')[0]),
-                                        sr=SR)  # todo: support other formats
+            audio_src, _ = librosa.load(
+                RAW_DATA_PATH / '{}.mp3'.format(x_i.split('.{}'.format(DoubleHPSSFeatureExtractor.feature_name))[0]),
+                sr=SR)  # todo: support other formats
 
             time = mean_voice_activation[0]
             voice_activation_prob = mean_voice_activation[1]
@@ -253,13 +313,19 @@ class SVDPonderatedVolumeFeatureExtractor(FeatureExtractor):
         return __process_element
 
 
+AVAILABLE_FEATURES = {MelSpectralCoefficientsFeatureExtractor.feature_name: MelSpectralCoefficientsFeatureExtractor,
+                      WindowedMelSpectralCoefficientsFeatureExtractor.feature_name: WindowedMelSpectralCoefficientsFeatureExtractor,
+                      DoubleHPSSFeatureExtractor.feature_name: DoubleHPSSFeatureExtractor,
+                      VoiceActivationFeatureExtractor.feature_name: VoiceActivationFeatureExtractor,
+                      MeanSVDFeatureExtractor.feature_name: MeanSVDFeatureExtractor,
+                      SVDPonderatedVolumeFeatureExtractor.feature_name: SVDPonderatedVolumeFeatureExtractor}
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Extract features from a data folder to another')
     parser.add_argument('--source_path', help='Source path where data files is stored', default=RAW_DATA_PATH)
     parser.add_argument('--out_path', help='Output path where exported data will be placed', default=FEATURES_DATA_PATH)
     parser.add_argument('--label_filename', help='Source path where label file is stored', default='labels.csv')
     parser.add_argument('--feature', help='name of the feature to be extracted (options: mfsc, leglaive)',
-                        default='svd_ponderated_volume')
+                        default='windowed_spec')
 
     args = parser.parse_args()
     source_path = pathlib.Path(args.source_path)
@@ -268,32 +334,38 @@ if __name__ == '__main__':
     feature_name = args.feature
 
     print('info: from {} to {}'.format(source_path, out_path))
-    if feature_name == 'leglaive':
-        # leglaive use hpss as input
-        src_feature_name = DoubleHPSSFeatureExtractor.feature_name
-        source_path = FEATURES_DATA_PATH
-        label_path = source_path / src_feature_name / 'labels.{}.csv'.format(src_feature_name)
-        extractor = VoiceActivationFeatureExtractor.from_label_file(label_path, out_path=out_path, raw_path=source_path)
-    elif feature_name == 'mfsc':
-        extractor = MelSpectralCoefficientsFeatureExtractor.from_label_file(label_path, out_path=out_path,
-                                                                            raw_path=source_path)
-    elif feature_name == '2hpss':
-        extractor = DoubleHPSSFeatureExtractor.from_label_file(label_path, out_path=out_path, raw_path=source_path)
-    elif feature_name == 'svd_ponderated_volume':
-        # leglaive use SVD as input
-        src_feature_name = MeanSVDFeatureExtractor.feature_name
-        source_path = FEATURES_DATA_PATH / src_feature_name
-        label_path = source_path / 'labels.{}.csv'.format(src_feature_name)
-        extractor = SVDPonderatedVolumeFeatureExtractor.from_label_file(label_path, out_path=out_path,
-                                                                        raw_path=source_path)
-    elif feature_name == 'mean_svd':
-        # leglaive use SVD as input
-        # todo: unify this behaviour
-        src_feature_name = VoiceActivationFeatureExtractor.feature_name
-        source_path = FEATURES_DATA_PATH / src_feature_name
-        label_path = source_path / 'labels.{}.csv'.format(src_feature_name)
-        extractor = MeanSVDFeatureExtractor.from_label_file(label_path, out_path=out_path,
-                                                            raw_path=source_path)
-    else:
-        raise NotImplemented('{} feature not implemented'.format(feature_name))
-    extractor._parallel_transform()
+    extractor = AVAILABLE_FEATURES[feature_name]
+
+    # if feature_name == 'leglaive':
+    #     # leglaive use hpss as input
+    #     src_feature_name = DoubleHPSSFeatureExtractor.feature_name
+    #     source_path = FEATURES_DATA_PATH
+    #     label_path = source_path / src_feature_name / 'labels.{}.csv'.format(src_feature_name)
+    #     extractor = VoiceActivationFeatureExtractor.from_label_file(label_path, out_path=out_path, raw_path=source_path)
+    # elif feature_name == 'mfsc':
+    #     extractor = MelSpectralCoefficientsFeatureExtractor.from_label_file(label_path, out_path=out_path,
+    #                                                                         raw_path=source_path)
+    # elif feature_name == '2hpss':
+    #     extractor = DoubleHPSSFeatureExtractor.from_label_file(label_path, out_path=out_path, raw_path=source_path)
+    # elif feature_name == 'svd_ponderated_volume':
+    #     # leglaive use SVD as input
+    #     src_feature_name = MeanSVDFeatureExtractor.feature_name
+    #     source_path = FEATURES_DATA_PATH / src_feature_name
+    #     label_path = source_path / 'labels.{}.csv'.format(src_feature_name)
+    #     extractor = SVDPonderatedVolumeFeatureExtractor.from_label_file(label_path, out_path=out_path,
+    #                                                                     raw_path=source_path)
+    # elif feature_name == 'mean_svd':
+    #     # leglaive use SVD as input
+    #     # todo: unify this behaviour
+    #     src_feature_name = VoiceActivationFeatureExtractor.feature_name
+    #     source_path = FEATURES_DATA_PATH / src_feature_name
+    #     label_path = source_path / 'labels.{}.csv'.format(src_feature_name)
+    #     extractor = MeanSVDFeatureExtractor.from_label_file(label_path, out_path=out_path,
+    #                                                         raw_path=source_path)
+    #
+    # if feature_name == WindowedMelSpectralCoefficientsFeatureExtractor.feature_name:
+    #     extractor = WindowedMelSpectralCoefficientsFeatureExtractor.magic_init()
+    # else:
+    #     raise NotImplemented('{} feature not implemented'.format(feature_name))
+    extractor = extractor.magic_init()
+    extractor.transform()

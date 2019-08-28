@@ -5,7 +5,6 @@ import librosa
 
 from config import CPU_WORKERS, FEATURES_DATA_PATH, RAW_DATA_PATH, makedirs, SR, AVAIL_MEDIA_TYPES
 
-
 import pandas as pd
 import numpy as np
 
@@ -75,17 +74,54 @@ class FeatureExtractor:
         self.raw_path = raw_path
         self.new_labels = []
         self.trigger_dependency_warnings_if_needed()
+        self.trigger_dependency_extraction_if_needed()
+
+    def trigger_dependency_extraction_if_needed(self):
+        from features import AVAILABLE_FEATURES
+
+        if self.dependency_feature_name:
+            dependency_extractor = AVAILABLE_FEATURES[self.dependency_feature_name]
+            try:
+                df = pd.read_csv(self.raw_path / dependency_extractor.get_label_file_name())
+                return
+            except Exception as e:
+                print(str(e))
+                print("didnt found dependency label file in {}".format(
+                    self.raw_path / dependency_extractor.get_label_file_name()))
 
     @classmethod
     def from_label_file(cls, label_file_path, out_path=FEATURES_DATA_PATH, raw_path=RAW_DATA_PATH):
         """
-        Initiate extractor fron label file (csv) that contains
+        Initiate extractor from label file (csv) that contains
         filename and label columns.
 
         :param label_file_path:
         :return:
         """
         df = pd.read_csv(label_file_path)
+        filenames = df['filename']
+        labels = df['label']
+        return cls(filenames, labels, out_path=out_path, raw_path=raw_path)
+
+    @classmethod
+    def magic_init(cls, default_feature_path=FEATURES_DATA_PATH, default_raw_path=RAW_DATA_PATH,
+                   default_raw_label_file_name='labels.csv'):
+        """
+        Initiate extractor deducting the paths by the extractor definition.
+
+        :param label_file_path:
+        :return:
+        """
+
+        from features import AVAILABLE_FEATURES
+        out_path = default_feature_path
+        if cls.dependency_feature_name:
+            dependency_extractor = AVAILABLE_FEATURES[cls.dependency_feature_name]
+            raw_path = default_feature_path
+            df = pd.read_csv(raw_path / dependency_extractor.get_label_file_name())
+        else:
+            raw_path = default_raw_path
+            df = pd.read_csv(raw_path / default_raw_label_file_name)
         filenames = df['filename']
         labels = df['label']
         return cls(filenames, labels, out_path=out_path, raw_path=raw_path)
@@ -209,18 +245,6 @@ class FeatureExtractor:
         self.export_new_labels()
         return np.asarray(self.new_labels)
 
-    def transform(self, parallel=True, **kwargs):
-        """
-        Transform the data given in Labels to the inteded features.
-        :param parallel:
-        :param kwargs:
-        :return:
-        """
-        if parallel:
-            return self._parallel_transform(**kwargs)
-        else:
-            return self._sequential_transform(**kwargs)
-
     def _sequential_transform(self, **kwargs):
         """
         Extract features sequentially.
@@ -244,10 +268,25 @@ class FeatureExtractor:
         self.export_new_labels()
         return np.asarray(self.new_labels)
 
+    def transform(self, parallel=True, **kwargs):
+        """
+        Transform the data given in Labels to the inteded features.
+        :param parallel:
+        :param kwargs:
+        :return:
+        """
+        if parallel:
+            return self._parallel_transform(**kwargs)
+        else:
+            return self._sequential_transform(**kwargs)
+
+    def get_label_file_name(self):
+        return self.out_path / 'labels.{}.csv'.format(self.feature_name)
+
     def export_new_labels(self):
         df = pd.DataFrame(np.asarray(self.new_labels))
         df.columns = ['filename', 'label']
-        df.to_csv(self.out_path / 'labels.{}.csv'.format(self.feature_name), index=False)
+        df.to_csv(self.get_label_file_name(), index=False)
 
     @staticmethod
     def get_file_name(x, feature_name, ext='npy'):

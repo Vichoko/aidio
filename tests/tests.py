@@ -3,6 +3,7 @@ import unittest
 
 import librosa
 import numpy as np
+import pandas as pd
 import os
 
 from config import AVAIL_MEDIA_TYPES, SR, RAW_DATA_PATH, N_MELS, N_MELS_HPSS
@@ -345,12 +346,14 @@ class TestSingingVoiceDetectionFeaturePipeline(unittest.TestCase):
 
 class _TestFeatureExtractor(unittest.TestCase):
 
-    def _test_feature_element(self, x_i):
-        raise NotImplementedError()
-
-    def test_parallel_creation(self, clean=True):
+    def test_parallel_transform(self, clean=True):
         extractor = self.create_extractor()
         transform_fun = extractor._parallel_transform
+        self._transform_load_test(clean, extractor, transform_fun)
+
+    def test_sequential_transform(self, clean=True):
+        extractor = self.create_extractor()
+        transform_fun = extractor._sequential_transform
         self._transform_load_test(clean, extractor, transform_fun)
 
     def _transform_load_test(self, clean, extractor, transform_fun):
@@ -363,19 +366,35 @@ class _TestFeatureExtractor(unittest.TestCase):
         for filename in feature_filenames:
             x_i = np.load(extractor.out_path / filename, allow_pickle=True)
             self._test_feature_element(x_i)
+        self._test_post_processing(extractor)
         self.remove_feature_files(extractor, feature_filenames) if clean else None
-
-    def test_sequential_transform(self, clean=True):
-        extractor = self.create_extractor()
-        transform_fun = extractor._sequential_transform
-        self._transform_load_test(clean, extractor, transform_fun)
 
     def remove_feature_files(self, extractor, feature_filenames):
         [os.remove(extractor.out_path / filename) for filename in feature_filenames]
         os.remove(extractor.out_path / 'labels.{}.csv'.format(extractor.feature_name))
 
     def create_extractor(self):
-        return NotImplemented
+        raise NotImplementedError()
+
+    def _test_feature_element(self, x_i):
+        raise NotImplementedError()
+
+    def _test_post_processing(self, extractor):
+        extracted_data = np.asarray(extractor.new_labels)
+        feature_filenames = extracted_data[:, 0]
+        feature_labels = extracted_data[:, 1]
+        self.assertGreater(feature_filenames.shape[0], 0)
+        self.assertGreater(feature_labels.shape[0], 0)
+        self.assertEqual(feature_labels.shape, feature_filenames.shape)
+        # try to open and parse labels
+        try:
+            df = pd.read_csv(extractor.out_path / 'labels.{}.csv'.format(extractor.feature_name))
+            parsed_filenames = df['filename']
+            parsed_labels = df['label']
+        except Exception as e:
+            self.fail(str(e))
+        self.assertTrue((feature_filenames == parsed_filenames).all())
+        self.assertTrue((feature_labels == parsed_labels).all())
 
 
 class TestMFSCFeatureExtraction(_TestFeatureExtractor):
@@ -418,9 +437,9 @@ class TestVoiceActivationFeatureExtraction(_TestFeatureExtractor):
         )
         return extractor
 
-    def test_parallel_creation(self, clean=True):
+    def test_parallel_transform(self, clean=True):
         with self.assertRaises(NotImplementedError):
-            super().test_parallel_creation(clean=False)
+            super().test_parallel_transform(clean=False)
 
     def remove_feature_files(self, extractor, feature_filenames):
         # clean dependency feature files
@@ -429,6 +448,7 @@ class TestVoiceActivationFeatureExtraction(_TestFeatureExtractor):
         super().remove_feature_files(self.extractor_dep, feature_filenames_dep)
         # clean this one as naturally
         super().remove_feature_files(extractor, feature_filenames)
+
 
 del _TestFeatureExtractor
 if __name__ == '__main__':
