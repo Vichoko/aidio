@@ -19,17 +19,17 @@ class ClassificationModel:
     def data_loader(self, audio_data, label_data=None):
         raise NotImplemented
 
-    def train(self, audio_data, label_data, options):
-        """
-        Train model specified by options with given data.
-
-        :param audio_data: iterable reference
-        :param label_data: iterable reference
-        :param options: dict-like; model dependant (cnn, aidsan, etc)
-        :return:
-        """
-        self.x, self.y = self.data_loader(audio_data, label_data)
-        return
+    # def train(self, audio_data, label_data, options):
+    #     """
+    #     Train model specified by options with given data.
+    #
+    #     :param audio_data: iterable reference
+    #     :param label_data: iterable reference
+    #     :param options: dict-like; model dependant (cnn, aidsan, etc)
+    #     :return:
+    #     """
+    #     self.x, self.y = self.data_loader(audio_data, label_data)
+    #     return
 
     def predict(self, audio_data, options):
         """

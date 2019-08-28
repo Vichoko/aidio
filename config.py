@@ -21,6 +21,7 @@ MODELS_DATA_PATH = pathlib.Path('./data/models/')
 makedirs(RAW_DATA_PATH)
 makedirs(FEATURES_DATA_PATH)
 makedirs(DIGEST_DATA_PATH)
+makedirs(MODELS_DATA_PATH)
 
 # -- Audio processing parameters --#
 SR = 16000
