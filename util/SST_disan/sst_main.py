@@ -12,44 +12,24 @@ from util.SST_disan.src.utils.file import load_file, save_file
 from util.SST_disan.src.utils.record_log import _logger
 
 # choose model
-from util.SST_disan.src.model.model_disan import ModelDiSAN as Model
+from util.SST_disan.src.model.model_disan import ModelDiSAN
 
 network_type = 'disan'
 
 
 def train():
-    output_model_params()
-    loadFile = True
-    ifLoad, data = False, None
-    if loadFile:
-        ifLoad, data = load_file(cfg.processed_path, 'processed data', 'pickle')
-    if not ifLoad or not loadFile:
-        raw_data = RawDataProcessor(cfg.data_dir)
-        train_data_list = raw_data.get_data_list('train')
-        dev_data_list = raw_data.get_data_list('dev')
-        test_data_list = raw_data.get_data_list('test')
-
-        train_data_obj = Dataset(train_data_list, 'train')
-        dev_data_obj = Dataset(dev_data_list, 'dev', train_data_obj.dicts)
-        test_data_obj = Dataset(test_data_list, 'test', train_data_obj.dicts)
-
-        save_file({'train_data_obj': train_data_obj, 'dev_data_obj': dev_data_obj, 'test_data_obj': test_data_obj},
-                  cfg.processed_path)
-        train_data_obj.save_dict(cfg.dict_path)
-    else:
-        train_data_obj = data['train_data_obj']
-        dev_data_obj = data['dev_data_obj']
-        test_data_obj = data['test_data_obj']
-
+    # load data
+    dev_data_obj, test_data_obj, train_data_obj = load_data_objects()
     train_data_obj.filter_data(cfg.only_sentence, cfg.fine_grained)
     dev_data_obj.filter_data(True, cfg.fine_grained)
     test_data_obj.filter_data(True, cfg.fine_grained)
 
     emb_mat_token, emb_mat_glove = train_data_obj.emb_mat_token, train_data_obj.emb_mat_glove
 
+    # initiate model
     with tf.variable_scope(network_type) as scope:
-        model = Model(emb_mat_token, emb_mat_glove, len(train_data_obj.dicts['token']),
-                      len(train_data_obj.dicts['char']), train_data_obj.max_lens['token'], scope.name)
+        model = ModelDiSAN(emb_mat_token, emb_mat_glove, len(train_data_obj.dicts['token']),
+                           len(train_data_obj.dicts['char']), train_data_obj.max_lens['token'], scope.name)
 
     graphHandler = GraphHandler(model)
     evaluator = Evaluator(model)
@@ -107,7 +87,7 @@ def train():
     do_analyse_sst(_logger.path)
 
 
-def test():
+def load_data_objects():
     output_model_params()
     loadFile = True
     ifLoad, data = False, None
@@ -130,7 +110,12 @@ def test():
         train_data_obj = data['train_data_obj']
         dev_data_obj = data['dev_data_obj']
         test_data_obj = data['test_data_obj']
+    return dev_data_obj, test_data_obj, train_data_obj
 
+
+def test():
+    # load data
+    dev_data_obj, test_data_obj, train_data_obj = load_data_objects()
     train_data_obj.filter_data(True, cfg.fine_grained)
     dev_data_obj.filter_data(True, cfg.fine_grained)
     test_data_obj.filter_data(True, cfg.fine_grained)
@@ -138,8 +123,8 @@ def test():
     emb_mat_token, emb_mat_glove = train_data_obj.emb_mat_token, train_data_obj.emb_mat_glove
 
     with tf.variable_scope(network_type) as scope:
-        model = Model(emb_mat_token, emb_mat_glove, len(train_data_obj.dicts['token']),
-                      len(train_data_obj.dicts['char']), train_data_obj.max_lens['token'], scope.name)
+        model = ModelDiSAN(emb_mat_token, emb_mat_glove, len(train_data_obj.dicts['token']),
+                           len(train_data_obj.dicts['char']), train_data_obj.max_lens['token'], scope.name)
 
     graphHandler = GraphHandler(model)
     evaluator = Evaluator(model)
