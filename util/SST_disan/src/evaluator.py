@@ -24,7 +24,8 @@ class Evaluator(object):
         for sample_batch, _, _, _ in dataset_obj.generate_batch_sample_iter():
             feed_dict = self.model.get_feed_dict(sample_batch, 'dev')
             logits, loss, accu = sess.run([self.model.logits,
-                                           self.model.loss, self.model.accuracy], feed_dict)
+                                           self.model.loss,
+                                           self.model.accuracy], feed_dict)
             logits_list.append(np.argmax(logits, -1))
             loss_list.append(loss)
             accu_list.append(accu)

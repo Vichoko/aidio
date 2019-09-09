@@ -10,7 +10,7 @@ import numpy as np
 
 
 class Dataset(object):
-    def __init__(self, data_list, data_type, dicts= None):
+    def __init__(self, data_list, data_type, dicts=None):
         self.data_type = data_type
         _logger.add('building data set object for %s' % data_type)
         assert data_type in ['train', 'dev', 'test']
@@ -35,10 +35,15 @@ class Dataset(object):
 
     # external_use
     # how to generate sub tree? : done find all node belonging to the subtree
-    def save_dict(self,path):
-        save_file(self.dicts, path,'token and char dict data', 'pickle')
+    def save_dict(self, path):
+        save_file(self.dicts, path, 'token and char dict data', 'pickle')
 
     def generate_batch_sample_iter(self, max_step=None):
+        """
+
+        :param max_step: limit number of data batches to be iterated, counted over all epochs
+        :return:
+        """
         nn_data_list = []
         for trees in self.nn_data:
             for tree in trees:
@@ -50,7 +55,7 @@ class Dataset(object):
                 add_data_list = []
                 for sample in nn_data_list:
                     sentiment_float = sample['root_node']['sentiment_label']
-                    if sentiment_float<=0.4 or sentiment_float>0.6 or sample['is_sent']:
+                    if sentiment_float <= 0.4 or sentiment_float > 0.6 or sample['is_sent']:
                         add_data_list += [sample] * 3
                 nn_data_list += add_data_list
             batch_size = cfg.train_batch_size
@@ -128,7 +133,7 @@ class Dataset(object):
         _logger.add('Done')
         return mat_token, mat_glove
 
-                # internal use
+        # internal use
 
     def filter_data(self, only_sent=False, fine_grained=False):
         _logger.add()
@@ -161,10 +166,13 @@ class Dataset(object):
             self.nn_data = new_nn_data
             self.sample_num = counter
 
-
-
-    # internal use
     def process_raw_data(self, data_list, data_type):
+        """
+        Internal Use
+        :param data_list:
+        :param data_type:
+        :return:
+        """
         _logger.add()
         _logger.add('processing raw data: %s...' % data_type)
         for sample in data_list:
@@ -246,6 +254,7 @@ class Dataset(object):
                 return char2index[char]
             except KeyError:
                 return 1
+
         _logger.add()
         _logger.add('digitizing data: %s...' % data_type)
         for sample in data_list:
@@ -276,7 +285,7 @@ class Dataset(object):
                     new_sub_tree += new_sub_tree_leaves
                     for leaf_node in new_sub_tree_leaves:
                         pre_node = leaf_node
-                        while pre_node['parent_index'] > 0 and pre_node != tree_node: # fixme
+                        while pre_node['parent_index'] > 0 and pre_node != tree_node:  # fixme
                             cur_node = idx_to_node_dict[pre_node['parent_index']]
                             if cur_node not in new_sub_tree:
                                 new_sub_tree.append(cur_node)
@@ -353,13 +362,13 @@ class RawDataProcessor(object):
                     try:
                         token = SOStr[idx_t]
                         is_leaf = True
-                        leaf_node_index_seq = [idx_t+1]
+                        leaf_node_index_seq = [idx_t + 1]
                     except IndexError:
                         token = ''
                         is_leaf = False
                         leaf_node_index_seq = []
 
-                    new_node = {'node_index': idx_t+1, 'parent_index': parent_idx,
+                    new_node = {'node_index': idx_t + 1, 'parent_index': parent_idx,
                                 'token': token, 'is_leaf': is_leaf,
                                 'leaf_node_index_seq': leaf_node_index_seq, }
                     sent_tree.append(new_node)
@@ -379,7 +388,7 @@ class RawDataProcessor(object):
 
                 # update sentiment and add token_seq
                 for tree_node in sent_tree:
-                    tokens = [sent_tree[node_idx-1]['token'] for node_idx in tree_node['leaf_node_index_seq']]
+                    tokens = [sent_tree[node_idx - 1]['token'] for node_idx in tree_node['leaf_node_index_seq']]
                     phrase = ' '.join(tokens)
                     tree_node['sentiment_label'] = sentiment_labels[dictionary[phrase]]
                     tree_node['token_seq'] = tokens
@@ -394,5 +403,3 @@ class RawDataProcessor(object):
                 dataset_split.append(int(line.strip().split(',')[1]))
 
         return trees, dictionary, sentiment_labels, dataset_split
-
-

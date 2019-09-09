@@ -17,34 +17,56 @@ class ModelTemplate(metaclass=ABCMeta):
         :param scope: scope name
         """
         self.scope = scope
-        self.global_step = tf.get_variable('global_step', shape=[], dtype=tf.int32,
-                                           initializer=tf.constant_initializer(0), trainable=False)
+        self.global_step = tf.get_variable(
+            'global_step',
+            shape=[],
+            dtype=tf.int32,
+            initializer=tf.constant_initializer(0),
+            trainable=False
+        )
+
+        # custom case variables
         self.token_emb_mat, self.glove_emb_mat = token_emb_mat, glove_emb_mat
 
         # ---- place holder -----
-        self.token_seq = tf.placeholder(tf.int32, [None, None], name='token_seq')   # index of emb: batch_size, max_length
-        self.output_labels = tf.placeholder(tf.int32, [None], name='output_labels')  # integer from 0 to class_number: (batch_size)
+        # todo: remove token_seq as audio_token is poorly defined
+        self.token_seq = tf.placeholder(
+            tf.int32,
+            [None, None],
+            name='token_seq'
+        )  # index of emb: batch_size, max_length
+        self.embedding_seq = tf.placeholder(
+            tf.float32,
+            [None, None, None],
+            name='embedding_seq'
+        )  # batch_size, max_sequence_len, embedding_size
+
+        self.output_labels = tf.placeholder(
+            tf.int32,
+            [None],
+            name='output_labels'
+        )  # integer from 0 to class_number: (batch_size)
         self.is_train = tf.placeholder(tf.bool, [], name='is_train')
 
         # ----------- parameters -------------
         self.token_set_len = tds
         self.max_token_len = tl
         self.word_embedding_len = cfg.word_embedding_length
-        self.char_embedding_len = cfg.char_embedding_length
-        self.char_out_size = cfg.char_out_size
-        self.out_channel_dims = list(map(int, cfg.out_channel_dims.split(',')))
-        self.filter_height = list(map(int, cfg.filter_heights.split(',')))
+        # self.char_embedding_len = cfg.char_embedding_length
+        # self.char_out_size = cfg.char_out_size
+        # self.out_channel_dims = list(map(int, cfg.out_channel_dims.split(',')))
+        # self.filter_height = list(map(int, cfg.filter_heights.split(',')))
         self.hidden_units_no = cfg.hidden_units_num
         self.finetune_emb = cfg.fine_tune
 
         self.output_class_count = 5 if cfg.fine_grained else 2
 
         self.batch_size = tf.shape(self.token_seq)[0]
-        self.max_sequence_len = tf.shape(self.token_seq)[1]
+        # self.max_sequence_len = tf.shape(self.token_seq)[1]
 
         # ------------ other ---------
         self.token_mask = tf.cast(self.token_seq, tf.bool)
-        self.token_len = tf.reduce_sum(tf.cast(self.token_mask, tf.int32), -1)
+        # self.token_len = tf.reduce_sum(tf.cast(self.token_mask, tf.int32), -1)
         self.tensor_dict = {}
 
         # ------ start ------
@@ -55,7 +77,7 @@ class ModelTemplate(metaclass=ABCMeta):
         self.ema = None
         self.summary = None
         self.opt = None  # optimizer (adam, adadelta, rmsprop)
-        self.train_op = None # optimizer minimize
+        self.train_op = None  # optimizer minimize
 
     @abstractmethod
     def build_network(self):
@@ -146,6 +168,22 @@ class ModelTemplate(metaclass=ABCMeta):
             self.loss = tf.identity(self.loss)
 
     def get_feed_dict(self, sample_batch, data_type='train'):
+        """
+        Instance tf.variable values from sample_batch.
+
+        This method unify the parsing of the custom data to a standarized input for the NN.
+
+        The returned feed_dict should include:
+            @deprecated: self.token_seq: index of embedding: batch_size, max_length
+            self.embedding_seq: sequence embeddings # batch_size, max_sequence_len, embedding_size
+            self.output_labels integer from 0 to class_number: (batch_size)
+            self.is_train True or False depending if it's training
+
+
+        :param sample_batch: Iterator of training examples with their labels.
+        :param data_type: String flag to tell if training or not
+        :return: feed_dict with gathered values
+        """
         # max lens
         sl, ol, mc = 0, 0, 0
         for sample in sample_batch:
@@ -182,20 +220,33 @@ class ModelTemplate(metaclass=ABCMeta):
             sentiment_label_b.append(sentiment_int)
         sentiment_label_b = np.stack(sentiment_label_b).astype(cfg.intX)
 
-        feed_dict = {self.token_seq: token_seq_b,  #self.char_seq: char_seq_b,
+        feed_dict = {self.token_seq: token_seq_b,
                      self.output_labels: sentiment_label_b,
                      self.is_train: True if data_type == 'train' else False}
         return feed_dict
 
     def step(self, sess, batch_samples, get_summary=False):
+        """
+        Training step
+        :param sess: TF Session
+        :param batch_samples: Iterator of samples with encoded data/label
+        :param get_summary: boolean flag to include summary
+        :return: loss, summary and train_op session run results
+        """
         assert isinstance(sess, tf.Session)
+        # get embedding_sequence, output_labels and is_train flag from batch_samples
         feed_dict = self.get_feed_dict(batch_samples, 'train')
         cfg.time_counter.add_start()
         if get_summary:
-            loss, summary, train_op = sess.run([self.loss, self.summary, self.train_op], feed_dict=feed_dict)
+            loss, summary, train_op = sess.run([self.loss,
+                                                self.summary,
+                                                self.train_op],
+                                               feed_dict=feed_dict)
 
         else:
-            loss, train_op = sess.run([self.loss, self.train_op], feed_dict=feed_dict)
+            loss, train_op = sess.run([self.loss,
+                                       self.train_op],
+                                      feed_dict=feed_dict)
             summary = None
         cfg.time_counter.add_stop()
         return loss, summary, train_op
