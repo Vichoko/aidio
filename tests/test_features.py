@@ -354,11 +354,10 @@ class _TestFeatureExtractor(unittest.TestCase):
             x_i = np.load(extractor.out_path / filename, allow_pickle=True)
             self._test_feature_element(x_i)
         self._test_post_processing(extractor)
-        self.remove_feature_files(extractor, feature_filenames) if clean else None
+        self.remove_feature_files(extractor) if clean else None
 
-    def remove_feature_files(self, extractor, feature_filenames):
-        [os.remove(extractor.out_path / filename) for filename in feature_filenames]
-        os.remove(extractor.out_path / 'labels.{}.csv'.format(extractor.feature_name))
+    def remove_feature_files(self, extractor, feature_filenames=None):
+        extractor.remove_feature_files(feature_filenames)
 
     def create_extractor(self):
         raise NotImplementedError()
@@ -427,13 +426,11 @@ class TestVoiceActivationFeatureExtraction(_TestFeatureExtractor):
         with self.assertRaises(NotImplementedError):
             super().test_parallel_transform(clean=False)
 
-    def remove_feature_files(self, extractor, feature_filenames):
+    def remove_feature_files(self, extractor, feature_filenames=None):
         # clean dependency feature files
-        extracted_data = np.asarray(self.extractor_dep.new_labels)
-        feature_filenames_dep = extracted_data[:, 0]
-        super().remove_feature_files(self.extractor_dep, feature_filenames_dep)
+        super().remove_feature_files(self.extractor_dep)
         # clean this one as naturally
-        super().remove_feature_files(extractor, feature_filenames)
+        super().remove_feature_files(extractor)
 
 
 del _TestFeatureExtractor

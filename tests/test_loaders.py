@@ -26,6 +26,10 @@ class TestDataManager(unittest.TestCase):
         cls.data_type = 'manual'
         cls.dm = DataManager(extractor.feature_name, cls.data_type, feature_data_path=TEST_FEATURES_DATA_PATH)
 
+    def tearDown(self):
+        super().tearDown()
+        self.extractor.remove_feature_files()
+
     def test_init(self):
         dm = self.dm
         extractor = self.extractor
@@ -55,13 +59,23 @@ class TestDataManager(unittest.TestCase):
     def test_lazy_load_all(self, not_implemented=True):
         dm = self.dm
         extractor = self.extractor
+
+        self.assertEqual(dm.data_loader, None)
         dm.load_all(lazy=True, cache=False)
+        self.assertNotEqual(dm.data_loader, None)
+
+        # here, no side-effects should be felt
+        self.assertEqual(dm.X, None)
+        self.assertEqual(dm.Y, None)
+
+        # now we evaluate
         if not_implemented:
             with self.assertRaises(NotImplementedError):
                 dm.data_loader()
         else:
             dm.data_loader()
 
+        # side-effects should be noticeable
         self.assertIsInstance(dm.X, np.ndarray)
         self.assertIsInstance(dm.Y, np.ndarray)
 
@@ -91,12 +105,44 @@ class TestDataManager(unittest.TestCase):
         with self.assertRaises(NotImplementedError):
             self.dm.get_feed_dict(None, self.data_type)
 
+    def test_init_n_split(self):
+        with self.assertRaises(NotImplementedError):
+            train_dm, test_dm, dev_dm = self.dm.init_n_split(
+                self.extractor.feature_name,
+                feature_data_path=TEST_FEATURES_DATA_PATH,
+                shuffle=True,
+                ratio=(0.5, 0.3, 0.2),
+                random_state=42
+            )
+        with self.assertRaises(NotImplementedError):
+            train_dm, test_dm, dev_dm = self.dm.init_n_split(
+                self.extractor.feature_name,
+                feature_data_path=TEST_FEATURES_DATA_PATH,
+                shuffle=True,
+                ratio=(0.5, 0.5, 0),
+                random_state=42
+            )
+        with self.assertRaises(NotImplementedError):
+            train_dm, test_dm, dev_dm = self.dm.init_n_split(
+                self.extractor.feature_name,
+                feature_data_path=TEST_FEATURES_DATA_PATH,
+                shuffle=True,
+                ratio=(0.5, 0, 0.5),
+                random_state=42
+            )
+
+        print('end')
+
 
 class TestResnetDataManager(TestDataManager):
 
     def setUp(cls):
+        # super instances data
         super().setUp()
         cls.dm = ResnetDataManager(cls.extractor.feature_name, cls.data_type, feature_data_path=TEST_FEATURES_DATA_PATH)
+
+    def tearDown(self):
+        super().tearDown()
 
     def test_init(self):
         dm = self.dm
@@ -126,3 +172,58 @@ class TestResnetDataManager(TestDataManager):
 
     def test_lazy_load_all(self, not_implemented=True):
         super().test_lazy_load_all(False)
+
+    def test_init_n_split(self):
+        def __test_lazyness(self, dev_dm, test_dm, train_dm):
+            # train data is filled instantly
+            self.assertTrue(train_dm.X is not None)
+            self.assertTrue(train_dm.Y is not None)
+            # test and dev are lazy
+            self.assertTrue(test_dm.X is None)
+            self.assertTrue(test_dm.Y is None)
+            self.assertTrue(dev_dm.X is None)
+            self.assertTrue(dev_dm.Y is None)
+            self.assertFalse(isinstance(test_dm.X, np.ndarray))
+            self.assertFalse(isinstance(test_dm.Y, np.ndarray))
+            self.assertFalse(isinstance(dev_dm.X, np.ndarray))
+            self.assertFalse(isinstance(dev_dm.Y, np.ndarray))
+            # once they are evaluated, they get values
+            test_dm.data_loader()
+            dev_dm.data_loader()
+            # now data should be filled
+            self.assertTrue(test_dm.X is not None)
+            self.assertTrue(test_dm.Y is not None)
+            self.assertTrue(dev_dm.X is not None)
+            self.assertTrue(dev_dm.Y is not None)
+            self.assertIsInstance(test_dm.X, np.ndarray)
+            self.assertIsInstance(test_dm.Y, np.ndarray)
+            self.assertIsInstance(dev_dm.X, np.ndarray)
+            self.assertIsInstance(dev_dm.Y, np.ndarray)
+
+        train_dm, test_dm, dev_dm = self.dm.init_n_split(
+            self.extractor.feature_name,
+            feature_data_path=TEST_FEATURES_DATA_PATH,
+            shuffle=True,
+            ratio=(0.5, 0.3, 0.2),
+            random_state=42
+        )
+        __test_lazyness(self, dev_dm, test_dm, train_dm)
+
+        train_dm, test_dm, dev_dm = self.dm.init_n_split(
+            self.extractor.feature_name,
+            feature_data_path=TEST_FEATURES_DATA_PATH,
+            shuffle=True,
+            ratio=(0.5, 0.5, 0),
+            random_state=42
+        )
+        __test_lazyness(self, dev_dm, test_dm, train_dm)
+        self.assertTrue(dev_dm.X is not None)
+
+        train_dm, test_dm, dev_dm = self.dm.init_n_split(
+            self.extractor.feature_name,
+            feature_data_path=TEST_FEATURES_DATA_PATH,
+            shuffle=True,
+            ratio=(0.5, 0, 0.5),
+            random_state=42
+        )
+        __test_lazyness(self, dev_dm, test_dm, train_dm)

@@ -29,7 +29,8 @@ class DataManager:
         return self.X.shape[0]
 
     @classmethod
-    def init_n_split(cls, feature_name, feature_data_path=FEATURES_DATA_PATH, shuffle=True, ratios=(0.5, 0.3, 0.2),
+    def init_n_split(cls, feature_name, feature_data_path=FEATURES_DATA_PATH, shuffle=True, ratio=(0.5, 0.3, 0.2),
+                     random_state=None,
                      **kwargs):
         """
         Split data into Train, Test and Dev set instantly.
@@ -37,25 +38,24 @@ class DataManager:
 
         :return: Train_DataManager, Test_Datamanager, Dev_DataManager
         """
-        random_state = 42
         print('info: loading feature metadata from disk...')
         labels_df = pd.read_csv(
             feature_data_path /
+            feature_name /
             'labels.{}.csv'.format(feature_name)
         )
         filenames = labels_df['filename']
         labels = labels_df['label']
         print('info: starting split...')
-        assert ratios[0] + ratios[1] + ratios[2] == 1
+        assert ratio[0] + ratio[1] + ratio[2] == 1
 
-        filenames_train, labels_train, filenames_test, labels_test = train_test_split(
-            filenames, labels, test_size=ratios[1] + ratios[2], random_state=random_state, shuffle=shuffle
+        filenames_train, filenames_test, labels_train, labels_test = train_test_split(
+            filenames, labels, test_size=ratio[1] + ratio[2], random_state=random_state, shuffle=shuffle
         )
-        filename_pivot, labels_pivot = int(len(filenames_test) * ratios[1]), \
-                                       int(len(labels_test) * ratios[1])
+        test_dev_pivot = round(ratio[1] / (ratio[1] + ratio[2]) * len(filenames_test))
 
-        filenames_dev, labels_dev = filenames_test[filename_pivot:], labels_test[labels_pivot:]
-        filenames_test, labels_test = filenames_test[:filename_pivot], labels_test[:labels_pivot]
+        filenames_dev, labels_dev = filenames_test[test_dev_pivot:], labels_test[test_dev_pivot:]
+        filenames_test, labels_test = filenames_test[:test_dev_pivot], labels_test[:test_dev_pivot]
 
         train_data_manager = cls(feature_name, 'train', feature_data_path, **kwargs)
         test_data_manager = cls(feature_name, 'test', feature_data_path, **kwargs)
@@ -69,8 +69,9 @@ class DataManager:
 
     def load_all(self, lazy=False, **kwargs):
         """
-        Warning: Can take several minutes to load.
         Load all data to RAM.
+
+        Warning: If lazy is False, calling this method may take several minutes to load.
 
         self.x: Numpy array like, most-probably float32 multidimentional sequential data.
         self.y: Numpy-array like, most-probably multi-cathegorical string labels.
@@ -78,6 +79,16 @@ class DataManager:
         """
 
         def _load_all(self, cache=True, filenames=None, labels=None, **kwargs):
+            """
+            This is the real function to load all.
+            :param self: Reference to object.
+            :param cache: Flag to use cache.
+            :param filenames: (List of strings) Manual input for .npy filenames of the data (X)
+            :param labels: (List of strings) Manual input for labels of the data (Y)
+            :param kwargs: Adtitional parameters also for formatting.
+            :return:
+            """
+            # try to load from cache
             x_cache_file_name = 'x_{}_{}.npy'.format(self.feature_name, self.data_type)
             y_cache_file_name = 'y_{}_{}.npy'.format(self.feature_name, self.data_type)
             if cache:
@@ -89,17 +100,25 @@ class DataManager:
                     pass
             print('info: loading data from disk...')
             print('warning: this operation takes some time. Go grab a tea...')
+            # load metadata
             labels_df = pd.read_csv(
                 self.feature_data_path /
                 'labels.{}.csv'.format(self.feature_name)
             )
-            filenames = filenames or labels_df['filename']
-            labels = labels or labels_df['label']
+            # parse metadata
+            filenames = filenames if filenames is not None else labels_df['filename']
+            labels = labels if labels is not None else labels_df['label']
+            # load hard data
             self.Y = np.asarray(labels)
             self.X = np.asarray([np.load(self.feature_data_path / filename) for filename in filenames])
-            self.format_all(**kwargs)
-            np.save(self.feature_data_path / x_cache_file_name, self.X) if cache else None
-            np.save(self.feature_data_path / y_cache_file_name, self.Y) if cache else None
+            assert len(self.X) == len(self.Y)
+            # if data is loaded, then format it and save cache
+            if len(self.X) != 0:
+                # apply formats
+                self.format_all(**kwargs)
+                # save cache
+                np.save(self.feature_data_path / x_cache_file_name, self.X) if cache else None
+                np.save(self.feature_data_path / y_cache_file_name, self.Y) if cache else None
 
         self.data_loader = lambda: _load_all(self, **kwargs)
         if not lazy:

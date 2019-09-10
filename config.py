@@ -23,6 +23,10 @@ makedirs(FEATURES_DATA_PATH)
 makedirs(DIGEST_DATA_PATH)
 makedirs(MODELS_DATA_PATH)
 
+#########################################
+####    FEATURES
+#########################################
+
 # -- Audio processing parameters --#
 SR = 16000
 
@@ -55,3 +59,13 @@ TOP_DB_WINDOWED_MFCC = 80
 MIN_INTERVAL_LEN_WINDOWED_MFCC = SR
 WINDOW_LEN_WINDOWED_MFCC = SR
 WINDOW_HOP_WINDOWED_MFCC = int(SR / 3)
+
+#########################################
+####    MODELS
+#########################################
+
+#  ResNetV2
+RESNET_V2_VERSION = 2
+RESNET_V2_BATCH_SIZE = 32  # orig paper trained all networks with batch_size=128
+RESNET_V2_EPOCHS = 200
+RESNET_V2_DEPTH = 3 * 9 + 2

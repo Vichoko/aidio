@@ -84,6 +84,15 @@ class FeatureExtractor:
         labels = df['label']
         return cls(filenames, labels, out_path=out_path, raw_path=raw_path)
 
+    def remove_feature_files(self, feature_filenames=None):
+        """
+        Remove all files product from this extractor.
+        :return:
+        """
+        feature_filenames = feature_filenames or np.asarray(self.new_labels)[:, 0]
+        [os.remove(self.out_path / filename) for filename in feature_filenames]
+        os.remove(self.out_path / 'labels.{}.csv'.format(self.feature_name))
+
     def trigger_dependency_warnings_if_needed(self):
         """
         Sanity Check for expected input for a particular Feature Extractor,
