@@ -1,6 +1,9 @@
 import argparse
+import os
 import pandas as pd
 import numpy as np
+from keras.engine.saving import load_model
+
 from sklearn.model_selection import ShuffleSplit
 
 from config import FEATURES_DATA_PATH, MODELS_DATA_PATH, RESNET_V2_BATCH_SIZE, RESNET_V2_EPOCHS, RESNET_V2_DEPTH, \
@@ -19,75 +22,62 @@ class ClassificationModel:
     def data_loader(self, audio_data, label_data=None):
         raise NotImplemented
 
-    # def train(self, audio_data, label_data, options):
-    #     """
-    #     Train model specified by options with given data.
-    #
-    #     :param audio_data: iterable reference
-    #     :param label_data: iterable reference
-    #     :param options: dict-like; model dependant (cnn, aidsan, etc)
-    #     :return:
-    #     """
-    #     self.x, self.y = self.data_loader(audio_data, label_data)
-    #     return
-
-    def predict(self, audio_data, options):
-        """
-        Predict with given data, and options.
-
-        :param audio_data: reference
-        :param options:
-        :return:
-        """
-        self.x = self.data_loader(audio_data)
-        return
-
 
 class ResNetV2(ClassificationModel):
 
-    def __init__(self):
+    def __init__(self, model_name, num_classes, input_shape, model_path=MODELS_DATA_PATH, epochs=RESNET_V2_EPOCHS,
+                 **kwargs):
         """
         resnet
         """
+        self.num_classes = num_classes
+        self.input_shape = input_shape
+        self.epochs = epochs
+        self.initial_epoch = 0
         self.batch_size = RESNET_V2_BATCH_SIZE  # orig paper trained all networks with batch_size=128
-        self.epochs = RESNET_V2_EPOCHS
         self.depth = RESNET_V2_DEPTH
         # Model name, depth and version
+        self.model_name = model_name
         self.model_type = 'ResNet%dv%d' % (self.depth, RESNET_V2_VERSION)
 
-        # todo: de-couple data load from model vvv
-        ###############################################
-        self.num_classes = 2
-        data_manager = ResnetDataManager(
-            WindowedMelSpectralCoefficientsFeatureExtractor.feature_name,
-            'manual'
-        )
-        data_manager.load_all(flatten=False)
-        self.X, self.Y = data_manager.X, data_manager.Y
-        ###############################################
+        if self.num_classes > 2:
+            self.loss = 'categorical_crossentropy'
+        elif self.num_classes == 2:
+            self.loss = 'binary_crossentropy'
+        else:
+            raise Exception('num_classes cant be lesser than 2...')
+
+        # checkpoint save system
+        model_name = '%s_%s_model.{epoch:03d}.h5' % (self.model_name, self.model_type)
+        self.model_checkpoint_path = model_path / model_name
 
         self.model, self.callbacks = self.compile_model(
-            self.num_classes,
-            loss='binary_crossentropy',
-            model_name='bin_sid'
+            **kwargs
         )
         super().__init__(self.model_type)
 
-    def get_shuffle_split(self, n_splits=2, test_size=0.5, train_size=0.5):
+    @property
+    def checkpoint_files(self):
         """
-        todo: Remove this
-        Return a generator to get a shuffle split of the data.
-        :param n_splits:
-        :param test_size:
-        :param train_size:
-        :return: x_train, y_train, x_test, y_test
+        Check for existing checkpoint for this model
+        :return:
         """
-        print('info: starting shuffle-split training...')
-        kf = ShuffleSplit(n_splits=n_splits, test_size=test_size, train_size=train_size)
-        for train_index, test_index in kf.split(self.X):
-            yield self.X[train_index], self.Y[train_index], self.X[test_index], self.Y[test_index]
+        files = [f for f in os.listdir(self.model_checkpoint_path.parent)
+                 if os.path.isfile(self.model_checkpoint_path.parent / f)]
+        chkp_name = self.model_checkpoint_path.name.split('.')[0]
+        paths = []
+        epochs = []
+        for file in files:
+            name, epoch, _ = file.split('.')
+            if name == chkp_name:
+                paths.append(self.model_checkpoint_path.parent / file)
+                epochs.append(int(epoch))
+        return paths, epochs
 
-    def compile_model(self, num_classes=2, loss='binary_crossentropy', model_name='bin_sid', save_dir=MODELS_DATA_PATH):
+    def remove_checkpoint(self):
+        [os.remove(path) for path in self.checkpoint_files[0]]
+
+    def compile_model(self, **kwargs):
         """
         Compile the model to be ready to be trained.
         :return:
@@ -263,23 +253,34 @@ class ResNetV2(ClassificationModel):
             return model
 
         print('info: initiating classifier...')
-        model_name = '%s_%s_model.{epoch:03d}.h5' % (model_name, self.model_type)
-        model_checkpoint_path = str(save_dir / model_name)
         print('info: looking for checkpoints...')
-
-        print('info: compiling model {}...'.format(model_name))
+        print('info: compiling model {}...'.format(self.model_name))
         # Input image dimensions.
-        input_shape = self.X.shape[1:]
+        input_shape = self.input_shape[1:]
 
-        model = resnet_v2(input_shape=input_shape, depth=self.depth, num_classes=num_classes)
-        model.compile(loss=loss,
-                      optimizer=Adam(lr=lr_schedule(0)),
-                      metrics=['accuracy'])
+        if input_shape[1] < 29 or input_shape[0] < 29:
+            print("warning: when a side of the img is less than 29, this network can't compile. shape= {}".format(
+                input_shape))
+            print("warning: pad the input data to at least 29 x 29")
+            raise Exception("input shape should be at least 29 x 29")
+
+        chkp_files, chkp_epoch = self.checkpoint_files
+        assert len(chkp_files) == len(chkp_epoch)
+        if len(chkp_files) != 0:
+            # load from checkpoint
+            max_idx = int(np.argmax(chkp_epoch))
+            model = load_model(str(chkp_files[max_idx]))
+            self.initial_epoch = int(chkp_epoch[max_idx])
+        else:
+            model = resnet_v2(input_shape=input_shape, depth=self.depth, num_classes=self.num_classes)
+            model.compile(loss=self.loss,
+                          optimizer=Adam(lr=lr_schedule(0)),
+                          metrics=['accuracy'])
         model.summary()
         print(self.model_type)
         # Prepare model model saving directory.
         # Prepare callbacks for model saving and for learning rate adjustment.
-        checkpoint = ModelCheckpoint(filepath=model_checkpoint_path,
+        checkpoint = ModelCheckpoint(filepath=str(self.model_checkpoint_path),
                                      monitor='val_acc',
                                      verbose=1,
                                      save_best_only=True)
@@ -298,7 +299,8 @@ class ResNetV2(ClassificationModel):
                        epochs=self.epochs,
                        validation_data=(x_test, y_test),
                        shuffle=True,
-                       callbacks=self.callbacks)
+                       callbacks=self.callbacks,
+                       initial_epoch=self.initial_epoch)
 
     def evaluate(self, x_test, y_test):
         print('info: evaluating...')
@@ -306,6 +308,9 @@ class ResNetV2(ClassificationModel):
         scores = self.model.evaluate(x_test, y_test, verbose=1)
         print('Test loss:', scores[0])
         print('Test accuracy:', scores[1])
+
+    def predict(self, x):
+        return self.model.predict(x)
 
 
 if __name__ == '__main__':
@@ -318,7 +323,18 @@ if __name__ == '__main__':
     model = args.model
 
     if model == 'ResNetV2':
-        model = ResNetV2()
-        for x_train, y_train, x_test, y_test in model.get_shuffle_split():
-            model.train(x_train, y_train, x_test, y_test)
-            model.evaluate(x_test, y_test)
+        train_dm, test_dm, _ = ResnetDataManager.init_n_split(
+            WindowedMelSpectralCoefficientsFeatureExtractor.feature_name,
+            shuffle=True,
+            ratio=(0.5, 0.5, 0)
+        )
+        x_train = train_dm.X
+        y_train = train_dm.Y
+        test_dm.data_loader()
+        x_test = test_dm.X
+        y_test = test_dm.Y
+
+        model = ResNetV2('faith_tull_binary_sid', num_classes=y_train.shape[1], input_shape=x_train.shape)
+
+        model.train(x_train, y_train, x_test, y_test)
+        model.evaluate(x_test, y_test)

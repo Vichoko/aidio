@@ -9,7 +9,7 @@ from tests.config import TEST_RAW_DATA_PATH, TEST_FEATURES_DATA_PATH
 
 class TestDataManager(unittest.TestCase):
 
-    def setUp(cls):
+    def setUp(cls, dm_cls=DataManager):
         super().setUp()
         cls.extractor = MelSpectralCoefficientsFeatureExtractor.from_label_file(
             TEST_RAW_DATA_PATH / 'labels.csv',
@@ -21,14 +21,15 @@ class TestDataManager(unittest.TestCase):
         extractor.transform()
         cls.assertGreater(len(extractor.new_labels), 0)
         extracted_data = np.asarray(extractor.new_labels)
-        feature_filenames = extracted_data[:, 0]
+        cls.feature_filenames = extracted_data[:, 0]
         cls.feature_labels = extracted_data[:, 1]
         cls.data_type = 'manual'
-        cls.dm = DataManager(extractor.feature_name, cls.data_type, feature_data_path=TEST_FEATURES_DATA_PATH)
+        cls.dm = dm_cls(extractor.feature_name, cls.data_type, feature_data_path=TEST_FEATURES_DATA_PATH)
 
     def tearDown(self):
         super().tearDown()
         self.extractor.remove_feature_files()
+        self.dm.clean_cache()
 
     def test_init(self):
         dm = self.dm
@@ -136,10 +137,9 @@ class TestDataManager(unittest.TestCase):
 
 class TestResnetDataManager(TestDataManager):
 
-    def setUp(cls):
+    def setUp(cls, dm_cls=ResnetDataManager):
         # super instances data
-        super().setUp()
-        cls.dm = ResnetDataManager(cls.extractor.feature_name, cls.data_type, feature_data_path=TEST_FEATURES_DATA_PATH)
+        super().setUp(dm_cls)
 
     def tearDown(self):
         super().tearDown()
@@ -199,6 +199,9 @@ class TestResnetDataManager(TestDataManager):
             self.assertIsInstance(test_dm.Y, np.ndarray)
             self.assertIsInstance(dev_dm.X, np.ndarray)
             self.assertIsInstance(dev_dm.Y, np.ndarray)
+            # data should match all data
+            self.assertEqual(len(self.feature_filenames), len(self.feature_labels))
+            self.assertEqual(len(self.feature_filenames), len(train_dm.X) + len(test_dm.X) + len(dev_dm.X))
 
         train_dm, test_dm, dev_dm = self.dm.init_n_split(
             self.extractor.feature_name,
@@ -208,6 +211,9 @@ class TestResnetDataManager(TestDataManager):
             random_state=42
         )
         __test_lazyness(self, dev_dm, test_dm, train_dm)
+        train_dm.clean_cache()
+        test_dm.clean_cache()
+        dev_dm.clean_cache()
 
         train_dm, test_dm, dev_dm = self.dm.init_n_split(
             self.extractor.feature_name,
@@ -218,6 +224,9 @@ class TestResnetDataManager(TestDataManager):
         )
         __test_lazyness(self, dev_dm, test_dm, train_dm)
         self.assertTrue(dev_dm.X is not None)
+        train_dm.clean_cache()
+        test_dm.clean_cache()
+        dev_dm.clean_cache()
 
         train_dm, test_dm, dev_dm = self.dm.init_n_split(
             self.extractor.feature_name,
@@ -227,3 +236,6 @@ class TestResnetDataManager(TestDataManager):
             random_state=42
         )
         __test_lazyness(self, dev_dm, test_dm, train_dm)
+        train_dm.clean_cache()
+        test_dm.clean_cache()
+        dev_dm.clean_cache()

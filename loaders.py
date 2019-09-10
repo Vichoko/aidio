@@ -1,11 +1,25 @@
+import os
 import pandas as pd
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import OneHotEncoder
 
 import numpy as np
 
-from config import FEATURES_DATA_PATH
+from config import FEATURES_DATA_PATH, RESNET_MIN_DIM
 
+
+# def get_shuffle_split(self, n_splits=2, test_size=0.5, train_size=0.5):
+#     """
+#     Return a generator to get a shuffle split of the data.
+#     :param n_splits:
+#     :param test_size:
+#     :param train_size:
+#     :return: x_train, y_train, x_test, y_test
+#     """
+#     print('info: starting shuffle-split training...')
+#     kf = ShuffleSplit(n_splits=n_splits, test_size=test_size, train_size=train_size)
+#     for train_index, test_index in kf.split(self.X):
+#         yield self.X[train_index], self.Y[train_index], self.X[test_index], self.Y[test_index]
 
 class DataManager:
     def __init__(self, feature_name, data_type, feature_data_path=FEATURES_DATA_PATH, **kwargs):
@@ -16,6 +30,7 @@ class DataManager:
         self.feature_name = feature_name
         self.data_type = data_type
         self.feature_data_path = feature_data_path / self.feature_name
+        self.cached_files = []
         self.data_loader = None
         self.X, self.Y = None, None
 
@@ -61,11 +76,37 @@ class DataManager:
         test_data_manager = cls(feature_name, 'test', feature_data_path, **kwargs)
         dev_data_manager = cls(feature_name, 'dev', feature_data_path, **kwargs)
 
-        train_data_manager.load_all(lazy=False, cache=False, filenames=filenames_train, labels=labels_train)
-        test_data_manager.load_all(lazy=True, cache=False, filenames=filenames_test, labels=labels_test)
+        train_data_manager.load_all(lazy=False, cache=True, filenames=filenames_train,
+                                    labels=labels_train,
+                                    ratio=ratio[0],
+                                    random_state=random_state, )
+        test_data_manager.load_all(lazy=True, cache=True, filenames=filenames_test,
+                                   labels=labels_test,
+                                   ratio=ratio[1],
+                                   random_state=random_state, )
         dev_data_manager.load_all(lazy=True, cache=False, filenames=filenames_dev, labels=labels_dev)
 
         return train_data_manager, test_data_manager, dev_data_manager
+
+    def get_cache_paths(self, *args):
+        def _get_name(*args):
+            return '_'.join(map(str, [*args]))
+
+        x_path = self.feature_data_path / 'x_{}.npy'.format(_get_name(*args))
+        y_path = self.feature_data_path / 'y_{}.npy'.format(_get_name(*args))
+        self.cached_files.append(x_path)
+        self.cached_files.append(y_path)
+        return x_path, y_path
+
+    def clean_cache(self):
+        c = 0
+        while c < len(self.cached_files):
+            file_path = self.cached_files[c]
+            try:
+                os.remove(file_path)
+            except FileNotFoundError:
+                pass
+            c += 1
 
     def load_all(self, lazy=False, **kwargs):
         """
@@ -89,12 +130,11 @@ class DataManager:
             :return:
             """
             # try to load from cache
-            x_cache_file_name = 'x_{}_{}.npy'.format(self.feature_name, self.data_type)
-            y_cache_file_name = 'y_{}_{}.npy'.format(self.feature_name, self.data_type)
+            x_cache_path, y_cache_path = self.get_cache_paths(self.feature_name, self.data_type, *kwargs.values())
             if cache:
                 try:
-                    self.X = np.load(self.feature_data_path / x_cache_file_name)
-                    self.Y = np.load(self.feature_data_path / y_cache_file_name)
+                    self.X = np.load(x_cache_path)
+                    self.Y = np.load(y_cache_path)
                     return
                 except IOError:
                     pass
@@ -117,8 +157,8 @@ class DataManager:
                 # apply formats
                 self.format_all(**kwargs)
                 # save cache
-                np.save(self.feature_data_path / x_cache_file_name, self.X) if cache else None
-                np.save(self.feature_data_path / y_cache_file_name, self.Y) if cache else None
+                np.save(x_cache_path, self.X) if cache else None
+                np.save(y_cache_path, self.Y) if cache else None
 
         self.data_loader = lambda: _load_all(self, **kwargs)
         if not lazy:
@@ -170,7 +210,6 @@ class DataManager:
 
 
 class ResnetDataManager(DataManager):
-
     def format_all(self, **kwargs):
         """
         Format loaded data according to model input layout.
@@ -186,7 +225,20 @@ class ResnetDataManager(DataManager):
             # this is represented as a the fourth dim: #_data, W, H, Channels
             self.X = np.expand_dims(self.X, axis=-1)
         self.Y_to_one_shot()
+
+        # padding if neccesary
+        assert len(self.X.shape) == 4
+        dim_1_offset = RESNET_MIN_DIM - self.X.shape[1]
+        dim_2_offset = RESNET_MIN_DIM - self.X.shape[2]
+        self.X = np.pad(self.X, (
+            (0, 0),
+            (0, max(0, dim_1_offset)),
+            (0, max(0, dim_2_offset)),
+            (0, 0)),
+                        'reflect')
+
         self.X = self.X.reshape((self.X.shape[0], -1)) if kwargs.get('flatten', None) else self.X
+
         print('info: done formatting...')
 
 
