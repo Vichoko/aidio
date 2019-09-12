@@ -1,5 +1,5 @@
 from util.SST_disan.src.nn_utils.general import get_last_state, exp_mask_for_high_rank, mask_for_high_rank
-from util.SST_disan.src.nn_utils.nn import linear, get_logits, softsel, dropout,\
+from util.SST_disan.src.nn_utils.nn import linear, get_logits, softsel, dropout, \
     bn_dense_layer
 from util.SST_disan.src.nn_utils.rnn_cell import SwitchableDropoutWrapper
 from util.SST_disan.src.nn_utils.rnn import bidirectional_dynamic_rnn
@@ -53,7 +53,7 @@ def directional_attention_with_dense(rep_tensor, rep_mask, direction=None, scope
                                      keep_prob=1., is_train=None, wd=0., activation='elu',
                                      tensor_dict=None, name=None):
     def scaled_tanh(x, scale=5.):
-        return scale * tf.nn.tanh(1./scale * x)
+        return scale * tf.nn.tanh(1. / scale * x)
 
     bs, sl, vec = tf.shape(rep_tensor)[0], tf.shape(rep_tensor)[1], tf.shape(rep_tensor)[2]
     ivec = rep_tensor.get_shape()[2]
@@ -80,10 +80,10 @@ def directional_attention_with_dense(rep_tensor, rep_mask, direction=None, scope
 
         # attention
         with tf.variable_scope('attention'):  # bs,sl,sl,vec
-            f_bias = tf.get_variable('f_bias',[ivec], tf.float32, tf.constant_initializer(0.))
+            f_bias = tf.get_variable('f_bias', [ivec], tf.float32, tf.constant_initializer(0.))
             dependent = linear(rep_map_dp, ivec, False, scope='linear_dependent')  # bs,sl,vec
             dependent_etd = tf.expand_dims(dependent, 1)  # bs,1,sl,vec
-            head = linear(rep_map_dp, ivec, False, scope='linear_head') # bs,sl,vec
+            head = linear(rep_map_dp, ivec, False, scope='linear_head')  # bs,sl,vec
             head_etd = tf.expand_dims(head, 2)  # bs,sl,1,vec
 
             logits = scaled_tanh(dependent_etd + head_etd + f_bias, 5.0)  # bs,sl,sl,vec
@@ -95,13 +95,13 @@ def directional_attention_with_dense(rep_tensor, rep_mask, direction=None, scope
             attn_result = tf.reduce_sum(attn_score * rep_map_tile, 2)  # bs,sl,vec
 
         with tf.variable_scope('output'):
-            o_bias = tf.get_variable('o_bias',[ivec], tf.float32, tf.constant_initializer(0.))
+            o_bias = tf.get_variable('o_bias', [ivec], tf.float32, tf.constant_initializer(0.))
             # input gate
             fusion_gate = tf.nn.sigmoid(
                 linear(rep_map, ivec, True, 0., 'linear_fusion_i', False, wd, keep_prob, is_train) +
                 linear(attn_result, ivec, True, 0., 'linear_fusion_a', False, wd, keep_prob, is_train) +
                 o_bias)
-            output = fusion_gate * rep_map + (1-fusion_gate) * attn_result
+            output = fusion_gate * rep_map + (1 - fusion_gate) * attn_result
             output = mask_for_high_rank(output, rep_mask)
 
         # save attn
@@ -115,7 +115,7 @@ def directional_attention_with_dense(rep_tensor, rep_mask, direction=None, scope
 
 # -------------- rnn --------------
 def contextual_bi_rnn(tensor_rep, mask_rep, hn, cell_type, only_final=False,
-                      wd=0., keep_prob=1.,is_train=None, scope=None):
+                      wd=0., keep_prob=1., is_train=None, scope=None):
     """
     fusing contextual information using bi-direction rnn
     :param tensor_rep: [..., sl, vec]
@@ -129,9 +129,9 @@ def contextual_bi_rnn(tensor_rep, mask_rep, hn, cell_type, only_final=False,
     :param scope:
     :return:
     """
-    with tf.variable_scope(scope or 'contextual_bi_rnn'): # correct
+    with tf.variable_scope(scope or 'contextual_bi_rnn'):  # correct
         reuse = None if not tf.get_variable_scope().reuse else True
-        #print(reuse)
+        # print(reuse)
         if cell_type == 'gru':
             cell_fw = tf.contrib.rnn.GRUCell(hn, reuse=reuse)
             cell_bw = tf.contrib.rnn.GRUCell(hn, reuse=reuse)
@@ -146,15 +146,15 @@ def contextual_bi_rnn(tensor_rep, mask_rep, hn, cell_type, only_final=False,
             cell_bw = tf.contrib.rnn.BasicRNNCell(hn, reuse=reuse)
         else:
             raise AttributeError('no cell type \'%s\'' % cell_type)
-        cell_dp_fw = SwitchableDropoutWrapper(cell_fw,is_train,keep_prob)
-        cell_dp_bw = SwitchableDropoutWrapper(cell_bw,is_train,keep_prob)
+        cell_dp_fw = SwitchableDropoutWrapper(cell_fw, is_train, keep_prob)
+        cell_dp_bw = SwitchableDropoutWrapper(cell_bw, is_train, keep_prob)
 
         tensor_len = tf.reduce_sum(tf.cast(mask_rep, tf.int32), -1)  # [bs]
 
-        (outputs_fw, output_bw), _=bidirectional_dynamic_rnn(
+        (outputs_fw, output_bw), _ = bidirectional_dynamic_rnn(
             cell_dp_fw, cell_dp_bw, tensor_rep, tensor_len,
             dtype=tf.float32)
-        rnn_outputs = tf.concat([outputs_fw,output_bw],-1)  # [...,sl,2hn]
+        rnn_outputs = tf.concat([outputs_fw, output_bw], -1)  # [...,sl,2hn]
 
         if wd > 0:
             add_reg_without_bias()
@@ -178,11 +178,12 @@ def generate_embedding_mat(dict_size, emb_len, init_mat=None, extra_mat=None,
     :return: if extra_mat is None, return[dict_size+extra_dict_size,emb_len], else [dict_size,emb_len]
     """
     with tf.variable_scope(scope or 'gene_emb_mat'):
+        # embedding matrix for empty and unknown embeddings in embedding_lookup
         emb_mat_ept_and_unk = tf.constant(value=0, dtype=tf.float32, shape=[2, emb_len])
         if init_mat is None:
-            emb_mat_other = tf.get_variable('emb_mat',[dict_size - 2, emb_len], tf.float32)
+            emb_mat_other = tf.get_variable('emb_mat', [dict_size - 2, emb_len], tf.float32)
         else:
-            emb_mat_other = tf.get_variable("emb_mat",[dict_size - 2, emb_len], tf.float32,
+            emb_mat_other = tf.get_variable("emb_mat", [dict_size - 2, emb_len], tf.float32,
                                             initializer=tf.constant_initializer(init_mat[2:], dtype=tf.float32,
                                                                                 verify_shape=True))
         emb_mat = tf.concat([emb_mat_ept_and_unk, emb_mat_other], 0)
@@ -190,17 +191,15 @@ def generate_embedding_mat(dict_size, emb_len, init_mat=None, extra_mat=None,
 
         if extra_mat is not None:
             if extra_trainable:
-                extra_mat_var = tf.get_variable("extra_emb_mat",extra_mat.shape, tf.float32,
+                extra_mat_var = tf.get_variable("extra_emb_mat", extra_mat.shape, tf.float32,
                                                 initializer=tf.constant_initializer(extra_mat,
                                                                                     dtype=tf.float32,
                                                                                     verify_shape=True))
                 # if extra_mat is given, concat to the end of the returned tensor
                 return tf.concat([emb_mat, extra_mat_var], 0)
             else:
-                #with tf.device('/cpu:0'):
+                # with tf.device('/cpu:0'):
                 extra_mat_con = tf.constant(extra_mat, dtype=tf.float32)
                 return tf.concat([emb_mat, extra_mat_con], 0)
         else:
             return emb_mat
-
-

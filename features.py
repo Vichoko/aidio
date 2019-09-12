@@ -35,7 +35,6 @@ class FeatureExtractor:
         self.trigger_dependency_extraction_if_needed()
 
     def trigger_dependency_extraction_if_needed(self):
-        from features import AVAILABLE_FEATURES
 
         if self.dependency_feature_name:
             dependency_extractor = AVAILABLE_FEATURES[self.dependency_feature_name]
@@ -627,37 +626,5 @@ if __name__ == '__main__':
 
     print('info: from {} to {}'.format(source_path, out_path))
     extractor = AVAILABLE_FEATURES[feature_name]
-
-    # if feature_name == 'leglaive':
-    #     # leglaive use hpss as input
-    #     src_feature_name = DoubleHPSSFeatureExtractor.feature_name
-    #     source_path = FEATURES_DATA_PATH
-    #     label_path = source_path / src_feature_name / 'labels.{}.csv'.format(src_feature_name)
-    #     extractor = VoiceActivationFeatureExtractor.from_label_file(label_path, out_path=out_path, raw_path=source_path)
-    # elif feature_name == 'mfsc':
-    #     extractor = MelSpectralCoefficientsFeatureExtractor.from_label_file(label_path, out_path=out_path,
-    #                                                                         raw_path=source_path)
-    # elif feature_name == '2hpss':
-    #     extractor = DoubleHPSSFeatureExtractor.from_label_file(label_path, out_path=out_path, raw_path=source_path)
-    # elif feature_name == 'svd_ponderated_volume':
-    #     # leglaive use SVD as input
-    #     src_feature_name = MeanSVDFeatureExtractor.feature_name
-    #     source_path = FEATURES_DATA_PATH / src_feature_name
-    #     label_path = source_path / 'labels.{}.csv'.format(src_feature_name)
-    #     extractor = SVDPonderatedVolumeFeatureExtractor.from_label_file(label_path, out_path=out_path,
-    #                                                                     raw_path=source_path)
-    # elif feature_name == 'mean_svd':
-    #     # leglaive use SVD as input
-    #     # todo: unify this behaviour
-    #     src_feature_name = VoiceActivationFeatureExtractor.feature_name
-    #     source_path = FEATURES_DATA_PATH / src_feature_name
-    #     label_path = source_path / 'labels.{}.csv'.format(src_feature_name)
-    #     extractor = MeanSVDFeatureExtractor.from_label_file(label_path, out_path=out_path,
-    #                                                         raw_path=source_path)
-    #
-    # if feature_name == WindowedMelSpectralCoefficientsFeatureExtractor.feature_name:
-    #     extractor = WindowedMelSpectralCoefficientsFeatureExtractor.magic_init()
-    # else:
-    #     raise NotImplemented('{} feature not implemented'.format(feature_name))
     extractor = extractor.magic_init()
     extractor.transform()

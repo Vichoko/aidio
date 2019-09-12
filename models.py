@@ -1,10 +1,9 @@
 import argparse
 import os
-import pandas as pd
+import tensorflow as tf
 import numpy as np
 from keras.engine.saving import load_model
 
-from sklearn.model_selection import ShuffleSplit
 
 from config import FEATURES_DATA_PATH, MODELS_DATA_PATH, RESNET_V2_BATCH_SIZE, RESNET_V2_EPOCHS, RESNET_V2_DEPTH, \
     RESNET_V2_VERSION
@@ -13,33 +12,37 @@ from loaders import ResnetDataManager, DataManager
 
 
 class ClassificationModel:
-    def __init__(self, name):
-        self.name = name
-        self.x = None
-        self.y = None
-        return
 
-    def data_loader(self, audio_data, label_data=None):
-        raise NotImplemented
+    def __init__(self, model_name, model_type, num_classes, input_shape, model_path, epochs,
+                 batch_size,
+                 **kwargs):
+        self.model_name = model_name
+        self.model_type = model_type
+
+        self.num_classes = num_classes
+        self.input_shape = input_shape
+        self.epochs = epochs
+        model_filename = '%s_%s_model.{epoch:03d}.h5' % (self.model_name, self.model_type)
+        self.model_checkpoint_path = model_path / model_filename
+        self.batch_size = batch_size
+        self.initial_epoch = 0
 
 
 class ResNetV2(ClassificationModel):
 
-    def __init__(self, model_name, num_classes, input_shape, model_path=MODELS_DATA_PATH, epochs=RESNET_V2_EPOCHS,
+    def __init__(self, model_name, num_classes, input_shape, model_path=MODELS_DATA_PATH,
+                 epochs=RESNET_V2_EPOCHS, batch_size=RESNET_V2_BATCH_SIZE,
                  **kwargs):
         """
         resnet
         """
-        self.num_classes = num_classes
-        self.input_shape = input_shape
-        self.epochs = epochs
-        self.initial_epoch = 0
-        self.batch_size = RESNET_V2_BATCH_SIZE  # orig paper trained all networks with batch_size=128
+        # ResNet custom variables
         self.depth = RESNET_V2_DEPTH
         # Model name, depth and version
-        self.model_name = model_name
-        self.model_type = 'ResNet%dv%d' % (self.depth, RESNET_V2_VERSION)
+        model_type = 'ResNet%dv%d' % (self.depth, RESNET_V2_VERSION)
+        super().__init__(model_name, model_type, num_classes, input_shape, model_path, epochs, batch_size, **kwargs)
 
+        # loss deduction
         if self.num_classes > 2:
             self.loss = 'categorical_crossentropy'
         elif self.num_classes == 2:
@@ -47,14 +50,10 @@ class ResNetV2(ClassificationModel):
         else:
             raise Exception('num_classes cant be lesser than 2...')
 
-        # checkpoint save system
-        model_name = '%s_%s_model.{epoch:03d}.h5' % (self.model_name, self.model_type)
-        self.model_checkpoint_path = model_path / model_name
-
+        # things needed to fit and predict
         self.model, self.callbacks = self.compile_model(
             **kwargs
         )
-        super().__init__(self.model_type)
 
     @property
     def checkpoint_files(self):
@@ -311,6 +310,33 @@ class ResNetV2(ClassificationModel):
 
     def predict(self, x):
         return self.model.predict(x)
+
+
+class ADiSAN(ClassificationModel):
+
+    def __init__(self, model_name, num_classes, input_shape, model_path=MODELS_DATA_PATH,
+                 epochs=RESNET_V2_EPOCHS, batch_size=RESNET_V2_BATCH_SIZE,
+                 **kwargs):
+        super().__init__(model_name, num_classes, input_shape, model_path, epochs, batch_size, **kwargs)
+        self.model_type = 'disan'
+        self.model_name = model_name
+        self.num_classes = num_classes
+        self.input_shape = input_shape
+
+    def compile_model(self, **kwargs):
+        # initiate model
+        with tf.variable_scope(self.model_type) as scope:
+            pass
+            # model = ModelDiSAN(
+            #     emb_mat_token,
+            #     emb_mat_glove,
+            #     len(train_data_obj.dicts['token']),
+            #     len(train_data_obj.dicts['char']),
+            #     train_data_obj.max_lens['token'],
+            #     scope.name
+            # )
+        pass
+
 
 
 if __name__ == '__main__':

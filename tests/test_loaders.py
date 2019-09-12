@@ -3,15 +3,15 @@ import unittest
 import numpy as np
 
 from features import MelSpectralCoefficientsFeatureExtractor
-from loaders import DataManager, ResnetDataManager
+from loaders import DataManager, ResnetDataManager, ADiSANDataManager
 from tests.config import TEST_RAW_DATA_PATH, TEST_FEATURES_DATA_PATH
 
 
 class TestDataManager(unittest.TestCase):
 
-    def setUp(cls, dm_cls=DataManager):
+    def setUp(cls, dm_cls=DataManager, extractor_cls=MelSpectralCoefficientsFeatureExtractor):
         super().setUp()
-        cls.extractor = MelSpectralCoefficientsFeatureExtractor.from_label_file(
+        cls.extractor = extractor_cls.from_label_file(
             TEST_RAW_DATA_PATH / 'labels.csv',
             out_path=TEST_FEATURES_DATA_PATH,
             raw_path=TEST_RAW_DATA_PATH
@@ -137,9 +137,9 @@ class TestDataManager(unittest.TestCase):
 
 class TestResnetDataManager(TestDataManager):
 
-    def setUp(cls, dm_cls=ResnetDataManager):
+    def setUp(cls, dm_cls=ResnetDataManager, extractor_cls=MelSpectralCoefficientsFeatureExtractor):
         # super instances data
-        super().setUp(dm_cls)
+        super().setUp(dm_cls, extractor_cls)
 
     def tearDown(self):
         super().tearDown()
@@ -239,3 +239,137 @@ class TestResnetDataManager(TestDataManager):
         train_dm.clean_cache()
         test_dm.clean_cache()
         dev_dm.clean_cache()
+
+
+class TestADiSANDataManager(TestDataManager):
+
+    def setUp(cls, dm_cls=ADiSANDataManager, extractor_cls=MelSpectralCoefficientsFeatureExtractor):
+        # super instances data
+        super().setUp(dm_cls, extractor_cls)
+
+    def tearDown(self):
+        super().tearDown()
+        self.dm.clean_cache()
+
+    def test_init(self):
+        dm = self.dm
+        extractor = self.extractor
+        dm.load_all(cache=False)
+
+        self.assertIsInstance(dm.X, np.ndarray)
+        self.assertIsInstance(dm.Y, np.ndarray)
+
+        self.assertEqual(dm.sample_num, dm.X.shape[0])
+        self.assertEqual(dm.sample_num, len(extractor.new_labels))
+        self.assertEqual(dm.data_type, self.data_type)
+        self.assertEqual(dm.feature_data_path, TEST_FEATURES_DATA_PATH / extractor.feature_name)
+
+    def test_one_shot(self):
+        dm = self.dm
+
+        # load_all calls format_all who calls one_shot internally
+        dm.load_all(cache=False)
+
+        self.assertIsInstance(dm.Y, np.ndarray)
+        self.assertEqual(dm.Y.shape[0], dm.sample_num)
+        self.assertTrue((len(set(self.dm.Y)) > dm.Y).all())
+
+    def test_load_all(self, not_implemented=True):
+        super().test_load_all(False)
+
+    def test_lazy_load_all(self, not_implemented=True):
+        super().test_lazy_load_all(False)
+
+    def test_init_n_split(self):
+        def __test_lazyness(self, dev_dm, test_dm, train_dm):
+            # train data is filled instantly
+            self.assertTrue(train_dm.X is not None)
+            self.assertTrue(train_dm.Y is not None)
+            # test and dev are lazy
+            self.assertTrue(test_dm.X is None)
+            self.assertTrue(test_dm.Y is None)
+            self.assertTrue(dev_dm.X is None)
+            self.assertTrue(dev_dm.Y is None)
+            self.assertFalse(isinstance(test_dm.X, np.ndarray))
+            self.assertFalse(isinstance(test_dm.Y, np.ndarray))
+            self.assertFalse(isinstance(dev_dm.X, np.ndarray))
+            self.assertFalse(isinstance(dev_dm.Y, np.ndarray))
+            # once they are evaluated, they get values
+            test_dm.data_loader()
+            dev_dm.data_loader()
+            # now data should be filled
+            self.assertTrue(test_dm.X is not None)
+            self.assertTrue(test_dm.Y is not None)
+            self.assertTrue(dev_dm.X is not None)
+            self.assertTrue(dev_dm.Y is not None)
+            self.assertIsInstance(test_dm.X, np.ndarray)
+            self.assertIsInstance(test_dm.Y, np.ndarray)
+            self.assertIsInstance(dev_dm.X, np.ndarray)
+            self.assertIsInstance(dev_dm.Y, np.ndarray)
+            # data should match all data
+            self.assertEqual(len(self.feature_filenames), len(self.feature_labels))
+            self.assertEqual(len(self.feature_filenames), len(train_dm.X) + len(test_dm.X) + len(dev_dm.X))
+
+        train_dm, test_dm, dev_dm = self.dm.init_n_split(
+            self.extractor.feature_name,
+            feature_data_path=TEST_FEATURES_DATA_PATH,
+            shuffle=True,
+            ratio=(0.5, 0.3, 0.2),
+            random_state=42
+        )
+        __test_lazyness(self, dev_dm, test_dm, train_dm)
+        train_dm.clean_cache()
+        test_dm.clean_cache()
+        dev_dm.clean_cache()
+
+        train_dm, test_dm, dev_dm = self.dm.init_n_split(
+            self.extractor.feature_name,
+            feature_data_path=TEST_FEATURES_DATA_PATH,
+            shuffle=True,
+            ratio=(0.5, 0.5, 0),
+            random_state=42
+        )
+        __test_lazyness(self, dev_dm, test_dm, train_dm)
+        self.assertTrue(dev_dm.X is not None)
+        train_dm.clean_cache()
+        test_dm.clean_cache()
+        dev_dm.clean_cache()
+
+        train_dm, test_dm, dev_dm = self.dm.init_n_split(
+            self.extractor.feature_name,
+            feature_data_path=TEST_FEATURES_DATA_PATH,
+            shuffle=True,
+            ratio=(0.5, 0, 0.5),
+            random_state=42
+        )
+        __test_lazyness(self, dev_dm, test_dm, train_dm)
+        train_dm.clean_cache()
+        test_dm.clean_cache()
+        dev_dm.clean_cache()
+
+    def test_format(self):
+        self.dm.load_all()
+
+        self.assertIsInstance(self.dm.X, np.ndarray)
+        self.assertIsInstance(self.dm.Y, np.ndarray)
+
+        n_data = len(self.extractor.x)
+        sequence_len = 128
+        feature_dim = 16
+        n_classes = 2
+
+        # X
+        self.assertTrue(self.dm.X.shape[0] ==  n_data)
+        self.assertTrue(self.dm.X.shape[1] ==  sequence_len)
+        self.assertTrue(self.dm.X.shape[2] ==  feature_dim)
+
+        # Y
+        self.assertTrue(self.dm.Y.shape[0] == n_data)
+        self.assertIsInstance(self.dm.Y[0], np.int32)
+        self.assertEqual(len(set(self.dm.Y)), n_classes)
+
+    def test_batch_iterator(self):
+        pass
+
+    def test_get_feed_dict(self):
+        pass

@@ -26,11 +26,11 @@ def disan(rep_tensor, rep_mask, scope=None,
             fw_res = directional_attention_with_dense(
                 rep_tensor, rep_mask, 'forward', 'dir_attn_fw',
                 keep_prob, is_train, wd, activation,
-                tensor_dict=tensor_dict, name=name+'_fw_attn')
+                tensor_dict=tensor_dict, name=name + '_fw_attn')
             bw_res = directional_attention_with_dense(
                 rep_tensor, rep_mask, 'backward', 'dir_attn_bw',
                 keep_prob, is_train, wd, activation,
-                tensor_dict=tensor_dict, name=name+'_bw_attn')
+                tensor_dict=tensor_dict, name=name + '_bw_attn')
 
             seq_rep = tf.concat([fw_res, bw_res], -1)
 
@@ -38,7 +38,7 @@ def disan(rep_tensor, rep_mask, scope=None,
             sent_rep = multi_dimensional_attention(
                 seq_rep, rep_mask, 'multi_dimensional_attention',
                 keep_prob, is_train, wd, activation,
-                tensor_dict=tensor_dict, name=name+'_attn')
+                tensor_dict=tensor_dict, name=name + '_attn')
             return sent_rep
 
 
@@ -47,7 +47,7 @@ def directional_attention_with_dense(rep_tensor, rep_mask, direction=None, scope
                                      keep_prob=1., is_train=None, wd=0., activation='elu',
                                      tensor_dict=None, name=None):
     def scaled_tanh(x, scale=5.):
-        return scale * tf.nn.tanh(1./scale * x)
+        return scale * tf.nn.tanh(1. / scale * x)
 
     bs, sl, vec = tf.shape(rep_tensor)[0], tf.shape(rep_tensor)[1], tf.shape(rep_tensor)[2]
     ivec = rep_tensor.get_shape()[2]
@@ -74,10 +74,10 @@ def directional_attention_with_dense(rep_tensor, rep_mask, direction=None, scope
 
         # attention
         with tf.variable_scope('attention'):  # bs,sl,sl,vec
-            f_bias = tf.get_variable('f_bias',[ivec], tf.float32, tf.constant_initializer(0.))
+            f_bias = tf.get_variable('f_bias', [ivec], tf.float32, tf.constant_initializer(0.))
             dependent = linear(rep_map_dp, ivec, False, scope='linear_dependent')  # bs,sl,vec
             dependent_etd = tf.expand_dims(dependent, 1)  # bs,1,sl,vec
-            head = linear(rep_map_dp, ivec, False, scope='linear_head') # bs,sl,vec
+            head = linear(rep_map_dp, ivec, False, scope='linear_head')  # bs,sl,vec
             head_etd = tf.expand_dims(head, 2)  # bs,sl,1,vec
 
             logits = scaled_tanh(dependent_etd + head_etd + f_bias, 5.0)  # bs,sl,sl,vec
@@ -89,13 +89,13 @@ def directional_attention_with_dense(rep_tensor, rep_mask, direction=None, scope
             attn_result = tf.reduce_sum(attn_score * rep_map_tile, 2)  # bs,sl,vec
 
         with tf.variable_scope('output'):
-            o_bias = tf.get_variable('o_bias',[ivec], tf.float32, tf.constant_initializer(0.))
+            o_bias = tf.get_variable('o_bias', [ivec], tf.float32, tf.constant_initializer(0.))
             # input gate
             fusion_gate = tf.nn.sigmoid(
                 linear(rep_map, ivec, True, 0., 'linear_fusion_i', False, wd, keep_prob, is_train) +
                 linear(attn_result, ivec, True, 0., 'linear_fusion_a', False, wd, keep_prob, is_train) +
                 o_bias)
-            output = fusion_gate * rep_map + (1-fusion_gate) * attn_result
+            output = fusion_gate * rep_map + (1 - fusion_gate) * attn_result
             output = mask_for_high_rank(output, rep_mask)
 
         # save attn
@@ -173,15 +173,16 @@ def linear(args, output_size, bias, bias_start=0.0, scope=None, squeeze=False, w
     if not isinstance(args, (tuple, list)):
         args = [args]
 
-    flat_args = [flatten(arg, 1) for arg in args] # for dense layer [(-1, d)]
+    flat_args = [flatten(arg, 1) for arg in args]  # for dense layer [(-1, d)]
     if input_keep_prob < 1.0:
         assert is_train is not None
-        flat_args = [tf.cond(is_train, lambda: tf.nn.dropout(arg, input_keep_prob), lambda: arg)# for dense layer [(-1, d)]
+        flat_args = [tf.cond(is_train, lambda: tf.nn.dropout(arg, input_keep_prob), lambda: arg)
+                     # for dense layer [(-1, d)]
                      for arg in flat_args]
-    flat_out = _linear(flat_args, output_size, bias, bias_start=bias_start, scope=scope) # dense
-    out = reconstruct(flat_out, args[0], 1) # ()
+    flat_out = _linear(flat_args, output_size, bias, bias_start=bias_start, scope=scope)  # dense
+    out = reconstruct(flat_out, args[0], 1)  # ()
     if squeeze:
-        out = tf.squeeze(out, [len(args[0].get_shape().as_list())-1])
+        out = tf.squeeze(out, [len(args[0].get_shape().as_list()) - 1])
 
     if wd:
         add_reg_without_bias()
@@ -189,14 +190,14 @@ def linear(args, output_size, bias, bias_start=0.0, scope=None, squeeze=False, w
     return out
 
 
-def _linear(xs,output_size,bias,bias_start=0., scope=None):
+def _linear(xs, output_size, bias, bias_start=0., scope=None):
     with tf.variable_scope(scope or 'linear_layer'):
-        x = tf.concat(xs,-1)
+        x = tf.concat(xs, -1)
         input_size = x.get_shape()[-1]
-        W = tf.get_variable('W', shape=[input_size,output_size],dtype=tf.float32,
+        W = tf.get_variable('W', shape=[input_size, output_size], dtype=tf.float32,
                             )
         if bias:
-            bias = tf.get_variable('bias', shape=[output_size],dtype=tf.float32,
+            bias = tf.get_variable('bias', shape=[output_size], dtype=tf.float32,
                                    initializer=tf.constant_initializer(bias_start))
             out = tf.matmul(x, W) + bias
         else:
@@ -216,12 +217,12 @@ def flatten(tensor, keep):
 def reconstruct(tensor, ref, keep, dim_reduced_keep=None):
     dim_reduced_keep = dim_reduced_keep or keep
 
-    ref_shape = ref.get_shape().as_list() # original shape
-    tensor_shape = tensor.get_shape().as_list() # current shape
-    ref_stop = len(ref_shape) - keep # flatten dims list
+    ref_shape = ref.get_shape().as_list()  # original shape
+    tensor_shape = tensor.get_shape().as_list()  # current shape
+    ref_stop = len(ref_shape) - keep  # flatten dims list
     tensor_start = len(tensor_shape) - dim_reduced_keep  # start
-    pre_shape = [ref_shape[i] or tf.shape(ref)[i] for i in range(ref_stop)] #
-    keep_shape = [tensor_shape[i] or tf.shape(tensor)[i] for i in range(tensor_start, len(tensor_shape))] #
+    pre_shape = [ref_shape[i] or tf.shape(ref)[i] for i in range(ref_stop)]  #
+    keep_shape = [tensor_shape[i] or tf.shape(tensor)[i] for i in range(tensor_start, len(tensor_shape))]  #
     # pre_shape = [tf.shape(ref)[i] for i in range(len(ref.get_shape().as_list()[:-keep]))]
     # keep_shape = tensor.get_shape().as_list()[-keep:]
     target_shape = pre_shape + keep_shape
@@ -244,7 +245,7 @@ def selu(x):
     with tf.name_scope('elu') as scope:
         alpha = 1.6732632423543772848170429916717
         scale = 1.0507009873554804934193349852946
-        return scale*tf.where(x>=0.0, x, alpha*tf.nn.elu(x))
+        return scale * tf.where(x >= 0.0, x, alpha * tf.nn.elu(x))
 
 
 def add_reg_without_bias(scope=None):

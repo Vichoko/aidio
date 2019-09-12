@@ -70,3 +70,19 @@ RESNET_V2_BATCH_SIZE = 32  # orig paper trained all networks with batch_size=128
 RESNET_V2_EPOCHS = 200
 RESNET_V2_DEPTH = 3 * 9 + 2
 RESNET_MIN_DIM = 29  # discovered by A/B testing
+
+# ADiSAN
+ADISAN_BATCH_SIZE = 64
+ADISAN_EPOCHS = 200
+ADISAN_DROPOUT_KEEP_PROB = 0.7
+ADISAN_LR = 0.5  # initial learning rate
+ADISAN_DECAY = 0.9  # summary decay ema
+ADISAN_VAR_DECAY = 0.999  # learing rate ema
+ADISAN_WEIGHT_DECAY_FACTOR = 1e-4  # weigh decay factor / l2 decay factor
+ADISAN_OPTIMIZER = 'adadelta'  # [adadelta|adam]
+ADISAN_MAX_STEPS = 120000  # total (batch) steps to be performed during training
+# dudoso
+ADISAN_LOG_PERIOD = 500  # save tf summary period
+ADISAN_SAVE_PERIOD = 3000
+ADISAN_EVAL_PERIOD = 1000
+ADISAN_GPU_MEM = 0.96  # GPU memoty ratio

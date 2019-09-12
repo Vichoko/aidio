@@ -11,7 +11,7 @@ import numpy as np
 from keras.models import load_model
 
 
-class TestModel(unittest.TestCase):
+class TestResnetModel(unittest.TestCase):
 
     def setUp(cls):
         super().setUp()
@@ -65,7 +65,7 @@ class TestModel(unittest.TestCase):
         self.model.train(x_train, y_train, x_test, y_test)
         self.model.evaluate(x_test, y_test)
 
-    def test_continue_training(self):
+    def test_load_predict(self):
         x_train = self.train_dm.X
         y_train = self.train_dm.Y
         x_test = self.test_dm.X

@@ -8,7 +8,6 @@ from abc import ABCMeta, abstractmethod
 class ModelTemplate(metaclass=ABCMeta):
     def __init__(self, token_emb_mat, glove_emb_mat, tds, cds, tl, scope):
         """
-
         :param token_emb_mat: (#_tokens, 300) matrix with embeddings indexed by token set order
         :param glove_emb_mat: (#_glove_vectors, 300) matrix with embeddings indexed by glove token set order
         :param tds: token set length
@@ -134,7 +133,7 @@ class ModelTemplate(metaclass=ABCMeta):
 
         # ---------- optimization ---------
         if cfg.optimizer.lower() == 'adadelta':
-            assert cfg.learning_rate > 0.1 and cfg.learning_rate < 1.
+            assert 0.1 < cfg.learning_rate < 1.
             self.opt = tf.train.AdadeltaOptimizer(cfg.learning_rate)
         elif cfg.optimizer.lower() == 'adam':
             assert cfg.learning_rate < 0.1
