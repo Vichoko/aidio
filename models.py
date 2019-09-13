@@ -1,14 +1,16 @@
 import argparse
 import os
-import tensorflow as tf
+import time
+
 import numpy as np
+import tensorflow as tf
 from keras.engine.saving import load_model
 
-
-from config import FEATURES_DATA_PATH, MODELS_DATA_PATH, RESNET_V2_BATCH_SIZE, RESNET_V2_EPOCHS, RESNET_V2_DEPTH, \
-    RESNET_V2_VERSION
+from config import MODELS_DATA_PATH, RESNET_V2_BATCH_SIZE, RESNET_V2_EPOCHS, RESNET_V2_DEPTH, \
+    RESNET_V2_VERSION, ADISAN_EPOCHS, ADISAN_LOG_DIR, ADISAN_STANDBY_LOG_DIR, ADISAN_BATCH_SIZE, ADISAN_HIDDEN_UNITS, \
+    ADISAN_OPTIMIZER, ADISAN_VAR_DECAY, ADISAN_WEIGHT_DECAY_FACTOR, ADISAN_DROPOUT_KEEP_PROB, ADISAN_DECAY, ADISAN_LR
 from features import WindowedMelSpectralCoefficientsFeatureExtractor
-from loaders import ResnetDataManager, DataManager
+from loaders import ResnetDataManager
 
 
 class ClassificationModel:
@@ -79,7 +81,7 @@ class ResNetV2(ClassificationModel):
     def compile_model(self, **kwargs):
         """
         Compile the model to be ready to be trained.
-        :return:
+        :return: Model, Callbacks for model operations
         """
         import keras
         from keras.layers import Dense, Conv2D, BatchNormalization, Activation, AveragePooling2D, Input, Flatten
@@ -312,31 +314,320 @@ class ResNetV2(ClassificationModel):
         return self.model.predict(x)
 
 
+class TimeCounter:
+    def __init__(self):
+        self.data_round = 0
+        self.epoch_time_list = []
+        self.batch_time_list = []
+
+        # run time
+        self.start_time = None
+
+    def add_start(self):
+        self.start_time = time.time()
+
+    def add_stop(self):
+        assert self.start_time is not None
+        self.batch_time_list.append(time.time() - self.start_time)
+        self.start_time = None
+
+    def update_data_round(self, data_round):
+        if self.data_round == data_round:
+            return None, None
+        else:
+            this_epoch_time = sum(self.batch_time_list)
+            self.epoch_time_list.append(this_epoch_time)
+            self.batch_time_list = []
+            self.data_round = data_round
+            return this_epoch_time, \
+                   1.0 * sum(self.epoch_time_list) / len(self.epoch_time_list) if len(
+                       self.epoch_time_list) > 0 else 0
+
+
+class RecordLog:
+    def __init__(self, writeToFileInterval=20, fileName='log.txt'):
+        self.writeToFileInterval = writeToFileInterval
+        self.waitNumToFile = self.writeToFileInterval
+        buildTime = '-'.join(time.asctime(time.localtime(time.time())).strip().split(' ')[1:-1])
+        buildTime = '-'.join(buildTime.split(':'))
+        logFileName = buildTime  # cfg.model_name[1:] + '_' + buildTime
+        self.path = os.path.join(ADISAN_LOG_DIR or ADISAN_STANDBY_LOG_DIR, logFileName + "_" + fileName)
+        self.storage = []
+
+    def add(self, content='-' * 30, ifTime=False, ifPrint=True, ifSave=True):
+        # timeStr = "   ---" + str(time()) if ifTime else ''
+        timeStr = "   --- " + time.asctime(time.localtime(time.time())) if ifTime else ''
+        logContent = content + timeStr
+        if ifPrint:
+            print(logContent)
+        # check save
+        if ifSave:
+            self.storage.append(logContent)
+            self.waitNumToFile -= 1
+            if self.waitNumToFile == 0:
+                self.waitNumToFile = self.writeToFileInterval
+                self.writeToFile()
+                self.storage = []
+
+    def writeToFile(self):
+        with open(self.path, 'a', encoding='utf-8') as file:
+            for ele in self.storage:
+                file.write(ele + os.linesep)
+
+    def done(self):
+        self.add('Done')
+
+
+_logger = RecordLog(20)
+
+
 class ADiSAN(ClassificationModel):
 
     def __init__(self, model_name, num_classes, input_shape, model_path=MODELS_DATA_PATH,
-                 epochs=RESNET_V2_EPOCHS, batch_size=RESNET_V2_BATCH_SIZE,
+                 epochs=ADISAN_EPOCHS, batch_size=ADISAN_BATCH_SIZE,
                  **kwargs):
         super().__init__(model_name, num_classes, input_shape, model_path, epochs, batch_size, **kwargs)
-        self.model_type = 'disan'
+        self.model_type = 'adisan'
         self.model_name = model_name
         self.num_classes = num_classes
         self.input_shape = input_shape
+        self.time_counter = TimeCounter()
 
-    def compile_model(self, **kwargs):
+        # adisan intern params
+        self.hidden_units_num = ADISAN_HIDDEN_UNITS
+        self.dropout = ADISAN_DROPOUT_KEEP_PROB
+        self.wd = ADISAN_WEIGHT_DECAY_FACTOR
+        self.var_decay = ADISAN_VAR_DECAY
+        self.mode = 'train'
+        self.decay = ADISAN_DECAY
+        self.optimizer = ADISAN_OPTIMIZER
+        self.learning_rate = ADISAN_LR
+
         # initiate model
         with tf.variable_scope(self.model_type) as scope:
-            pass
-            # model = ModelDiSAN(
-            #     emb_mat_token,
-            #     emb_mat_glove,
-            #     len(train_data_obj.dicts['token']),
-            #     len(train_data_obj.dicts['char']),
-            #     train_data_obj.max_lens['token'],
-            #     scope.name
-            # )
-        pass
+            self.scope = scope.name
+            #        self.max_sequence_len = max_sequence_len
+            self.output_class_count = self.num_classes
 
+            self.global_step = tf.get_variable(
+                'global_step',
+                shape=[],
+                dtype=tf.int32,
+                initializer=tf.constant_initializer(0),
+                trainable=False
+            )
+            # ---- place holder -----
+            self.batch_embedding_sequence = tf.placeholder(
+                tf.float32,
+                [None, None, None],
+                name='batch_embedding_sequence'
+            )  # batch_size, max_sequence_len, embedding_size
+
+            self.batch_output_labels = tf.placeholder(
+                tf.int32,
+                [None],
+                name='batch_output_labels'
+            )  # integer from 0 to class_number: (batch_size)
+            self.is_train = tf.placeholder(tf.bool, [], name='is_train')
+
+            # ----------- parameters -------------
+            self.hidden_units_no = self.hidden_units_num  # Hidden Units for FCNN for classification
+            self.batch_size = tf.shape(self.batch_embedding_sequence)[0]
+            self.max_sequence_length = tf.shape(self.batch_embedding_sequence)[1]
+            self.embedding_dim = tf.shape(self.batch_embedding_sequence)[2]
+
+            # ------------ other ---------
+            self.batch_access_mask = tf.placeholder(
+                tf.bool,
+                [self.batch_size, self.max_sequence_length],
+                name='batch_access_mask'
+            )  # boolean mask to ignore sequence elements, (batch_size, max_seq)
+
+            # self.token_mask = tf.cast(self.token_seq,
+            #                           tf.bool)  # boolean mask to ignore sequence elements, (batch_size, max_seq)
+            self.tensor_dict = {}  # needed for disan architecture, set 'emb' to the embedding
+
+            # ------ start ------
+            self.logits = None  # results
+            self.loss = None  # loss
+            self.accuracy = None
+            self.var_ema = None
+            self.ema = None
+            self.summary = None
+            self.opt = None  # optimizer (adam, adadelta, rmsprop)
+            self.train_op = None  # optimizer minimize
+            # fill all of these here
+            self.update_tensor_add_ema_and_opt()
+
+    def build_network(self):
+        """
+        Build ADiSAN + Fully-Connected NN architecture,
+
+        :return: Reference to FCNN output.
+        """
+        from util.SST_disan.src.nn_utils.nn import linear
+        from util.SST_disan.src.nn_utils.disan import disan
+        _logger.add()
+        _logger.add('building %s neural network structure...' % self.model_type)
+
+        with tf.variable_scope('emb'):
+            # get the embedding matrix
+            emb = self.batch_embedding_sequence
+            # here emb can me changed for whatever in theory
+            self.tensor_dict['emb'] = emb
+
+        rep = disan(
+            emb,
+            self.batch_access_mask,
+            'DiSAN',
+            self.dropout,
+            self.is_train,
+            self.wd, 'relu', tensor_dict=self.tensor_dict, name='')
+
+        with tf.variable_scope('output'):
+            pre_logits = tf.nn.relu(
+                linear(
+                    [rep],
+                    self.hidden_units_no,
+                    bias=True,
+                    scope='pre_logits_linear',
+                    wd=self.wd,
+                    input_keep_prob=self.dropout,
+                    is_train=self.is_train
+                )
+            )  # batch_size, hidden_units
+            logits = linear(
+                [pre_logits],
+                self.output_class_count,
+                bias=False,
+                scope='get_output',
+                wd=self.wd,
+                input_keep_prob=self.dropout,
+                is_train=self.is_train
+            )  # batch_size, output_class_count
+        _logger.done()
+        return logits
+
+    def build_loss(self):
+        """
+        Build Loss function
+        :return: Loss
+        """
+        # weight_decay
+        with tf.name_scope("weight_decay"):
+            for var in set(tf.get_collection('reg_vars', self.scope)):
+                weight_decay = tf.multiply(tf.nn.l2_loss(var), self.wd,
+                                           name="{}-wd".format('-'.join(str(var.op.name).split('/'))))
+                tf.add_to_collection('losses', weight_decay)
+        reg_vars = tf.get_collection('losses', self.scope)
+        trainable_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, self.scope)
+        _logger.add('regularization var num: %d' % len(reg_vars))
+        _logger.add('trainable var num: %d' % len(trainable_vars))
+        losses = tf.nn.sparse_softmax_cross_entropy_with_logits(
+            labels=self.batch_output_labels,
+            logits=self.logits
+        )
+        tf.add_to_collection('losses', tf.reduce_mean(losses, name='xentropy_loss_mean'))
+        loss = tf.add_n(tf.get_collection('losses', self.scope), name='loss')
+        tf.summary.scalar(loss.op.name, loss)
+        tf.add_to_collection('ema/scalar', loss)
+        return loss
+
+    def build_accuracy(self):
+        """
+        Calculate accurracy of given output of the network (self.logits)
+        versus the expected labels (self.output_labels)
+        :return: Numpy array tf.float32 (batch_size, )
+        """
+        correct = tf.equal(
+            tf.cast(tf.argmax(self.logits, -1), tf.int32),
+            self.batch_output_labels
+        )  # [bs]
+        return tf.cast(correct, tf.float32)
+
+    def update_tensor_add_ema_and_opt(self):
+        """
+        Build Network to self.logits, Loss to self.loss, Accuracy to self.accuracy.
+        Set ExponentialMovingAverage in self.ema
+        Set Optimizer en self.opt
+        :return: None
+        """
+        self.logits = self.build_network()
+        self.loss = self.build_loss()
+        self.accuracy = self.build_accuracy()
+
+        # ------------ema-------------
+        if True:
+            self.var_ema = tf.train.ExponentialMovingAverage(self.var_decay)
+            self.build_var_ema()
+
+        if self.mode == 'train':
+            self.ema = tf.train.ExponentialMovingAverage(self.decay)
+            self.build_ema()
+        self.summary = tf.summary.merge_all()
+
+        # ---------- optimization ---------
+        if self.optimizer.lower() == 'adadelta':
+            assert 0.1 < self.learning_rate < 1.
+            self.opt = tf.train.AdadeltaOptimizer(self.learning_rate)
+        elif self.optimizer.lower() == 'adam':
+            assert self.learning_rate < 0.1
+            self.opt = tf.train.AdamOptimizer(self.learning_rate)
+        elif self.optimizer.lower() == 'rmsprop':
+            assert self.learning_rate < 0.1
+            self.opt = tf.train.RMSPropOptimizer(self.learning_rate)
+        else:
+            raise AttributeError('no optimizer named as \'%s\'' % self.optimizer)
+
+        self.train_op = self.opt.minimize(self.loss, self.global_step,
+                                          var_list=tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, self.scope))
+
+    def build_var_ema(self):
+        ema_op = self.var_ema.apply(tf.trainable_variables(), )
+        with tf.control_dependencies([ema_op]):
+            self.loss = tf.identity(self.loss)
+
+    def build_ema(self):
+        tensors = tf.get_collection("ema/scalar", scope=self.scope) + \
+                  tf.get_collection("ema/vector", scope=self.scope)
+        ema_op = self.ema.apply(tensors)
+        for var in tf.get_collection("ema/scalar", scope=self.scope):
+            ema_var = self.ema.average(var)
+            tf.summary.scalar(ema_var.op.name, ema_var)
+        for var in tf.get_collection("ema/vector", scope=self.scope):
+            ema_var = self.ema.average(var)
+            tf.summary.histogram(ema_var.op.name, ema_var)
+
+        with tf.control_dependencies([ema_op]):
+            self.loss = tf.identity(self.loss)
+
+    def step(self, sess, batch_samples, data_manager, get_summary=False):
+        """
+        Training step of the whole Network.
+
+        :param sess: TF Session
+        :param batch_samples: Iterator of samples with encoded data/label which should be parsed
+        to TF variables in get_feed_dict
+        :param get_summary: boolean flag to include summary
+        :return: loss, summary and train_op session run results
+        """
+        assert isinstance(sess, tf.Session)
+        # get embedding_sequence, output_labels and is_train flag from batch_samples
+        feed_dict = data_manager.get_feed_dict(self, batch_samples, 'train')
+        self.time_counter.add_start()
+        if get_summary:
+            loss, summary, train_op = sess.run([self.loss,
+                                                self.summary,
+                                                self.train_op],
+                                               feed_dict=feed_dict)
+
+        else:
+            loss, train_op = sess.run([self.loss,
+                                       self.train_op],
+                                      feed_dict=feed_dict)
+            summary = None
+        self.time_counter.add_stop()
+        return loss, summary, train_op
 
 
 if __name__ == '__main__':

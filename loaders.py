@@ -1,15 +1,12 @@
 import os
 from math import ceil
 
+import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import OneHotEncoder, OrdinalEncoder
 
-import numpy as np
-
 from config import FEATURES_DATA_PATH, RESNET_MIN_DIM, ADISAN_BATCH_SIZE, ADISAN_EPOCHS
-
-
 # def get_shuffle_split(self, n_splits=2, test_size=0.5, train_size=0.5):
 #     """
 #     Return a generator to get a shuffle split of the data.
@@ -22,9 +19,11 @@ from config import FEATURES_DATA_PATH, RESNET_MIN_DIM, ADISAN_BATCH_SIZE, ADISAN
 #     kf = ShuffleSplit(n_splits=n_splits, test_size=test_size, train_size=train_size)
 #     for train_index, test_index in kf.split(self.X):
 #         yield self.X[train_index], self.Y[train_index], self.X[test_index], self.Y[test_index]
+from models import ADiSAN
+
 
 class DataManager:
-    def __init__(self, feature_name, data_type, feature_data_path=FEATURES_DATA_PATH, **kwargs):
+    def __init__(self, feature_name, data_type, batch_size, epochs, feature_data_path, **kwargs):
         """
 
         :param data_type: [String] can be train, test or dev
@@ -33,8 +32,12 @@ class DataManager:
         self.data_type = data_type
         self.feature_data_path = feature_data_path / self.feature_name
         self.cached_files = []
+        # placeholders until data is loaded
         self.data_loader = None
         self.X, self.Y = None, None
+        # batch settings (training)
+        self.batch_size = batch_size
+        self.epochs = epochs
 
     @property
     def sample_num(self):
@@ -247,6 +250,10 @@ class DataManager:
 
 
 class ResnetDataManager(DataManager):
+    def __init__(self, feature_name, data_type, batch_size=None, epochs=None, feature_data_path=FEATURES_DATA_PATH,
+                 **kwargs):
+        super().__init__(feature_name, data_type, batch_size, epochs, feature_data_path, **kwargs)
+
     def format_all(self, **kwargs):
         """
         Format loaded data according to model input layout.
@@ -285,10 +292,10 @@ class SSTDataManager(DataManager):
 
 class ADiSANDataManager(DataManager):
 
-    def __init__(self, feature_name, data_type, batch_size=ADISAN_BATCH_SIZE, epochs=ADISAN_EPOCHS, **kwargs):
-        super().__init__(feature_name, data_type, **kwargs)
+    def __init__(self, feature_name, data_type, batch_size=ADISAN_BATCH_SIZE, epochs=ADISAN_EPOCHS,
+                 feature_data_path=FEATURES_DATA_PATH, **kwargs):
+        super().__init__(feature_name, data_type, batch_size, epochs, feature_data_path, **kwargs)
         self.batch_size = batch_size
-        self.epochs = epochs
 
     def format_all(self, **kwargs):
         """
@@ -316,29 +323,55 @@ class ADiSANDataManager(DataManager):
         The parsing logic of this data is in get_feed_dict.
 
 
-        :param max_step: limit number of data batches to be iterated, counted over all epochs
+        :param max_step: limit number of data batches to be iterated, counted over all epochs. i.e. length of the iterator
         :return: batch_data: custom objects with batch_data
             total_batch_num: total batch number
             epoch_idx: count of times all data has passed
             batch_idx: batch index
         """
-        x = self.X
-        y = self.Y
+        # early stop by max_step
+        stop = False
+        step_counter = 0
+
+        # helper vars
         n_data = self.X.shape[0]
+        total_batch_count = ceil(n_data / self.batch_size)
 
-
-        batch_count = ceil(n_data / self.batch_size)
+        # batch loops
         for epoch_idx in range(self.epochs):
-            for batch_idx in range(batch_count):
-                batch_data = {
-                    'x': self.X[epoch_idx:(epoch_idx + 1) * self.batch_size],
-                    'y': self.Y[epoch_idx:(epoch_idx + 1) * self.batch_size]
-                }
-                # todo: catch last batchsize
+            if stop:
+                # early stop by max_step
+                break
+            for batch_idx in range(total_batch_count):
+                step_counter += 1
+                if max_step and step_counter > max_step:
+                    # early stop by max_step
+                    stop = True
+                    break
+                start_idx = batch_idx * self.batch_size
+                end_idx = (batch_idx + 1) * self.batch_size
 
+                if end_idx <= n_data:
+                    # the batch fits completely inside the data
+                    x = self.X[start_idx:end_idx]
+                    y = self.Y[start_idx:end_idx]
+
+                else:
+                    # Circular Padding:
+                    # the batch need padding because
+                    # there is no enough data in X & Y to fit batch_size perfectly
+                    padding_size = end_idx - n_data
+                    x = np.concatenate((self.X[start_idx:end_idx], self.X[:padding_size]))
+                    y = np.concatenate((self.Y[start_idx:end_idx], self.Y[:padding_size]))
+
+                batch_data = {
+                    'x': x,
+                    'y': y
+                }
+                yield batch_data, total_batch_count, epoch_idx, batch_idx
 
     @staticmethod
-    def get_feed_dict(model, batch_data, data_type='train'):
+    def get_feed_dict(model: ADiSAN, batch_data, data_type='train'):
         """
         Instance tf.variable values from batch_data, return the values in a
         TF compat Feed Dictionary.
@@ -356,17 +389,19 @@ class ADiSANDataManager(DataManager):
         :param data_type: String flag to tell if training or not
         :return: feed_dict with gathered values
         """
-        batch_embedding_sequence = batch_data['x']
-        batch_output_labels = batch_data['y']
+        batch_embedding_sequence = batch_data['x']  # (batch_size, seq_len, emb_dim)
+        batch_output_labels = batch_data['y']  # (batch_size, )
         # in this case, we can suppose all the sequence are the same length
+        # so they doesnt need special masking
         # ex. WindowedMelSpectralCoefficientsFeatureExtractor use windows of 1 second
         # resullting in a fixed shape of (128, 16)
-        batch_access_mask = np.full((batch_embedding_sequence.shape[0:-1]), True)
-
+        batch_access_mask = np.full(
+            (batch_embedding_sequence.shape[0:-1]),
+            True
+        )  # (batch_size, seq_len)
 
         feed_dict = {model.batch_embedding_sequence: batch_embedding_sequence,
                      model.batch_output_labels: batch_output_labels,
                      model.batch_access_mask: batch_access_mask,
                      model.is_train: True if data_type == 'train' else False}
         return feed_dict
-

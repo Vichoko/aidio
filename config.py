@@ -17,11 +17,13 @@ RAW_DATA_PATH = pathlib.Path('./data/raw/')
 FEATURES_DATA_PATH = pathlib.Path('./data/features/')
 DIGEST_DATA_PATH = pathlib.Path('./data/digest/')
 MODELS_DATA_PATH = pathlib.Path('./data/models/')
+OTHER_DATA_PATH = pathlib.Path('./data/other/')
 
 makedirs(RAW_DATA_PATH)
 makedirs(FEATURES_DATA_PATH)
 makedirs(DIGEST_DATA_PATH)
 makedirs(MODELS_DATA_PATH)
+makedirs(OTHER_DATA_PATH)
 
 #########################################
 ####    FEATURES
@@ -75,6 +77,7 @@ RESNET_MIN_DIM = 29  # discovered by A/B testing
 ADISAN_BATCH_SIZE = 64
 ADISAN_EPOCHS = 200
 ADISAN_DROPOUT_KEEP_PROB = 0.7
+ADISAN_HIDDEN_UNITS = 300
 ADISAN_LR = 0.5  # initial learning rate
 ADISAN_DECAY = 0.9  # summary decay ema
 ADISAN_VAR_DECAY = 0.999  # learing rate ema
@@ -86,3 +89,22 @@ ADISAN_LOG_PERIOD = 500  # save tf summary period
 ADISAN_SAVE_PERIOD = 3000
 ADISAN_EVAL_PERIOD = 1000
 ADISAN_GPU_MEM = 0.96  # GPU memoty ratio
+
+# deprecated
+ADISAN_LOAD_PATH = OTHER_DATA_PATH / 'load_model'  # deprecated; for test mode; specify which pre-trianed model to be load
+ADISAN_LOAD_MODEL = False  # force load model from chkp on instance
+ADISAN_LOAD_STEP = None
+ADISAN_SUMMARY_PATH = OTHER_DATA_PATH / 'summary'
+
+ADISAN_CHECKPOINT_PATH = OTHER_DATA_PATH / 'checkpoints'
+ADISAN_ANSWER_DIR = OTHER_DATA_PATH / 'answers'
+
+ADISAN_LOG_DIR = OTHER_DATA_PATH / 'logs'
+ADISAN_STANDBY_LOG_DIR = OTHER_DATA_PATH / 'standby_log'
+
+makedirs(ADISAN_LOAD_PATH)
+makedirs(ADISAN_SUMMARY_PATH)
+makedirs(ADISAN_CHECKPOINT_PATH)
+makedirs(ADISAN_ANSWER_DIR)
+makedirs(ADISAN_LOG_DIR)
+makedirs(ADISAN_STANDBY_LOG_DIR)

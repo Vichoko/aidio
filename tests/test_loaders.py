@@ -1,4 +1,5 @@
 import unittest
+from math import ceil
 
 import numpy as np
 
@@ -359,9 +360,9 @@ class TestADiSANDataManager(TestDataManager):
         n_classes = 2
 
         # X
-        self.assertTrue(self.dm.X.shape[0] ==  n_data)
-        self.assertTrue(self.dm.X.shape[1] ==  sequence_len)
-        self.assertTrue(self.dm.X.shape[2] ==  feature_dim)
+        self.assertTrue(self.dm.X.shape[0] == n_data)
+        self.assertTrue(self.dm.X.shape[1] == sequence_len)
+        self.assertTrue(self.dm.X.shape[2] == feature_dim)
 
         # Y
         self.assertTrue(self.dm.Y.shape[0] == n_data)
@@ -369,7 +370,95 @@ class TestADiSANDataManager(TestDataManager):
         self.assertEqual(len(set(self.dm.Y)), n_classes)
 
     def test_batch_iterator(self):
-        pass
+        self.dm.load_all()
+
+        self.dm.epochs = 3
+        n_data = len(self.dm.X)
+        self.assertEqual(n_data, 8)
+
+        for batch_size in range(n_data):
+            # test different batch_sizes
+            batch_size += 1
+            # set test dynamic variables
+            step_idx = 0
+            self.dm.batch_size = batch_size
+            n_batches = ceil(n_data / self.dm.batch_size)
+
+            for batch_data, total_batch_count, epoch_idx, batch_idx in self.dm.batch_iterator():
+                x = batch_data['x']
+                y = batch_data['y']
+
+                self.assertEqual(total_batch_count, n_batches)
+
+                self.assertEqual(batch_idx, step_idx % n_batches)
+                self.assertEqual(epoch_idx, step_idx // n_batches)
+
+                self.assertEqual(len(x), self.dm.batch_size)
+                self.assertEqual(len(y), self.dm.batch_size)
+
+                self.assertIsInstance(x, np.ndarray)
+                self.assertIsInstance(y, np.ndarray)
+
+                self.assertEqual(len(x.shape), 3)
+                self.assertEqual(len(y.shape), 1)
+
+                step_idx += 1
+
+    def test_batch_iterator_max_steps(self):
+        self.dm.load_all()
+
+        self.dm.epochs = 3
+        n_data = len(self.dm.X)
+        self.assertEqual(n_data, 8)
+        batch_size = 3
+
+        self.dm.batch_size = batch_size
+        n_batches = ceil(n_data / self.dm.batch_size)
+
+        max_steps = self.dm.epochs * n_batches
+        for idx in range(max_steps):
+            idx += 1
+            last_step = int(max_steps / idx)
+            data_list = list(self.dm.batch_iterator(last_step))
+            self.assertEqual(len(data_list), last_step)
 
     def test_get_feed_dict(self):
-        pass
+        class DummyModel:
+            def __init__(self):
+                self.batch_embedding_sequence = 'a'
+                self.batch_output_labels = 'b'
+                self.batch_access_mask = 'c'
+                self.is_train = 'd'
+
+        self.dm.load_all()
+
+        for batch_data, total_batch_count, epoch_idx, batch_idx in self.dm.batch_iterator():
+            dummy_model = DummyModel()
+            dic = self.dm.get_feed_dict(dummy_model, batch_data, 'train')
+
+            self.assertIn(dummy_model.batch_embedding_sequence, dic.keys())
+            self.assertIn(dummy_model.batch_output_labels, dic.keys())
+            self.assertIn(dummy_model.batch_access_mask, dic.keys())
+            self.assertIn(dummy_model.is_train, dic.keys())
+
+            x = dic[dummy_model.batch_embedding_sequence]
+            y = dic[dummy_model.batch_output_labels]
+            mask = dic[dummy_model.batch_access_mask]
+            is_train = dic[dummy_model.is_train]
+
+            self.assertIsInstance(x, np.ndarray)
+            self.assertIsInstance(y, np.ndarray)
+            self.assertIsInstance(mask, np.ndarray)
+            self.assertIsInstance(is_train, bool)
+
+            self.assertEqual(len(x.shape), 3)
+            self.assertEqual(len(mask.shape), 2)
+            self.assertEqual(len(y.shape), 1)
+
+            self.assertEqual(x.shape[0], y.shape[0])
+            self.assertEqual(x.shape[0], mask.shape[0])
+            self.assertEqual(x.shape[1], mask.shape[1])
+
+            self.assertEqual(x.dtype, np.float32)
+            self.assertEqual(y.dtype, np.int32)
+            self.assertEqual(mask.dtype, bool)
