@@ -142,11 +142,11 @@ class TestADiSANModel(unittest.TestCase):
             num_classes=y_train.shape[1],
             input_shape=x_train.shape,
             model_path=TEST_MODELS_DATA_PATH,
-            epochs=1
+            epochs=1, batch_size=3
         )
 
-        self.model.train(x_train, y_train, x_test, y_test)
-        self.model.evaluate(x_test, y_test)
+        self.model.train(train_dm=self.train_dm, test_dm=self.test_dm, dev_dm=self.dev_dm)
+        # self.model.evaluate(x_test, y_test)
 
     def test_load_predict(self):
         x_train = self.train_dm.X

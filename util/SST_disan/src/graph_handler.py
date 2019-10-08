@@ -8,13 +8,20 @@ class GraphHandler(object):
         self.model = model
         self.saver = tf.train.Saver(max_to_keep=3)
         self.writer = None
+        self.load_model = cfg.load_model
+        self.mode = cfg.mode
+        self.summary_dir = cfg.summary_dir
+        self.ckpt_path = cfg.ckpt_path
+        self.load_step = cfg.load_step
+        self.ckpt_dir = cfg.load_path
+        self.load_path = cfg.load_path
 
     def initialize(self, sess):
         sess.run(tf.global_variables_initializer())
-        if cfg.load_model or cfg.mode != 'train':
+        if self.load_model or self.mode != 'train':
             self.restore(sess)
-        if cfg.mode == 'train':
-            self.writer = tf.summary.FileWriter(logdir=cfg.summary_dir, graph=tf.get_default_graph())
+        if self.mode == 'train':
+            self.writer = tf.summary.FileWriter(logdir=self.summary_dir, graph=tf.get_default_graph())
 
     def add_summary(self, summary, global_step):
         _logger.add()
@@ -26,24 +33,24 @@ class GraphHandler(object):
         for summary in summaries:
             self.add_summary(summary, global_step)
 
-    def save(self, sess, global_step = None):
+    def save(self, sess, global_step=None):
         _logger.add()
-        _logger.add('saving model to %s'% cfg.ckpt_path)
-        self.saver.save(sess, cfg.ckpt_path, global_step)
+        _logger.add('saving model to %s' % self.ckpt_path)
+        self.saver.save(sess, self.ckpt_path, global_step)
         _logger.done()
 
-    def restore(self,sess):
+    def restore(self, sess):
         _logger.add()
-        # print(cfg.ckpt_dir)
+        # print(self.ckpt_dir)
 
-        if cfg.load_step is None:
-            if cfg.load_path is None:
-                _logger.add('trying to restore from dir %s' % cfg.ckpt_dir)
-                latest_checkpoint_path = tf.train.latest_checkpoint(cfg.ckpt_dir)
+        if self.load_step is None:
+            if self.load_path is None:
+                _logger.add('trying to restore from dir %s' % self.ckpt_dir)
+                latest_checkpoint_path = tf.train.latest_checkpoint(self.ckpt_dir)
             else:
-                latest_checkpoint_path = cfg.load_path
+                latest_checkpoint_path = self.load_path
         else:
-            latest_checkpoint_path = cfg.ckpt_path+'-'+str(cfg.load_step)
+            latest_checkpoint_path = self.ckpt_path + '-' + str(self.load_step)
 
         if latest_checkpoint_path is not None:
             _logger.add('trying to restore from ckpt file %s' % latest_checkpoint_path)
@@ -52,11 +59,9 @@ class GraphHandler(object):
                 _logger.add('success to restore')
             except tf.errors.NotFoundError:
                 _logger.add('failure to restore')
-                if cfg.mode != 'train': raise FileNotFoundError('canot find model file')
+                if self.mode != 'train': raise FileNotFoundError('canot find model file')
         else:
-            _logger.add('No check point file in dir %s '% cfg.ckpt_dir)
-            if cfg.mode != 'train': raise FileNotFoundError('canot find model file')
+            _logger.add('No check point file in dir %s ' % self.ckpt_dir)
+            if self.mode != 'train': raise FileNotFoundError('canot find model file')
 
         _logger.done()
-
-

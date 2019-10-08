@@ -19,7 +19,7 @@ from config import FEATURES_DATA_PATH, RESNET_MIN_DIM, ADISAN_BATCH_SIZE, ADISAN
 #     kf = ShuffleSplit(n_splits=n_splits, test_size=test_size, train_size=train_size)
 #     for train_index, test_index in kf.split(self.X):
 #         yield self.X[train_index], self.Y[train_index], self.X[test_index], self.Y[test_index]
-from models import ADiSAN
+
 
 
 class DataManager:
@@ -371,7 +371,7 @@ class ADiSANDataManager(DataManager):
                 yield batch_data, total_batch_count, epoch_idx, batch_idx
 
     @staticmethod
-    def get_feed_dict(model: ADiSAN, batch_data, data_type='train'):
+    def get_feed_dict(model, batch_data, data_type='train'):
         """
         Instance tf.variable values from batch_data, return the values in a
         TF compat Feed Dictionary.

@@ -1,21 +1,39 @@
-from util.SST_disan.configs import cfg
-from util.SST_disan.src.utils.record_log import _logger
+import os
+import shutil
+
 import numpy as np
 import tensorflow as tf
-from util.SST_disan.src.analysis import OutputAnalysis
-import os, shutil
 
-class Evaluator(object):
+from loaders import DataManager
+from util.SST_disan.configs import cfg
+from util.SST_disan.src.analysis import OutputAnalysis
+from util.SST_disan.src.utils.record_log import _logger
+
+
+class Evaluator:
     def __init__(self, model):
         self.model = model
         self.global_step = model.global_step
-
+        # config vars
+        self.summary_dir = cfg.summary_dir
+        self.answer_dir = cfg.answer_dir
+        self.mkdir = cfg.mkdir
+        self.fine_grained = cfg.fine_grained
         ## ---- summary----
         self.build_summary()
-        self.writer = tf.summary.FileWriter(cfg.summary_dir)
+        self.writer = tf.summary.FileWriter(self.summary_dir)
+
+
 
     # --- external use ---
-    def get_evaluation(self, sess, dataset_obj, global_step=None):
+    def get_evaluation(self, sess, dataset_obj: DataManager, global_step=None):
+        """
+        todo: hacer datasetobj un datamanager
+        :param sess:
+        :param dataset_obj:
+        :param global_step:
+        :return:
+        """
         _logger.add()
         _logger.add('getting evaluation result for %s' % dataset_obj.data_type)
 
@@ -33,7 +51,7 @@ class Evaluator(object):
         logits_array = np.concatenate(logits_list, 0)
         loss_value = np.mean(loss_list)
         accu_array = np.concatenate(accu_list, 0)
-        accu_value =np.mean(accu_array)
+        accu_value = np.mean(accu_array)
         sent_accu_list = []
         for idx, is_sent in enumerate(is_sent_list):
             if is_sent:
@@ -41,9 +59,9 @@ class Evaluator(object):
         sent_accu_value = np.mean(sent_accu_list)
 
         # analysis
-        # analysis_save_dir = cfg.mkdir(cfg.answer_dir,'gs_%s'%global_step or 'test')
+        # analysis_save_dir = self.mkdir(self.answer_dir,'gs_%s'%global_step or 'test')
         # OutputAnalysis.do_analysis(dataset_obj, logits_array, accu_array, analysis_save_dir,
-        #                            cfg.fine_grained)
+        #                            self.fine_grained)
 
         # add summary
         if global_step is not None:
@@ -79,7 +97,7 @@ class Evaluator(object):
         # delete old file
         if deleted_step is not None:
             delete_name = 'gs_%d' % deleted_step
-            delete_path = os.path.join(cfg.answer_dir, delete_name)
+            delete_path = os.path.join(self.answer_dir, delete_name)
             if os.path.exists(delete_path):
                 shutil.rmtree(delete_path)
             _logger.add()
@@ -106,10 +124,9 @@ class Evaluator(object):
         sent_accu_value = np.mean(sent_accu_list)
 
         # analysis
-        analysis_save_dir = cfg.mkdir(cfg.answer_dir,'gs_%s'%global_step or 'test')
+        analysis_save_dir = self.mkdir(self.answer_dir, 'gs_%s' % global_step or 'test')
         OutputAnalysis.do_analysis(dataset_obj, logits_array, accu_array, analysis_save_dir,
-                                   cfg.fine_grained)
-
+                                   self.fine_grained)
 
     # --- internal use ------
     def build_summary(self):
@@ -127,8 +144,8 @@ class Evaluator(object):
             self.dev_loss = tf.placeholder(tf.float32, [], 'dev_loss')
             self.dev_accuracy = tf.placeholder(tf.float32, [], 'dev_accuracy')
             self.dev_sent_accuracy = tf.placeholder(tf.float32, [], 'dev_sent_accuracy')
-            tf.add_to_collection('dev_summaries_collection', tf.summary.scalar('dev_loss',self.dev_loss))
-            tf.add_to_collection('dev_summaries_collection', tf.summary.scalar('dev_accuracy',self.dev_accuracy))
+            tf.add_to_collection('dev_summaries_collection', tf.summary.scalar('dev_loss', self.dev_loss))
+            tf.add_to_collection('dev_summaries_collection', tf.summary.scalar('dev_accuracy', self.dev_accuracy))
             tf.add_to_collection('dev_summaries_collection', tf.summary.scalar('dev_sent_accuracy',
                                                                                self.dev_sent_accuracy))
             self.dev_summaries = tf.summary.merge_all('dev_summaries_collection')
@@ -137,11 +154,8 @@ class Evaluator(object):
             self.test_loss = tf.placeholder(tf.float32, [], 'test_loss')
             self.test_accuracy = tf.placeholder(tf.float32, [], 'test_accuracy')
             self.test_sent_accuracy = tf.placeholder(tf.float32, [], 'test_sent_accuracy')
-            tf.add_to_collection('test_summaries_collection', tf.summary.scalar('test_loss',self.test_loss))
-            tf.add_to_collection('test_summaries_collection', tf.summary.scalar('test_accuracy',self.test_accuracy))
+            tf.add_to_collection('test_summaries_collection', tf.summary.scalar('test_loss', self.test_loss))
+            tf.add_to_collection('test_summaries_collection', tf.summary.scalar('test_accuracy', self.test_accuracy))
             tf.add_to_collection('test_summaries_collection', tf.summary.scalar('test_sent_accuracy',
                                                                                 self.test_sent_accuracy))
             self.test_summaries = tf.summary.merge_all('test_summaries_collection')
-
-
-

@@ -1,6 +1,8 @@
 import argparse
 import os
+import shutil
 import time
+from math import ceil
 
 import numpy as np
 import tensorflow as tf
@@ -8,9 +10,11 @@ from keras.engine.saving import load_model
 
 from config import MODELS_DATA_PATH, RESNET_V2_BATCH_SIZE, RESNET_V2_EPOCHS, RESNET_V2_DEPTH, \
     RESNET_V2_VERSION, ADISAN_EPOCHS, ADISAN_LOG_DIR, ADISAN_STANDBY_LOG_DIR, ADISAN_BATCH_SIZE, ADISAN_HIDDEN_UNITS, \
-    ADISAN_OPTIMIZER, ADISAN_VAR_DECAY, ADISAN_WEIGHT_DECAY_FACTOR, ADISAN_DROPOUT_KEEP_PROB, ADISAN_DECAY, ADISAN_LR
+    ADISAN_OPTIMIZER, ADISAN_VAR_DECAY, ADISAN_WEIGHT_DECAY_FACTOR, ADISAN_DROPOUT_KEEP_PROB, ADISAN_DECAY, ADISAN_LR, \
+    ADISAN_SUMMARY_PATH, ADISAN_CHECKPOINT_PATH, ADISAN_LOAD_STEP, ADISAN_LOAD_PATH, ADISAN_LOAD_MODEL, \
+    ADISAN_ANSWER_DIR, ADISAN_EVAL_PERIOD, ADISAN_LOG_PERIOD, ADISAN_MAX_STEPS, ADISAN_GPU_MEM
 from features import WindowedMelSpectralCoefficientsFeatureExtractor
-from loaders import ResnetDataManager
+from loaders import ResnetDataManager, DataManager
 
 
 class ClassificationModel:
@@ -386,11 +390,8 @@ class ADiSAN(ClassificationModel):
     def __init__(self, model_name, num_classes, input_shape, model_path=MODELS_DATA_PATH,
                  epochs=ADISAN_EPOCHS, batch_size=ADISAN_BATCH_SIZE,
                  **kwargs):
-        super().__init__(model_name, num_classes, input_shape, model_path, epochs, batch_size, **kwargs)
         self.model_type = 'adisan'
-        self.model_name = model_name
-        self.num_classes = num_classes
-        self.input_shape = input_shape
+        super().__init__(model_name, self.model_type, num_classes, input_shape, model_path, epochs, batch_size, **kwargs)
         self.time_counter = TimeCounter()
 
         # adisan intern params
@@ -423,6 +424,12 @@ class ADiSAN(ClassificationModel):
                 name='batch_embedding_sequence'
             )  # batch_size, max_sequence_len, embedding_size
 
+            self.batch_sequence = tf.placeholder(
+                tf.float32,
+                [None, None],
+                name='batch_sequence'
+            )  # batch_size, max_sequence_len
+
             self.batch_output_labels = tf.placeholder(
                 tf.int32,
                 [None],
@@ -437,11 +444,12 @@ class ADiSAN(ClassificationModel):
             self.embedding_dim = tf.shape(self.batch_embedding_sequence)[2]
 
             # ------------ other ---------
-            self.batch_access_mask = tf.placeholder(
-                tf.bool,
-                [self.batch_size, self.max_sequence_length],
-                name='batch_access_mask'
-            )  # boolean mask to ignore sequence elements, (batch_size, max_seq)
+            # self.batch_access_mask = tf.placeholder(
+            #     tf.bool,
+            #     [None, None],
+            #     name='batch_access_mask'
+            # )  # boolean mask to ignore sequence elements, (batch_size, max_seq)
+            self.batch_access_mask = tf.cast(self.batch_sequence, tf.bool)
 
             # self.token_mask = tf.cast(self.token_seq,
             #                           tf.bool)  # boolean mask to ignore sequence elements, (batch_size, max_seq)
@@ -628,6 +636,306 @@ class ADiSAN(ClassificationModel):
             summary = None
         self.time_counter.add_stop()
         return loss, summary, train_op
+
+    def train(self, train_dm: DataManager, test_dm: DataManager, dev_dm: DataManager):
+        """
+            Legacy code to trigger the training on the given model.
+
+        :param train_dm:
+        :param test_dm:
+        :param dev_dm:
+        :return:
+        """
+        """
+            :param model: ModelDiSAN instance
+            :param dev_data_obj: Object with data_type attr and generate_batch_sample_iter() method
+            :param test_data_obj: Object with data_type attr and generate_batch_sample_iter() method.
+            :param train_data_obj: Object with sample_num attr and generate_batch_sample_iter(num_steps) method
+            :return:
+            """
+
+        class GraphHandler:
+            def __init__(self, model):
+                """
+                This class manages the model load and save the actual
+                tensorflow model checkpoints and summaries
+                :param model:
+                """
+                self.model = model
+                self.saver = tf.train.Saver(max_to_keep=3)
+                self.writer = None
+                self.summary_path = ADISAN_SUMMARY_PATH  # str
+                self.checkpoint_path = ADISAN_CHECKPOINT_PATH  # str
+                self.load_step = ADISAN_LOAD_STEP  # int
+                self.load_path = ADISAN_LOAD_PATH  # str specify which pre-trianed model to be load
+                self.load_model = ADISAN_LOAD_MODEL
+                self.mode = 'train'
+
+            def initialize(self, sess):
+                sess.run(tf.global_variables_initializer())
+                if self.load_model or self.mode != 'train':
+                    self.restore(sess)
+                if self.mode == 'train':
+                    self.writer = tf.summary.FileWriter(logdir=self.summary_path, graph=tf.get_default_graph())
+
+            def add_summary(self, summary, global_step):
+                _logger.add()
+                _logger.add('saving summary...')
+                self.writer.add_summary(summary, global_step)
+                _logger.done()
+
+            def add_summaries(self, summaries, global_step):
+                for summary in summaries:
+                    self.add_summary(summary, global_step)
+
+            def save(self, sess, global_step=None):
+                _logger.add()
+                _logger.add('saving model to %s' % self.checkpoint_path)
+                self.saver.save(sess, self.checkpoint_path, global_step)
+                _logger.done()
+
+            def restore(self, sess):
+                _logger.add()
+                # print(self.ckpt_dir)
+
+                if self.load_step is None:
+                    if self.load_path is None:
+                        _logger.add('trying to restore from dir %s' % self.checkpoint_path)
+                        latest_checkpoint_path = tf.train.latest_checkpoint(self.checkpoint_path)
+                    else:
+                        latest_checkpoint_path = self.load_path
+                else:
+                    latest_checkpoint_path = self.checkpoint_path + '-' + str(self.load_step)
+
+                if latest_checkpoint_path is not None:
+                    _logger.add('trying to restore from ckpt file %s' % latest_checkpoint_path)
+                    try:
+                        self.saver.restore(sess, latest_checkpoint_path)
+                        _logger.add('success to restore')
+                    except tf.errors.NotFoundError:
+                        _logger.add('failure to restore')
+                        if self.mode != 'train': raise FileNotFoundError('canot find model file')
+                else:
+                    _logger.add('No check point file in dir %s ' % self.checkpoint_path)
+                    if self.mode != 'train': raise FileNotFoundError('canot find model file')
+
+                _logger.done()
+
+        class Evaluator:
+
+            def __init__(self, model: ADiSAN):
+                self.model = model
+                self.global_step = self.model.global_step
+
+                ## ---- summary----
+                self.build_summary()
+                self.writer = tf.summary.FileWriter(self.summary_dir)
+
+                # config vars
+                self.summary_dir = ADISAN_SUMMARY_PATH
+                self.answer_dir = ADISAN_ANSWER_DIR
+                self.fine_grained = NotImplemented
+
+            def mkdir(self, *args):
+                from os.path import join
+                dirPath = join(*args)
+
+                if not os.path.exists(dirPath):
+                    os.makedirs(dirPath)
+                return dirPath
+
+            # --- external use ---
+            def get_evaluation(self, sess, data_manager: DataManager, global_step=None):
+                """
+                todo: hacer datasetobj un datamanager
+                :param sess:
+                :param data_manager:
+                :param global_step:
+                :return:
+                """
+                _logger.add()
+                _logger.add('getting evaluation result for %s' % data_manager.data_type)
+
+                logits_list, loss_list, accu_list = [], [], []
+                is_sent_list = []
+                for sample_batch, _, _, _ in data_manager.batch_iterator():
+                    feed_dict = data_manager.get_feed_dict(self.model, sample_batch, 'dev')
+                    logits, loss, accu = sess.run([self.model.logits,
+                                                   self.model.loss,
+                                                   self.model.accuracy], feed_dict)
+                    logits_list.append(np.argmax(logits, -1))
+                    loss_list.append(loss)
+                    accu_list.append(accu)
+                    is_sent_list += [sample['is_sent'] for sample in sample_batch]
+                logits_array = np.concatenate(logits_list, 0)
+                loss_value = np.mean(loss_list)
+                accu_array = np.concatenate(accu_list, 0)
+                accu_value = np.mean(accu_array)
+                sent_accu_list = []
+                for idx, is_sent in enumerate(is_sent_list):
+                    if is_sent:
+                        sent_accu_list.append(accu_array[idx])
+                sent_accu_value = np.mean(sent_accu_list)
+
+                # analysis
+                # analysis_save_dir = self.mkdir(self.answer_dir,'gs_%s'%global_step or 'test')
+                # OutputAnalysis.do_analysis(dataset_obj, logits_array, accu_array, analysis_save_dir,
+                #                            self.fine_grained)
+
+                # add summary
+                if global_step is not None:
+                    if data_manager.data_type == 'train':
+                        summary_feed_dict = {
+                            self.train_loss: loss_value,
+                            self.train_accuracy: accu_value,
+                            self.train_sent_accuracy: sent_accu_value,
+                        }
+                        summary = sess.run(self.train_summaries, summary_feed_dict)
+                        self.writer.add_summary(summary, global_step)
+                    elif data_manager.data_type == 'dev':
+                        summary_feed_dict = {
+                            self.dev_loss: loss_value,
+                            self.dev_accuracy: accu_value,
+                            self.dev_sent_accuracy: sent_accu_value,
+                        }
+                        summary = sess.run(self.dev_summaries, summary_feed_dict)
+                        self.writer.add_summary(summary, global_step)
+                    else:
+                        summary_feed_dict = {
+                            self.test_loss: loss_value,
+                            self.test_accuracy: accu_value,
+                            self.test_sent_accuracy: sent_accu_value,
+                        }
+                        summary = sess.run(self.test_summaries, summary_feed_dict)
+                        self.writer.add_summary(summary, global_step)
+                    return loss_value, accu_value, sent_accu_value
+
+            # def get_evaluation_file_output(self, sess, data_manager, global_step, deleted_step):
+            #     _logger.add()
+            #     _logger.add('get evaluation file output for %s' % data_manager.data_type)
+            #     # delete old file
+            #     if deleted_step is not None:
+            #         delete_name = 'gs_%d' % deleted_step
+            #         delete_path = os.path.join(self.answer_dir, delete_name)
+            #         if os.path.exists(delete_path):
+            #             shutil.rmtree(delete_path)
+            #         _logger.add()
+            #         _logger.add('getting evaluation result for %s' % data_manager.data_type)
+            #
+            #     logits_list, loss_list, accu_list = [], [], []
+            #     is_sent_list = []
+            #     for sample_batch, _, _, _ in data_manager.generate_batch_sample_iter():
+            #         feed_dict = data_manager.get_feed_dict(self.model, sample_batch, 'dev')
+            #         logits, loss, accu = sess.run([self.model.logits,
+            #                                        self.model.loss, self.model.accuracy], feed_dict)
+            #         logits_list.append(np.argmax(logits, -1))
+            #         loss_list.append(loss)
+            #         accu_list.append(accu)
+            #         is_sent_list += [sample['is_sent'] for sample in sample_batch]
+            #     logits_array = np.concatenate(logits_list, 0)
+            #     loss_value = np.mean(loss_list)
+            #     accu_array = np.concatenate(accu_list, 0)
+            #     accu_value = np.mean(accu_array)
+            #     sent_accu_list = []
+            #     for idx, is_sent in enumerate(is_sent_list):
+            #         if is_sent:
+            #             sent_accu_list.append(accu_array[idx])
+            #     sent_accu_value = np.mean(sent_accu_list)
+            #
+            #     # analysis
+            #     analysis_save_dir = self.mkdir(self.answer_dir, 'gs_%s' % global_step or 'test')
+            #     OutputAnalysis.do_analysis(data_manager, logits_array, accu_array, analysis_save_dir,
+            #                                self.fine_grained)
+
+            # --- internal use ------
+            def build_summary(self):
+                with tf.name_scope('train_summaries'):
+                    self.train_loss = tf.placeholder(tf.float32, [], 'train_loss')
+                    self.train_accuracy = tf.placeholder(tf.float32, [], 'train_accuracy')
+                    self.train_sent_accuracy = tf.placeholder(tf.float32, [], 'train_sent_accuracy')
+                    tf.add_to_collection('train_summaries_collection', tf.summary.scalar('train_loss', self.train_loss))
+                    tf.add_to_collection('train_summaries_collection',
+                                         tf.summary.scalar('train_accuracy', self.train_accuracy))
+                    tf.add_to_collection('train_summaries_collection', tf.summary.scalar('train_sent_accuracy',
+                                                                                         self.train_sent_accuracy))
+                    self.train_summaries = tf.summary.merge_all('train_summaries_collection')
+
+                with tf.name_scope('dev_summaries'):
+                    self.dev_loss = tf.placeholder(tf.float32, [], 'dev_loss')
+                    self.dev_accuracy = tf.placeholder(tf.float32, [], 'dev_accuracy')
+                    self.dev_sent_accuracy = tf.placeholder(tf.float32, [], 'dev_sent_accuracy')
+                    tf.add_to_collection('dev_summaries_collection', tf.summary.scalar('dev_loss', self.dev_loss))
+                    tf.add_to_collection('dev_summaries_collection',
+                                         tf.summary.scalar('dev_accuracy', self.dev_accuracy))
+                    tf.add_to_collection('dev_summaries_collection', tf.summary.scalar('dev_sent_accuracy',
+                                                                                       self.dev_sent_accuracy))
+                    self.dev_summaries = tf.summary.merge_all('dev_summaries_collection')
+
+                with tf.name_scope('test_summaries'):
+                    self.test_loss = tf.placeholder(tf.float32, [], 'test_loss')
+                    self.test_accuracy = tf.placeholder(tf.float32, [], 'test_accuracy')
+                    self.test_sent_accuracy = tf.placeholder(tf.float32, [], 'test_sent_accuracy')
+                    tf.add_to_collection('test_summaries_collection', tf.summary.scalar('test_loss', self.test_loss))
+                    tf.add_to_collection('test_summaries_collection',
+                                         tf.summary.scalar('test_accuracy', self.test_accuracy))
+                    tf.add_to_collection('test_summaries_collection', tf.summary.scalar('test_sent_accuracy',
+                                                                                        self.test_sent_accuracy))
+                    self.test_summaries = tf.summary.merge_all('test_summaries_collection')
+
+        # from util.SST_disan.src.perform_recorder import PerformRecoder
+        graphHandler = GraphHandler(self)
+        evaluator = Evaluator(self)
+        # performRecoder = PerformRecoder(3)
+        if ADISAN_GPU_MEM < 1.:
+            gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=ADISAN_GPU_MEM,
+                                        allow_growth=True)
+        else:
+            gpu_options = tf.GPUOptions()
+        graph_config = tf.ConfigProto(gpu_options=gpu_options, allow_soft_placement=True)
+        sess = tf.Session(config=graph_config)
+        graphHandler.initialize(sess)
+        # begin training
+        steps_per_epoch = ceil(1.0 * train_dm.sample_num / train_dm.batch_size)
+        num_steps = ADISAN_MAX_STEPS or steps_per_epoch * ADISAN_EPOCHS
+
+        for sample_batch, batch_num, data_round, idx_b in train_dm.batch_iterator(num_steps):
+            global_step = sess.run(model.global_step) + 1
+            if_get_summary = global_step % (ADISAN_LOG_PERIOD or steps_per_epoch) == 0
+            loss, summary, train_op = model.step(
+                sess,
+                sample_batch,
+                get_summary=if_get_summary
+            )
+
+            if global_step % 100 == 0:
+                _logger.add('data round: %d: %d/%d, global step:%d -- loss: %.4f' %
+                            (data_round, idx_b, batch_num, global_step, loss))
+
+            if if_get_summary:
+                graphHandler.add_summary(summary, global_step)
+
+            # Occasional evaluation
+            if global_step % (ADISAN_EVAL_PERIOD or steps_per_epoch) == 0:
+                # ---- dev ----
+                dev_loss, dev_accu, dev_sent_accu = evaluator.get_evaluation(
+                    sess, dev_dm, global_step
+                )
+                _logger.add('==> for dev, loss: %.4f, accuracy: %.4f, sentence accuracy: %.4f' %
+                            (dev_loss, dev_accu, dev_sent_accu))
+                # ---- test ----
+                test_loss, test_accu, test_sent_accu = evaluator.get_evaluation(
+                    sess, test_dm, global_step
+                )
+                _logger.add('~~> for test, loss: %.4f, accuracy: %.4f, sentence accuracy: %.4f' %
+                            (test_loss, test_accu, test_sent_accu))
+
+                # is_in_top, deleted_step = performRecoder.update_top_list(global_step, dev_accu, sess)
+                # if is_in_top and global_step > 30000:  # todo-ed: delete me to run normally
+                #     # evaluator.get_evaluation_file_output(sess, dev_data_obj, global_step, deleted_step)
+                #     evaluator.get_evaluation_file_output(sess, test_dm, global_step, deleted_step)
+            this_epoch_time, mean_epoch_time = self.time_counter.update_data_round(data_round)
+            if this_epoch_time is not None and mean_epoch_time is not None:
+                _logger.add('##> this epoch time: %f, mean epoch time: %f' % (this_epoch_time, mean_epoch_time))
 
 
 if __name__ == '__main__':

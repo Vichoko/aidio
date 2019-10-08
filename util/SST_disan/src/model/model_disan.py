@@ -206,31 +206,31 @@ class ModelADiSAN:
         with tf.control_dependencies([ema_op]):
             self.loss = tf.identity(self.loss)
 
-    def get_feed_dict(self, sample_batch, data_type='train'):
-        """
-        Instance tf.variable values from sample_batch.
+    # def get_feed_dict(self, sample_batch, data_type='train'):
+    #     """
+    #     Instance tf.variable values from sample_batch.
+    #
+    #     This method unify the parsing of the custom data to a standarized input for the NN.
+    #
+    #     The returned feed_dict should include:
+    #         @deprecated: self.token_seq: index of embedding: batch_size, max_length
+    #         self.embedding_seq: sequence embeddings # batch_size, max_sequence_len, embedding_size
+    #         self.output_labels integer from 0 to class_number: (batch_size)
+    #         self.is_train True or False depending if it's training
+    #
+    #
+    #     :param sample_batch: Iterator of training examples with their labels.
+    #     :param data_type: String flag to tell if training or not
+    #     :return: feed_dict with gathered values
+    #     """
+    #
+    #     feed_dict = {self.batch_embedding_sequence: None,
+    #                  self.batch_output_labels: None,
+    #                  self.batch_access_mask: None,
+    #                  self.is_train: True if data_type == 'train' else False}
+    #     return feed_dict
 
-        This method unify the parsing of the custom data to a standarized input for the NN.
-
-        The returned feed_dict should include:
-            @deprecated: self.token_seq: index of embedding: batch_size, max_length
-            self.embedding_seq: sequence embeddings # batch_size, max_sequence_len, embedding_size
-            self.output_labels integer from 0 to class_number: (batch_size)
-            self.is_train True or False depending if it's training
-
-
-        :param sample_batch: Iterator of training examples with their labels.
-        :param data_type: String flag to tell if training or not
-        :return: feed_dict with gathered values
-        """
-
-        feed_dict = {self.batch_embedding_sequence: None,
-                     self.batch_output_labels: None,
-                     self.batch_access_mask: None,
-                     self.is_train: True if data_type == 'train' else False}
-        return feed_dict
-
-    def step(self, sess, batch_samples, get_summary=False):
+    def step(self, sess, batch_samples, data_manager, get_summary=False):
         """
         Training step of the whole Network.
 
@@ -242,7 +242,7 @@ class ModelADiSAN:
         """
         assert isinstance(sess, tf.Session)
         # get embedding_sequence, output_labels and is_train flag from batch_samples
-        feed_dict = self.get_feed_dict(batch_samples, 'train')
+        feed_dict = data_manager.get_feed_dict(self, batch_samples, 'train')
         cfg.time_counter.add_start()
         if get_summary:
             loss, summary, train_op = sess.run([self.loss,
