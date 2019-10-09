@@ -7,6 +7,8 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import OneHotEncoder, OrdinalEncoder
 
 from config import FEATURES_DATA_PATH, RESNET_MIN_DIM, ADISAN_BATCH_SIZE, ADISAN_EPOCHS
+
+
 # def get_shuffle_split(self, n_splits=2, test_size=0.5, train_size=0.5):
 #     """
 #     Return a generator to get a shuffle split of the data.
@@ -19,7 +21,6 @@ from config import FEATURES_DATA_PATH, RESNET_MIN_DIM, ADISAN_BATCH_SIZE, ADISAN
 #     kf = ShuffleSplit(n_splits=n_splits, test_size=test_size, train_size=train_size)
 #     for train_index, test_index in kf.split(self.X):
 #         yield self.X[train_index], self.Y[train_index], self.X[test_index], self.Y[test_index]
-
 
 
 class DataManager:
@@ -77,9 +78,12 @@ class DataManager:
         filenames_dev, labels_dev = filenames_test[test_dev_pivot:], labels_test[test_dev_pivot:]
         filenames_test, labels_test = filenames_test[:test_dev_pivot], labels_test[:test_dev_pivot]
 
-        train_data_manager = cls(feature_name, 'train', feature_data_path=feature_data_path, **kwargs)
-        test_data_manager = cls(feature_name, 'test', feature_data_path=feature_data_path, **kwargs)
-        dev_data_manager = cls(feature_name, 'dev', feature_data_path=feature_data_path, **kwargs)
+        train_data_manager = cls(feature_name, 'train', feature_data_path=feature_data_path, batch_size=1, epochs=1,
+                                 **kwargs)
+        test_data_manager = cls(feature_name, 'test', feature_data_path=feature_data_path, batch_size=1, epochs=1,
+                                **kwargs)
+        dev_data_manager = cls(feature_name, 'dev', feature_data_path=feature_data_path, batch_size=1, epochs=1,
+                               **kwargs)
 
         train_data_manager.load_all(lazy=False, cache=True, filenames=filenames_train,
                                     labels=labels_train,
@@ -281,6 +285,44 @@ class ResnetDataManager(DataManager):
             (0, 0)),
                         'reflect')
 
+        self.X = self.X.reshape((self.X.shape[0], -1)) if kwargs.get('flatten', None) else self.X
+
+        print('info: done formatting...')
+
+
+class TorchVisionDataManager(DataManager):
+    def __init__(self, feature_name, data_type, batch_size=None, epochs=None, feature_data_path=FEATURES_DATA_PATH,
+                 **kwargs):
+        super().__init__(feature_name, data_type, batch_size, epochs, feature_data_path, **kwargs)
+
+    def format_all(self, **kwargs):
+        """
+        Format loaded data according to model input layout.
+        :return:
+        """
+        # assert this method is called after load_all with these:
+        assert self.X is not None
+        assert self.Y is not None
+
+        print('info: formatting data...')
+        if len(self.X.shape) == 3:
+            # as ain image has channels, this visual classificator expects at least 1 channel,
+            # this is represented as a the fourth dim: #_data, W, H, Channels
+            self.X = np.expand_dims(self.X, axis=-1)
+        self.Y_to_ordinal()
+        self.Y = self.Y.astype(np.int64)
+
+        # padding if neccesary
+        assert len(self.X.shape) == 4
+        dim_1_offset = RESNET_MIN_DIM - self.X.shape[1]
+        dim_2_offset = RESNET_MIN_DIM - self.X.shape[2]
+        self.X = np.pad(self.X, (
+            (0, 0),
+            (0, max(0, dim_1_offset)),
+            (0, max(0, dim_2_offset)),
+            (0, 0)),
+                        'reflect')
+        self.X = np.moveaxis(self.X, -1, 1)  # move channels to second position to match pythorch standard
         self.X = self.X.reshape((self.X.shape[0], -1)) if kwargs.get('flatten', None) else self.X
 
         print('info: done formatting...')

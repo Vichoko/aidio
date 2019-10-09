@@ -61,7 +61,7 @@ def predict_songs(model_name, list_of_filenames, cache=True):
     total_x_norm = np.swapaxes(total_x_norm, 2, 3)
 
     x_test = total_x_norm
-    y_pred = loaded_model.predict(x_test, verbose=1)  # Shape=(total_frames,)
+    y_pred = loaded_model.forward(x_test, verbose=1)  # Shape=(total_frames,)
     print('info: predicted with shape {}'.format(y_pred.shape))
     print(y_pred)
     return y_pred
@@ -122,7 +122,7 @@ def predict_song(model_name, filename, cache=True):
         total_x_norm = np.swapaxes(total_x_norm, 1, 2)
 
         x_test = total_x_norm
-        y_pred = loaded_model.predict(x_test, verbose=1)  # Shape=(total_frames,)
+        y_pred = loaded_model.forward(x_test, verbose=1)  # Shape=(total_frames,)
 
         print(y_pred)
         np.save(cache_filename, y_pred) if cache else None

@@ -4,7 +4,7 @@ from math import ceil
 import numpy as np
 
 from features import MelSpectralCoefficientsFeatureExtractor
-from loaders import DataManager, ResnetDataManager, ADiSANDataManager
+from loaders import DataManager, ResnetDataManager, ADiSANDataManager, TorchVisionDataManager
 from tests.config import TEST_RAW_DATA_PATH, TEST_FEATURES_DATA_PATH
 
 
@@ -25,7 +25,7 @@ class TestDataManager(unittest.TestCase):
         cls.feature_filenames = extracted_data[:, 0]
         cls.feature_labels = extracted_data[:, 1]
         cls.data_type = 'manual'
-        cls.dm = dm_cls(extractor.feature_name, cls.data_type, feature_data_path=TEST_FEATURES_DATA_PATH)
+        cls.dm = dm_cls(extractor.feature_name, cls.data_type, feature_data_path=TEST_FEATURES_DATA_PATH, epochs=1, batch_size=1)
 
     def tearDown(self):
         super().tearDown()
@@ -272,6 +272,7 @@ class TestADiSANDataManager(TestDataManager):
         dm.load_all(cache=False)
 
         self.assertIsInstance(dm.Y, np.ndarray)
+        self.assertEqual(len(dm.Y.shape), 1)
         self.assertEqual(dm.Y.shape[0], dm.sample_num)
         self.assertTrue((len(set(self.dm.Y)) > dm.Y).all())
 
@@ -462,3 +463,116 @@ class TestADiSANDataManager(TestDataManager):
             self.assertEqual(x.dtype, np.float32)
             self.assertEqual(y.dtype, np.int32)
             self.assertEqual(mask.dtype, bool)
+
+
+class TestTorchVisionDataManager(TestDataManager):
+
+    def setUp(cls, dm_cls=TorchVisionDataManager, extractor_cls=MelSpectralCoefficientsFeatureExtractor):
+        # super instances data
+        super().setUp(dm_cls, extractor_cls)
+
+    def tearDown(self):
+        super().tearDown()
+
+    def test_init(self):
+        dm = self.dm
+        extractor = self.extractor
+        dm.load_all(cache=False)
+
+        self.assertIsInstance(dm.X, np.ndarray)
+        self.assertIsInstance(dm.Y, np.ndarray)
+
+        self.assertEqual(1, dm.X.shape[1])  # channels is the second axis
+        self.assertGreater(dm.X.shape[2], 1)  # w is the second axis
+        self.assertGreater(dm.X.shape[3], 1)  # h is the second axis
+
+        self.assertEqual(dm.sample_num, dm.X.shape[0])
+        self.assertEqual(dm.sample_num, len(extractor.new_labels))
+        self.assertEqual(dm.data_type, self.data_type)
+        self.assertEqual(dm.feature_data_path, TEST_FEATURES_DATA_PATH / extractor.feature_name)
+
+    def test_one_shot(self):
+        dm = self.dm
+
+        # load_all calls format_all who calls one_shot internally
+        dm.load_all(cache=False)
+
+        self.assertIsInstance(dm.Y, np.ndarray)
+        self.assertEqual(len(dm.Y.shape), 1)
+        self.assertEqual(dm.Y.shape[0], dm.sample_num)
+        self.assertTrue((len(set(self.dm.Y)) > dm.Y).all())
+        self.assertEqual(self.dm.Y.dtype, np.int64)
+
+    def test_load_all(self, not_implemented=True):
+        super().test_load_all(False)
+
+    def test_lazy_load_all(self, not_implemented=True):
+        super().test_lazy_load_all(False)
+
+    def test_init_n_split(self):
+        def __test_lazyness(self, dev_dm, test_dm, train_dm):
+            # train data is filled instantly
+            self.assertTrue(train_dm.X is not None)
+            self.assertTrue(train_dm.Y is not None)
+            # test and dev are lazy
+            self.assertTrue(test_dm.X is None)
+            self.assertTrue(test_dm.Y is None)
+            self.assertTrue(dev_dm.X is None)
+            self.assertTrue(dev_dm.Y is None)
+            self.assertFalse(isinstance(test_dm.X, np.ndarray))
+            self.assertFalse(isinstance(test_dm.Y, np.ndarray))
+            self.assertFalse(isinstance(dev_dm.X, np.ndarray))
+            self.assertFalse(isinstance(dev_dm.Y, np.ndarray))
+            # once they are evaluated, they get values
+            test_dm.data_loader()
+            dev_dm.data_loader()
+            # now data should be filled
+            self.assertTrue(test_dm.X is not None)
+            self.assertTrue(test_dm.Y is not None)
+            self.assertTrue(dev_dm.X is not None)
+            self.assertTrue(dev_dm.Y is not None)
+            self.assertIsInstance(test_dm.X, np.ndarray)
+            self.assertIsInstance(test_dm.Y, np.ndarray)
+            self.assertIsInstance(dev_dm.X, np.ndarray)
+            self.assertIsInstance(dev_dm.Y, np.ndarray)
+            # data should match all data
+            self.assertEqual(len(self.feature_filenames), len(self.feature_labels))
+            self.assertEqual(len(self.feature_filenames), len(train_dm.X) + len(test_dm.X) + len(dev_dm.X))
+
+        train_dm, test_dm, dev_dm = self.dm.init_n_split(
+            self.extractor.feature_name,
+            feature_data_path=TEST_FEATURES_DATA_PATH,
+            shuffle=True,
+            ratio=(0.5, 0.3, 0.2),
+            random_state=42
+        )
+        __test_lazyness(self, dev_dm, test_dm, train_dm)
+        train_dm.clean_cache()
+        test_dm.clean_cache()
+        dev_dm.clean_cache()
+
+        train_dm, test_dm, dev_dm = self.dm.init_n_split(
+            self.extractor.feature_name,
+            feature_data_path=TEST_FEATURES_DATA_PATH,
+            shuffle=True,
+            ratio=(0.5, 0.5, 0),
+            random_state=42
+        )
+        __test_lazyness(self, dev_dm, test_dm, train_dm)
+        self.assertTrue(dev_dm.X is not None)
+        train_dm.clean_cache()
+        test_dm.clean_cache()
+        dev_dm.clean_cache()
+
+        train_dm, test_dm, dev_dm = self.dm.init_n_split(
+            self.extractor.feature_name,
+            feature_data_path=TEST_FEATURES_DATA_PATH,
+            shuffle=True,
+            ratio=(0.5, 0, 0.5),
+            random_state=42
+        )
+        __test_lazyness(self, dev_dm, test_dm, train_dm)
+        train_dm.clean_cache()
+        test_dm.clean_cache()
+        dev_dm.clean_cache()
+
