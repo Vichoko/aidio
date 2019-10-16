@@ -1,10 +1,12 @@
+import argparse
 import concurrent.futures
 import os
+import pathlib
 from math import ceil
 
 import librosa
+import numpy as np
 import pandas as pd
-
 from librosa import frames_to_time
 
 from config import SR, RAW_DATA_PATH, FEATURES_DATA_PATH, HOP_LENGTH, N_FFT, N_MELS, FMIN, FMAX, POWER, \
@@ -12,10 +14,6 @@ from config import SR, RAW_DATA_PATH, FEATURES_DATA_PATH, HOP_LENGTH, N_FFT, N_M
     N_MELS_HPSS, MODELS_DATA_PATH, RNN_INPUT_SIZE_VOICE_ACTIVATION, TOP_DB_WINDOWED_MFCC, \
     MIN_INTERVAL_LEN_WINDOWED_MFCC, WINDOW_LEN_WINDOWED_MFCC, WINDOW_HOP_WINDOWED_MFCC, makedirs, AVAIL_MEDIA_TYPES, \
     CPU_WORKERS
-import argparse
-import pathlib
-import numpy as np
-
 from util.leglaive.audio import ono_hpss, log_melgram
 
 
@@ -39,12 +37,13 @@ class FeatureExtractor:
         if self.dependency_feature_name:
             dependency_extractor = AVAILABLE_FEATURES[self.dependency_feature_name]
             try:
-                df = pd.read_csv(self.raw_path / dependency_extractor.get_label_file_name())
+                df = pd.read_csv(self.raw_path / dependency_extractor.feature_name / dependency_extractor.get_label_file_name())
                 return
             except Exception as e:
                 print(str(e))
                 print("didnt found dependency label file in {}".format(
-                    self.raw_path / dependency_extractor._get_label_file_name()))
+                    self.raw_path / dependency_extractor.feature_name / dependency_extractor._get_label_file_name()))
+                exit(-1)
 
     @classmethod
     def from_label_file(cls, label_file_path, out_path=FEATURES_DATA_PATH, raw_path=RAW_DATA_PATH):
@@ -75,7 +74,7 @@ class FeatureExtractor:
         if cls.dependency_feature_name:
             dependency_extractor = AVAILABLE_FEATURES[cls.dependency_feature_name]
             raw_path = default_feature_path
-            df = pd.read_csv(raw_path / dependency_extractor.get_label_file_name())
+            df = pd.read_csv(raw_path / dependency_extractor.feature_name / dependency_extractor.get_label_file_name())
         else:
             raw_path = default_raw_path
             df = pd.read_csv(raw_path / default_raw_label_file_name)
@@ -358,6 +357,7 @@ class WindowedMelSpectralCoefficientsFeatureExtractor(FeatureExtractor):
             # get song and split
             wav, _ = librosa.load(raw_path / x, sr=SR)
             intervals = librosa.effects.split(
+                # todo: split this extractor in two. One for this split, other for the windows
                 wav,
                 top_db=TOP_DB_WINDOWED_MFCC
             )
@@ -399,6 +399,17 @@ class DoubleHPSSFeatureExtractor(FeatureExtractor):
 
     @staticmethod
     def process_element(feature_name, new_labels, out_path, raw_path, **kwargs):
+        """
+        Wrapper for actual function __process_elements(data)
+        :param feature_name:
+        :param new_labels:
+        :param out_path:
+        :param raw_path:
+        :param fun:
+        :param model_name:
+        :param kwargs:
+        :return:
+        """
         def __process_element(data):
             """
             Compute double stage HPSS for the given audio file
@@ -407,26 +418,34 @@ class DoubleHPSSFeatureExtractor(FeatureExtractor):
             :param y: label (str)
             :return: mel_D2_total : concatenated melspectrogram of percussive, harmonic components of double stage HPSS. Shape=(2 * n_bins, total_frames) ex. (80, 2004)
             """
-            print('prosessing {}'.format(data))
+            print('processing {}'.format(data))
             x_i = data[0]
             y_i = data[1]
 
-            audio_src, _ = librosa.load(raw_path / x_i, sr=SR_HPSS)
-            # Normalize audio signal
-            audio_src = librosa.util.normalize(audio_src)
-            # first HPSS
-            D_harmonic, D_percussive = ono_hpss(audio_src, N_FFT_HPSS_1, N_HOP_HPSS_1)
-            # second HPSS
-            D2_harmonic, D2_percussive = ono_hpss(D_percussive, N_FFT_HPSS_2, N_HOP_HPSS_2)
+            file_name = FeatureExtractor.get_file_name(x_i, feature_name)
+            try:
+                # try to load if file already exist
+                np.load(out_path / file_name, allow_pickle=True)
+                print('info: {} loaded from .npy !'.format(file_name))
+                new_labels.append([file_name, y_i])
+            except FileNotFoundError or OSError or EOFError:
+                # OSError and EOFError are raised if file are inconsistent
+                audio_src, _ = librosa.load(raw_path / x_i, sr=SR_HPSS)
+                # Normalize audio signal
+                audio_src = librosa.util.normalize(audio_src)
+                # first HPSS
+                D_harmonic, D_percussive = ono_hpss(audio_src, N_FFT_HPSS_1, N_HOP_HPSS_1)
+                # second HPSS
+                D2_harmonic, D2_percussive = ono_hpss(D_percussive, N_FFT_HPSS_2, N_HOP_HPSS_2)
 
-            # compute melgram
-            mel_harmonic = log_melgram(D2_harmonic, SR_HPSS, N_FFT_HPSS_2, N_HOP_HPSS_2, N_MELS_HPSS)
-            mel_percussive = log_melgram(D2_percussive, SR_HPSS, N_FFT_HPSS_2, N_HOP_HPSS_2, N_MELS_HPSS)
-            # concat
-            mel_total = np.vstack((mel_harmonic, mel_percussive))
+                # compute melgram
+                mel_harmonic = log_melgram(D2_harmonic, SR_HPSS, N_FFT_HPSS_2, N_HOP_HPSS_2, N_MELS_HPSS)
+                mel_percussive = log_melgram(D2_percussive, SR_HPSS, N_FFT_HPSS_2, N_HOP_HPSS_2, N_MELS_HPSS)
+                # concat
+                mel_total = np.vstack((mel_harmonic, mel_percussive))
 
-            # this is kind-of standard
-            FeatureExtractor.save_feature(mel_total, feature_name, out_path, x_i, y_i, new_labels)
+                # this is kind-of standard
+                FeatureExtractor.save_feature(mel_total, feature_name, out_path, x_i, y_i, new_labels)
 
         return __process_element
 
@@ -479,6 +498,17 @@ class VoiceActivationFeatureExtractor(FeatureExtractor):
     @staticmethod
     def proccess_elements(feature_name, new_labels, out_path, raw_path, fun=None, model_name=VOICE_DETECTION_MODEL_NAME,
                           **kwargs):
+        """
+        Wrapper for actual function __process_elements(data)
+        :param feature_name:
+        :param new_labels:
+        :param out_path:
+        :param raw_path:
+        :param fun:
+        :param model_name:
+        :param kwargs:
+        :return:
+        """
         def __process_elements(data):
             """
             :param data: shape (#_songs, 2) the axis 1 corresponds to the filename/label pair
@@ -559,13 +589,21 @@ class MeanSVDFeatureExtractor(FeatureExtractor):
             x_i = data[0]
             y_i = data[1]
 
-            voice_activation = np.load(raw_path / x_i, allow_pickle=True)
-            mean_voice_activation = np.asarray([np.mean(elem) for elem in voice_activation[
-                1]])  # calculate mean for each frame predictions (~218 per frame)
-            mean_voice_activation = np.nan_to_num(mean_voice_activation)  # remove NaNs product of mean of empty frame
-            # this is kind-of standard
-            FeatureExtractor.save_feature([voice_activation[0], mean_voice_activation], feature_name, out_path, x_i,
-                                          y_i, new_labels)
+            file_name = FeatureExtractor.get_file_name(x_i, feature_name)
+            try:
+                # try to load if file already exist
+                np.load(out_path / file_name, allow_pickle=True)
+                print('info: {} loaded from .npy !'.format(file_name))
+                new_labels.append([file_name, y_i])
+            except FileNotFoundError or OSError or EOFError:
+                # OSError and EOFError are raised if file are inconsistent
+                voice_activation = np.load(raw_path / x_i, allow_pickle=True)
+                mean_voice_activation = np.asarray([np.mean(elem) for elem in voice_activation[
+                    1]])  # calculate mean for each frame predictions (~218 per frame)
+                mean_voice_activation = np.nan_to_num(mean_voice_activation)  # remove NaNs product of mean of empty frame
+                # this is kind-of standard
+                FeatureExtractor.save_feature([voice_activation[0], mean_voice_activation], feature_name, out_path, x_i,
+                                              y_i, new_labels)
 
         return __process_element
 
@@ -584,24 +622,71 @@ class SVDPonderatedVolumeFeatureExtractor(FeatureExtractor):
             x_i = data[0]
             y_i = data[1]
 
-            mean_voice_activation = np.load(raw_path / x_i, allow_pickle=True)
-            audio_src, _ = librosa.load(
-                RAW_DATA_PATH / '{}.mp3'.format(x_i.split('.{}'.format(DoubleHPSSFeatureExtractor.feature_name))[0]),
-                sr=SR)  # todo: support other formats
+            file_name = FeatureExtractor.get_file_name(x_i, feature_name, 'wav')
+            try:
+                # try to load if file already exist
+                np.load(out_path / file_name, allow_pickle=True)
+                print('info: {} loaded from .npy !'.format(file_name))
+                new_labels.append([file_name, y_i])
+            except FileNotFoundError or OSError or EOFError:
+                # OSError and EOFError are raised if file are inconsistent
+                mean_voice_activation = np.load(raw_path / x_i, allow_pickle=True)
+                audio_src, _ = librosa.load(
+                    RAW_DATA_PATH / '{}.mp3'.format(x_i.split('.{}'.format(DoubleHPSSFeatureExtractor.feature_name))[0]),
+                    sr=SR)  # todo: support other formats
 
-            time = mean_voice_activation[0]
-            voice_activation_prob = mean_voice_activation[1]
+                time = mean_voice_activation[0]
+                voice_activation_prob = mean_voice_activation[1]
 
-            last_sample = 0
-            for idx, time_tick in enumerate(time):
-                voice_prob = voice_activation_prob[idx]
-                init_sample = last_sample
-                last_sample = int(time_tick * SR)
-                audio_src[init_sample:last_sample] *= voice_prob
-            # this is kind-of standard
-            FeatureExtractor.save_audio(audio_src, feature_name, out_path, x_i, y_i, new_labels)
+                last_sample = 0
+                for idx, time_tick in enumerate(time):
+                    voice_prob = voice_activation_prob[idx]
+                    init_sample = last_sample
+                    last_sample = int(time_tick * SR)
+                    audio_src[init_sample:last_sample] *= voice_prob
+                # this is kind-of standard
+                FeatureExtractor.save_audio(audio_src, feature_name, out_path, x_i, y_i, new_labels)
 
         return __process_element
+
+
+class IntensitySplitterFeatureExtractor(FeatureExtractor):
+    feature_name = 'intensity_split'
+
+    @staticmethod
+    def process_element(feature_name, new_labels, out_path, raw_path, **kwargs):
+        def __process_element(data):
+            """
+            :param x: filename (str)
+            :param y: label (str)
+            :return:
+            """
+            print('prosessing {}'.format(data))
+            x = data[0]
+            y = data[1]
+
+            # params
+
+            # get song and split
+            wav, _ = librosa.load(raw_path / x, sr=SR)
+            intervals = librosa.effects.split(
+                # todo: split this extractor in two. One for this split, other for the windows
+                wav,
+                top_db=TOP_DB_WINDOWED_MFCC
+            )
+            # export intervals as new songs (wav)
+            for interval_idx, interval in enumerate(intervals):
+                if interval[1] - interval[0] < MIN_INTERVAL_LEN_WINDOWED_MFCC:
+                    # if length is lesser that 1 second, discard interval
+                    continue
+                FeatureExtractor.save_audio(wav[interval[0]:interval[1]], feature_name, out_path, x, y, new_labels)
+
+        return __process_element
+
+    # def transform(self, parallel=False, **kwargs):
+    #     if parallel:
+    #         raise Exception('error: {} cannot be ran in paralel'.format(self.feature_name))
+    #     return super().transform(parallel, **kwargs)
 
 
 AVAILABLE_FEATURES = {MelSpectralCoefficientsFeatureExtractor.feature_name: MelSpectralCoefficientsFeatureExtractor,

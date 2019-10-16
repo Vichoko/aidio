@@ -1,10 +1,10 @@
 import argparse
+import json
 import pathlib
 from os import listdir
 from os.path import isdir
 from shutil import copy2
 
-import json
 import numpy as np
 import pandas as pd
 
@@ -66,7 +66,9 @@ def parse_standard_tree(source_dir, dest_dir, move=False):
     df.to_csv(dest_dir / 'labels.csv', index=False)
     return 0
 
+
 file_counter = 0
+
 
 def parse_generic_tree(source_dir, dest_dir, move=False):
     """
@@ -119,7 +121,8 @@ def parse_generic_tree(source_dir, dest_dir, move=False):
                 # add folder name as metadata for recursive call
                 recursive_metadata_list.append(str(file_name))
                 # recursive call and append results to parsed data
-                recursive_parsed_data = recursive_song_finder(root_dir / file_name, recursive_metadata_list, singer_name)
+                recursive_parsed_data = recursive_song_finder(root_dir / file_name, recursive_metadata_list,
+                                                              singer_name)
                 parsed_data.extend(recursive_parsed_data)
             else:
                 # is leaf
@@ -164,6 +167,26 @@ def parse_generic_tree(source_dir, dest_dir, move=False):
 
     json.dump(parsed_data, open(dest_dir / 'labels.json', 'w'))
     return 0
+
+
+def json_to_csv(path_to_json, path_to_csv):
+    """
+    Convert a label's json to a Feature Extractor compilant CSV.
+
+    The expected CSV format is the following:
+    filename, label, more*
+
+    More columns will be discarded.
+    :param path_to_json: pathlib.Path or String
+    :param path_to_csv: pathlib.Path or String
+    :return:
+    """
+    print('info: transforming json to csv')
+    j = json.load(open(path_to_json, 'r', encoding='utf8'))
+    df = pd.DataFrame.from_dict(j)
+    df = df.rename(columns={'singer': 'label'})
+    df.to_csv(open(path_to_csv, 'w', encoding='utf8'), index=False)
+    print('info: transformed and exported to {}'.format(path_to_csv))
 
 
 if __name__ == '__main__':
