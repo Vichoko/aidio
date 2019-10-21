@@ -327,12 +327,17 @@ class ResNetV2(ClassificationModel):
         callbacks = [checkpoint, lr_reducer, lr_scheduler]
         return model, callbacks
 
-    def train_now(self, x_train, y_train, x_test, y_test):
+    def train_now(self, x_train, y_train, x_val, y_val):
+        x_train = x_train.numpy() if torch.is_tensor(x_train) else x_train
+        y_train = y_train.numpy() if torch.is_tensor(y_train) else y_train
+        x_val = x_val.numpy() if torch.is_tensor(x_val) else x_val
+        y_val = y_val.numpy() if torch.is_tensor(y_val) else y_val
+
         print('info: training classifier...')
         self.model.fit(x_train, y_train,
                        batch_size=self.batch_size,
                        epochs=self.epochs,
-                       validation_data=(x_test, y_test),
+                       validation_data=(x_val, y_val),
                        shuffle=True,
                        callbacks=self.callbacks,
                        initial_epoch=self.initial_epoch)

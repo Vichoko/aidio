@@ -1,6 +1,7 @@
 import unittest
 
 from numpy.testing import assert_allclose
+from torch.utils.data.dataloader import DataLoader
 
 from features import MelSpectralCoefficientsFeatureExtractor
 from loaders import DataManager, ResnetDataManager, TorchVisionDataManager
@@ -32,7 +33,7 @@ class TestResnetModel(unittest.TestCase):
             cls.extractor.feature_name,
             feature_data_path=TEST_FEATURES_DATA_PATH,
             shuffle=True,
-            ratio=(0.5, 0.5, 0),
+            ratio=(0.5, 0.3, 0.2),
             random_state=42
         )
         cls.test_dm.data_loader()
@@ -48,39 +49,57 @@ class TestResnetModel(unittest.TestCase):
             self.model.remove_checkpoint()
 
     def test_init(self):
-        x_train = self.train_dm.X
-        y_train = self.train_dm.Y
+        self.dev_dm.data_loader()
+        x_val = self.dev_dm.X
+        y_val = self.dev_dm.Y
+        self.assertTrue(x_val is not None)
+        self.assertTrue(y_val is not None)
+
+        self.test_dm.data_loader()
         x_test = self.test_dm.X
         y_test = self.test_dm.Y
+        self.assertTrue(x_test is not None)
+        self.assertTrue(y_test is not None)
 
         # padding to meet requirement
         self.model = ResNetV2(
             'test_init',
-            num_classes=y_train.shape[1],
-            input_shape=x_train.shape,
+            num_classes=y_val.shape[1],  # because is one hot encoded
+            input_shape=x_val.shape[1:],
             model_path=TEST_MODELS_DATA_PATH,
-            epochs=1
+            epochs=1,
+            batch_size=None
         )
-
-        self.model.train_now(x_train, y_train, x_test, y_test)
+        dataloader = self.train_dm.get_dataloader(batch_size=2)
+        for i_batch, sample_batched in enumerate(dataloader):
+            self.model.train_now(sample_batched['data'], sample_batched['label'], x_val, y_val)
         self.model.evaluate(x_test, y_test)
 
     def test_load_predict(self):
-        x_train = self.train_dm.X
-        y_train = self.train_dm.Y
+        self.dev_dm.data_loader()
+        x_val = self.dev_dm.X
+        y_val = self.dev_dm.Y
+        self.assertTrue(x_val is not None)
+        self.assertTrue(y_val is not None)
+
+        self.test_dm.data_loader()
         x_test = self.test_dm.X
         y_test = self.test_dm.Y
+        self.assertTrue(x_test is not None)
+        self.assertTrue(y_test is not None)
 
         self.model = ResNetV2(
             'test_init',
             num_classes=y_train.shape[1],
-            input_shape=x_train.shape,
+            input_shape=x_train.shape[1:],
             model_path=TEST_MODELS_DATA_PATH,
             epochs=1
         )
-
-        self.model.train_now(x_train, y_train, x_test, y_test)
+        dataloader = self.train_dm.get_data_loader(batch_size=2)
+        for i_batch, sample_batched in enumerate(dataloader):
+            self.model.train_now(sample_batched['data'], sample_batched['label'], x_val, y_val)
         self.model.evaluate(x_test, y_test)
+
         checkpoint_files, checkpoint_epochs = self.model.checkpoint_files
         self.assertEqual(len(checkpoint_files), len(checkpoint_epochs))
         self.assertEqual(len(checkpoint_files), 1)

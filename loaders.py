@@ -3,10 +3,12 @@ from math import ceil
 
 import numpy as np
 import pandas as pd
+import torch
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import OneHotEncoder, OrdinalEncoder
+from torch.utils.data.dataloader import DataLoader
 
-from config import FEATURES_DATA_PATH, RESNET_MIN_DIM, ADISAN_BATCH_SIZE, ADISAN_EPOCHS
+from config import FEATURES_DATA_PATH, RESNET_MIN_DIM
 
 
 # def get_shuffle_split(self, n_splits=2, test_size=0.5, train_size=0.5):
@@ -23,8 +25,9 @@ from config import FEATURES_DATA_PATH, RESNET_MIN_DIM, ADISAN_BATCH_SIZE, ADISAN
 #         yield self.X[train_index], self.Y[train_index], self.X[test_index], self.Y[test_index]
 
 
-class DataManager:
-    def __init__(self, feature_name, data_type, batch_size, epochs, feature_data_path, **kwargs):
+class DataManager(torch.utils.data.Dataset):
+    def __init__(self, feature_name, data_type, feature_data_path, filenames=None, labels=None, label_encoder=None,
+                 **kwargs):
         """
 
         :param data_type: [String] can be train, test or dev
@@ -37,17 +40,47 @@ class DataManager:
         self.data_loader = None
         self.X, self.Y = None, None
         # batch settings (training)
-        self.batch_size = batch_size
-        self.epochs = epochs
+        # load metadata
+        labels_df = pd.read_csv(
+            self.feature_data_path /
+            'labels.{}.csv'.format(self.feature_name)
+        )
+        # parse metadata
+        self.filenames = filenames if filenames is not None else labels_df['filename']
+        self.labels = labels if labels is not None else labels_df['label']
+        self.labels = np.asarray(labels)
+        if len(self.labels.shape) == 1:
+            # add one axis for actual label
+            self.labels = self.labels.reshape(-1, 1)
+        # fit label encoder with all annotations if available
+        self.label_encoder = label_encoder if label_encoder else None
+        self.label_encoder = self.label_encoder.fit(self.labels) if self.label_encoder else None
 
-    @property
-    def sample_num(self):
+    def __len__(self):
+        assert len(self.labels) == len(self.filenames)
+        return len(self.labels)
+
+    def __getitem__(self, idx):
         """
-        Return the total number of loaded data samples.
+
+        :param idx: Integer to index one element
         :return:
         """
-        assert self.X.shape[0] == self.Y.shape[0]
-        return self.X.shape[0]
+        if torch.is_tensor(idx):
+            idx = idx.tolist()
+
+        self.Y = np.asarray(self.labels)
+        item_data = np.load(self.feature_data_path / self.filenames.iloc[idx])
+        item_label = np.asarray(self.labels[idx])
+
+        sample = {'data': item_data, 'label': item_label}
+
+        if self.transform:
+            sample = self.transform(sample)
+
+
+        # sample = {'data': torch.Tensor(sample['data']), 'label': torch.Tensor(sample['label'])}
+        return sample
 
     @classmethod
     def init_n_split(cls, feature_name, feature_data_path=FEATURES_DATA_PATH, shuffle=True, ratio=(0.5, 0.3, 0.2),
@@ -78,22 +111,23 @@ class DataManager:
         filenames_dev, labels_dev = filenames_test[test_dev_pivot:], labels_test[test_dev_pivot:]
         filenames_test, labels_test = filenames_test[:test_dev_pivot], labels_test[:test_dev_pivot]
 
-        train_data_manager = cls(feature_name, 'train', feature_data_path=feature_data_path, batch_size=1, epochs=1,
+        train_data_manager = cls(feature_name, 'train', feature_data_path=feature_data_path, filenames=filenames_train,
+                                 labels=labels_train,
                                  **kwargs)
-        test_data_manager = cls(feature_name, 'test', feature_data_path=feature_data_path, batch_size=1, epochs=1,
+        test_data_manager = cls(feature_name, 'test', feature_data_path=feature_data_path, filenames=filenames_test,
+                                labels=labels_test,
                                 **kwargs)
-        dev_data_manager = cls(feature_name, 'dev', feature_data_path=feature_data_path, batch_size=1, epochs=1,
+        dev_data_manager = cls(feature_name, 'dev', feature_data_path=feature_data_path, filenames=filenames_dev,
+                               labels=labels_dev,
                                **kwargs)
 
-        train_data_manager.load_all(lazy=False, cache=True, filenames=filenames_train,
-                                    labels=labels_train,
+        train_data_manager.load_all(lazy=True, cache=True,
                                     ratio=ratio[0],
                                     random_state=random_state, )
-        test_data_manager.load_all(lazy=True, cache=True, filenames=filenames_test,
-                                   labels=labels_test,
+        test_data_manager.load_all(lazy=True, cache=True,
                                    ratio=ratio[1],
                                    random_state=random_state, )
-        dev_data_manager.load_all(lazy=True, cache=False, filenames=filenames_dev, labels=labels_dev)
+        dev_data_manager.load_all(lazy=True, cache=False)
 
         return train_data_manager, test_data_manager, dev_data_manager
 
@@ -127,8 +161,18 @@ class DataManager:
                 pass
             c += 1
 
+    def transform(self, sample, **kwargs):
+        """
+        Transform a single sample to it's model compatible input form
+        :param sample:
+        :param kwargs:
+        :return:
+        """
+        raise NotImplementedError()
+
     def load_all(self, lazy=False, **kwargs):
         """
+        @deprecated use data loader instead
         Load all data to RAM.
 
         Warning: If lazy is False, calling this method may take several minutes to load.
@@ -138,7 +182,7 @@ class DataManager:
         :return: If lazy is True, return the lazy reference to the function call
         """
 
-        def _load_all(self, cache=True, filenames=None, labels=None, **kwargs):
+        def _load_all(self, cache=True, **kwargs):
             """
             This is the real function to load all.
             :param self: Reference to object.
@@ -160,17 +204,10 @@ class DataManager:
                     pass
             print('info: loading data from disk...')
             print('warning: this operation takes some time. Go grab a tea...')
-            # load metadata
-            labels_df = pd.read_csv(
-                self.feature_data_path /
-                'labels.{}.csv'.format(self.feature_name)
-            )
-            # parse metadata
-            filenames = filenames if filenames is not None else labels_df['filename']
-            labels = labels if labels is not None else labels_df['label']
+
             # load hard data
-            self.Y = np.asarray(labels)
-            self.X = np.asarray([np.load(self.feature_data_path / filename) for filename in filenames])
+            self.Y = np.asarray(self.labels)
+            self.X = np.asarray([np.load(self.feature_data_path / filename) for filename in self.filenames])
             assert len(self.X) == len(self.Y)
             # if data is loaded, then format it and save cache
             if len(self.X) != 0:
@@ -186,6 +223,7 @@ class DataManager:
 
     def Y_to_one_shot(self):
         """
+        @deprecated
         Y = ['foo', 'foo', 'bar']
         to
         Y = [['foo'], ['foo'], ['bar']]
@@ -198,6 +236,7 @@ class DataManager:
 
     def Y_to_ordinal(self):
         """
+        @deprecated
         Y = ['foo', 'foo', 'bar']
         to
         Y = [['foo'], ['foo'], ['bar']]
@@ -211,11 +250,9 @@ class DataManager:
         self.Y = enc.fit_transform(self.Y.reshape(-1, 1))
         self.Y = np.array(self.Y.reshape(self.Y.shape[:-1]), dtype=np.int32)  # drop last axis and cast to int32
 
-    def format_all(self, **kwargs):
-        raise NotImplementedError()
-
     def batch_iterator(self, max_step=None):
         """
+        @deprecated
         Each iteration returns a batch of data with the following shape:
             (batch_size, *data.shape[1:])
 
@@ -234,6 +271,7 @@ class DataManager:
     @staticmethod
     def get_feed_dict(model, batch_data, data_type='train'):
         """
+        @deprecated
         Instance tf.variable values from batch_data, return the values in a
         TF compat Feed Dictionary.
 
@@ -252,15 +290,64 @@ class DataManager:
         """
         raise NotImplementedError()
 
-
-class ResnetDataManager(DataManager):
-    def __init__(self, feature_name, data_type, batch_size=None, epochs=None, feature_data_path=FEATURES_DATA_PATH,
-                 **kwargs):
-        super().__init__(feature_name, data_type, batch_size, epochs, feature_data_path, **kwargs)
+    @property
+    def sample_num(self):
+        """
+        @deprecated
+        Return the total number of loaded data samples.
+        :return:
+        """
+        assert self.X.shape[0] == self.Y.shape[0]
+        return self.X.shape[0]
 
     def format_all(self, **kwargs):
         """
+        @Deprecated
+        :param kwargs:
+        :return:
+        """
+        raise NotImplementedError()
+
+    def get_dataloader(self, batch_size, shuffle=True):
+        self.data_loader = None
+        return torch.utils.data.DataLoader(self, batch_size=batch_size, shuffle=shuffle, num_workers=2)
+
+class ResnetDataManager(DataManager):
+
+    def __init__(self, feature_name, data_type, feature_data_path, filenames=None, labels=None,
+                 label_encoder=OneHotEncoder(),
+                 **kwargs):
+        super().__init__(feature_name, data_type, feature_data_path, filenames, labels, label_encoder, **kwargs)
+
+    def transform(self, sample, **kwargs):
+        """
+
+        :param sample: dict with data and label keys.
+        :return:
+        """
+        data, label = sample['data'], sample['label']
+        if len(data.shape) == 2:
+            # add channels dimension
+            data = np.expand_dims(data, axis=-1)  # now has W, H, Channels
+        assert len(data.shape) == 3  # W, H, Channels
+        # padding if necessary
+        dim_1_offset = RESNET_MIN_DIM - data.shape[0]
+        dim_2_offset = RESNET_MIN_DIM - data.shape[1]
+        data = np.pad(data, (
+            (0, max(0, dim_1_offset)),
+            (0, max(0, dim_2_offset)),
+            (0, 0)),
+                        'reflect')
+        # encode single label with encoder
+        label = self.label_encoder.transform(label.reshape(1, -1)).toarray() if self.label_encoder else label
+        return {'data': data, 'label': label}
+
+    def format_all(self, **kwargs):
+        """
+        @deprecated
         Format loaded data according to model input layout.
+        self.X shape is #_data, *dims
+        self.y shape is #_data, 1 with label as string
         :return:
         """
         # assert this method is called after load_all with these:
@@ -291,9 +378,8 @@ class ResnetDataManager(DataManager):
 
 
 class TorchVisionDataManager(DataManager):
-    def __init__(self, feature_name, data_type, batch_size=None, epochs=None, feature_data_path=FEATURES_DATA_PATH,
-                 **kwargs):
-        super().__init__(feature_name, data_type, batch_size, epochs, feature_data_path, **kwargs)
+    def __init__(self, feature_name, data_type, feature_data_path, **kwargs):
+        super().__init__(feature_name, data_type, feature_data_path, **kwargs)
 
     def format_all(self, **kwargs):
         """
@@ -334,10 +420,8 @@ class SSTDataManager(DataManager):
 
 class ADiSANDataManager(DataManager):
 
-    def __init__(self, feature_name, data_type, batch_size=ADISAN_BATCH_SIZE, epochs=ADISAN_EPOCHS,
-                 feature_data_path=FEATURES_DATA_PATH, **kwargs):
-        super().__init__(feature_name, data_type, batch_size, epochs, feature_data_path, **kwargs)
-        self.batch_size = batch_size
+    def __init__(self, feature_name, data_type, feature_data_path, **kwargs):
+        super().__init__(feature_name, data_type, feature_data_path, **kwargs)
 
     def format_all(self, **kwargs):
         """
