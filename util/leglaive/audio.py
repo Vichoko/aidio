@@ -37,7 +37,7 @@ def ono_hpss(y, n_fft, hop_length):
     max_iter = 50
 
     stft = librosa.stft(y, n_fft=n_fft, hop_length=hop_length)
-    print("stft", stft.shape)
+    # print("stft", stft.shape)
     _, phase = librosa.magphase(stft)
     power_spec = (np.abs(stft)) ** (2 * gamma)
     f_len, t_len = power_spec.shape
@@ -71,7 +71,7 @@ def ono_hpss(y, n_fft, hop_length):
         librosa.core.istft(percussive ** (1 / 2 * gamma) * phase, hop_length=hop_length, dtype=y.dtype), len(y))
     h_out = librosa.util.fix_length(
         librosa.core.istft(harmonic ** (1 / 2 * gamma) * phase, hop_length=hop_length, dtype=y.dtype), len(y))
-    print(p_out, h_out)
+    # print(p_out, h_out)
 
     return h_out, p_out
 
