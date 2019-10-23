@@ -1,8 +1,13 @@
 import pathlib
 import unittest
+
+import librosa
 import numpy as np
+import pandas as pd
 from builtins import NotImplementedError
 
+from config import SR
+from features import IntensitySplitterFeatureExtractor
 from pipelines import FeatureExtractionPipeline, SVDPipeline
 from tests.config import TEST_RAW_DATA_PATH, TEST_FEATURES_DATA_PATH
 
@@ -54,18 +59,25 @@ class TestSingingVoiceDetectionFeaturePipeline(_TestPipelineFeatureExtraction):
         self.assertEqual(len(self.pipeline.pipeline), 5)
 
     def test_execute(self):
+        clean = True
         self.assertEqual(len(self.pipeline.instanced_extractors), 0)
         self.pipeline.execute()
         self.assertGreater(len(self.pipeline.instanced_extractors), 0)
         self.assertEqual(len(self.pipeline.instanced_extractors), len(self.pipeline.pipeline))
 
         for extractor in self.pipeline.instanced_extractors:
+            if isinstance(extractor, IntensitySplitterFeatureExtractor):
+                continue
             self.assertGreater(len(extractor.new_labels), 0)
             extracted_data = np.asarray(extractor.new_labels)
             feature_filenames = extracted_data[:, 0]
             # feature_labels = extracted_data[:, 1]
             for filename in feature_filenames:
-                x_i = np.load(extractor.out_path / filename, allow_pickle=True)
+                if 'npy' in filename:
+                    x_i = np.load(extractor.out_path / filename, allow_pickle=True)
+                else:
+                    x_i = librosa.load(extractor.out_path / filename, sr=SR)
+
                 # self._test_feature_element(x_i)
             extracted_data = np.asarray(extractor.new_labels)
             feature_filenames = extracted_data[:, 0]

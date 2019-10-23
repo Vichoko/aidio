@@ -20,7 +20,7 @@ class TestFeatureExtractorInterface(unittest.TestCase):
         extractor = self.feature_extractor.from_label_file(
             label_path,
             out_path=TEST_FEATURES_DATA_PATH,
-            raw_path=TEST_RAW_DATA_PATH
+            source_path=TEST_RAW_DATA_PATH
         )
         return extractor
 
@@ -56,9 +56,9 @@ class TestFeatureExtractorInterface(unittest.TestCase):
         except Exception as e:
             self.fail(str(e))
 
-        # raw_path is the same as set
-        self.assertIsInstance(extractor.raw_path, pathlib.Path)
-        self.assertEqual(extractor.raw_path, TEST_RAW_DATA_PATH)
+        # source_path is the same as set
+        self.assertIsInstance(extractor.source_path, pathlib.Path)
+        self.assertEqual(extractor.source_path, TEST_RAW_DATA_PATH)
 
         # out_path is the same as set
         self.assertIsInstance(extractor.out_path, pathlib.Path)
@@ -70,7 +70,7 @@ class TestFeatureExtractorInterface(unittest.TestCase):
     def test_clean_references(self):
         """
         Checks that clean_references methods side-effects occurr as intended.
-        In this case, x and y should be checket that all filenames exist in raw_path,
+        In this case, x and y should be checket that all filenames exist in source_path,
         if don't that filename and label should be removed.
         :return:
         """
@@ -78,7 +78,7 @@ class TestFeatureExtractorInterface(unittest.TestCase):
         extractor = self.feature_extractor.from_label_file(
             label_file_path,
             out_path=TEST_FEATURES_DATA_PATH,
-            raw_path=TEST_RAW_DATA_PATH
+            source_path=TEST_RAW_DATA_PATH
         )
         # save previous x and y
         initial_filenames = [filename for filename in extractor.x]
@@ -303,7 +303,7 @@ class TestFeatureExtractorInterface(unittest.TestCase):
             self.assertEqual(len(extractor.new_labels), idx)
             y_i = extractor.y[idx]
 
-            wav_saved, _ = librosa.core.load(extractor.raw_path / x_i, sr=SR)
+            wav_saved, _ = librosa.core.load(extractor.source_path / x_i, sr=SR)
             self.feature_extractor.save_audio(
                 wav_saved,
                 extractor.feature_name,
@@ -392,7 +392,7 @@ class TestMFSCFeatureExtraction(_TestFeatureExtractor):
         extractor = MelSpectralCoefficientsFeatureExtractor.from_label_file(
             TEST_RAW_DATA_PATH / 'labels.csv',
             out_path=TEST_FEATURES_DATA_PATH,
-            raw_path=TEST_RAW_DATA_PATH
+            source_path=TEST_RAW_DATA_PATH
         )
         return extractor
 
@@ -407,7 +407,7 @@ class TestVoiceActivationFeatureExtraction(_TestFeatureExtractor):
         self.extractor_dep = DoubleHPSSFeatureExtractor.from_label_file(
             TEST_RAW_DATA_PATH / 'labels.csv',
             out_path=TEST_FEATURES_DATA_PATH,
-            raw_path=TEST_RAW_DATA_PATH
+            source_path=TEST_RAW_DATA_PATH
         )
         self.extractor_dep.transform()
 
@@ -418,7 +418,7 @@ class TestVoiceActivationFeatureExtraction(_TestFeatureExtractor):
         extractor = VoiceActivationFeatureExtractor.from_label_file(
             label_path,
             out_path=TEST_FEATURES_DATA_PATH,
-            raw_path=source_path
+            source_path=source_path
         )
         return extractor
 

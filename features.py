@@ -22,31 +22,34 @@ class FeatureExtractor:
     feature_name = 'UnnamedFeature'
     dependency_feature_name = ''
 
-    def __init__(self, x, y, out_path=FEATURES_DATA_PATH, raw_path=RAW_DATA_PATH):
+    def __init__(self, x, y, out_path=FEATURES_DATA_PATH, source_path=RAW_DATA_PATH, feature_path=FEATURES_DATA_PATH,
+                 raw_path=RAW_DATA_PATH):
         self.x = x
         self.y = y
         self.out_path = out_path / self.feature_name
-        makedirs(self.out_path)
+        self.feature_path = feature_path
         self.raw_path = raw_path
+        makedirs(self.out_path)
+        self.source_path = source_path
         self.new_labels = []
         self.trigger_dependency_warnings_if_needed()
         self.trigger_dependency_extraction_if_needed()
 
     def trigger_dependency_extraction_if_needed(self):
-
         if self.dependency_feature_name:
             dependency_extractor = AVAILABLE_FEATURES[self.dependency_feature_name]
             try:
-                df = pd.read_csv(self.raw_path / dependency_extractor.feature_name / dependency_extractor.get_label_file_name())
+                df = pd.read_csv(
+                    self.feature_path / dependency_extractor.feature_name / dependency_extractor.get_label_file_name())
                 return
             except Exception as e:
                 print(str(e))
                 print("didnt found dependency label file in {}".format(
-                    self.raw_path / dependency_extractor.feature_name / dependency_extractor._get_label_file_name()))
+                    self.feature_path / dependency_extractor.feature_name / dependency_extractor.get_label_file_name()))
                 exit(-1)
 
     @classmethod
-    def from_label_file(cls, label_file_path, out_path=FEATURES_DATA_PATH, raw_path=RAW_DATA_PATH):
+    def from_label_file(cls, label_file_path, out_path=FEATURES_DATA_PATH, source_path=RAW_DATA_PATH):
         """
         Initiate extractor from label file (csv) that contains
         filename and label columns.
@@ -57,10 +60,10 @@ class FeatureExtractor:
         df = pd.read_csv(label_file_path)
         filenames = df['filename']
         labels = df['label']
-        return cls(filenames, labels, out_path=out_path, raw_path=raw_path)
+        return cls(filenames, labels, out_path=out_path, source_path=source_path)
 
     @classmethod
-    def magic_init(cls, default_feature_path=FEATURES_DATA_PATH, default_raw_path=RAW_DATA_PATH,
+    def magic_init(cls, feature_path=FEATURES_DATA_PATH, raw_path=RAW_DATA_PATH,
                    default_raw_label_file_name='labels.csv'):
         """
         Initiate extractor deducting the paths by the extractor definition.
@@ -70,24 +73,29 @@ class FeatureExtractor:
         """
 
         from features import AVAILABLE_FEATURES
-        out_path = default_feature_path
+        out_path = feature_path
         if cls.dependency_feature_name:
+            # source path is in feature path
             dependency_extractor = AVAILABLE_FEATURES[cls.dependency_feature_name]
-            raw_path = default_feature_path
-            df = pd.read_csv(raw_path / dependency_extractor.feature_name / dependency_extractor.get_label_file_name())
+            source_path = feature_path / dependency_extractor.feature_name
+            label_file_name = dependency_extractor.get_label_file_name()
         else:
-            raw_path = default_raw_path
-            df = pd.read_csv(raw_path / default_raw_label_file_name)
+            # source path is raw data path
+            source_path = raw_path
+            label_file_name = default_raw_label_file_name
+        df = pd.read_csv(source_path / label_file_name)
         filenames = df['filename']
         labels = df['label']
-        return cls(filenames, labels, out_path=out_path, raw_path=raw_path)
+        return cls(filenames, labels, out_path=out_path, source_path=source_path, feature_path=feature_path,
+                   raw_path=raw_path)
 
     def remove_feature_files(self, feature_filenames=None):
         """
         Remove all files product from this extractor.
         :return:
         """
-        feature_filenames = feature_filenames or np.asarray(self.new_labels)[:, 0]
+        if feature_filenames is None:
+            feature_filenames = np.asarray(self.new_labels)[:, 0]
         [os.remove(self.out_path / filename) for filename in feature_filenames]
         os.remove(self.out_path / 'labels.{}.csv'.format(self.feature_name))
 
@@ -104,9 +112,10 @@ class FeatureExtractor:
                         was triggered in this method. A warning is printed when this flag is True.
         """
         input_path_warning_flag = True \
-            if (self.dependency_feature_name and self.raw_path != (FEATURES_DATA_PATH / self.dependency_feature_name)) \
+            if (self.dependency_feature_name and self.source_path != (
+                    FEATURES_DATA_PATH / self.dependency_feature_name)) \
                or \
-               (not self.dependency_feature_name and self.raw_path != RAW_DATA_PATH) else False
+               (not self.dependency_feature_name and self.source_path != RAW_DATA_PATH) else False
         filename_format_warning_flag = True \
             if (self.dependency_feature_name and '.{}.npy'.format(self.dependency_feature_name) not in self.x[0]) \
                or \
@@ -122,7 +131,7 @@ class FeatureExtractor:
                 because it need {} feature as source, receeived {} instead.""".format(self.feature_name,
                                                                                       self.dependency_feature_name,
                                                                                       self.dependency_feature_name,
-                                                                                      self.raw_path))
+                                                                                      self.source_path))
             if filename_format_warning_flag:
                 print("""warning:
                 {} Feature source filenames are commonly formatted like <name>.{}.npy, received {} instead
@@ -134,7 +143,7 @@ class FeatureExtractor:
             # """
             if input_path_warning_flag:
                 print('warning: this FeatureExtractor has a modified self.raw_path ({}), '
-                      'but self.dependency_feature_name wasn\'t set. '.format(self.raw_path))
+                      'but self.dependency_feature_name wasn\'t set. '.format(self.source_path))
                 print('If this path doesn\t contain any audio files, '
                       'this extractor will probably fail.'
                       'Prefer to set RAW_DATA_PATH for using audio files.') if filename_format_warning_flag else None
@@ -155,7 +164,7 @@ class FeatureExtractor:
         new_x = []
         new_y = []
         for i, x_i in enumerate(self.x):
-            if os.path.exists(self.raw_path / x_i):
+            if os.path.exists(self.source_path / x_i):
                 y_i = self.y[i]
                 new_x.append(x_i)
                 new_y.append(y_i)
@@ -163,7 +172,7 @@ class FeatureExtractor:
         self.y = new_y
 
     @staticmethod
-    def process_element(feature_name, new_labels, out_path, raw_path, **kwargs):
+    def process_element(feature_name, new_labels, out_path, source_path, raw_path, **kwargs):
         def __process_element(data):
             """
             :param x: filename (str)
@@ -184,7 +193,7 @@ class FeatureExtractor:
         return __process_element
 
     @staticmethod
-    def proccess_elements(feature_name, new_labels, out_path, raw_path, fun=None, **kwargs):
+    def process_elements(feature_name, new_labels, out_path, source_path, raw_path, fun=None, **kwargs):
         def __process_elements(data):
             for data_element in data:
                 fun(data_element)
@@ -203,7 +212,9 @@ class FeatureExtractor:
             feature_name=self.feature_name,
             new_labels=self.new_labels,
             out_path=self.out_path,
-            raw_path=self.raw_path, **kwargs)
+            source_path=self.source_path,
+            raw_path=self.raw_path,
+            **kwargs)
         with concurrent.futures.ThreadPoolExecutor(max_workers=CPU_WORKERS) as executor:
             iterator = executor.map(process_element, data)
         list(iterator)
@@ -222,11 +233,14 @@ class FeatureExtractor:
             feature_name=self.feature_name,
             new_labels=self.new_labels,
             out_path=self.out_path,
-            raw_path=self.raw_path, **kwargs)
-        process_elements = self.proccess_elements(
+            source_path=self.source_path,
+            raw_path=self.raw_path,
+            **kwargs)
+        process_elements = self.process_elements(
             feature_name=self.feature_name,
             new_labels=self.new_labels,
             out_path=self.out_path,
+            source_path=self.source_path,
             raw_path=self.raw_path,
             fun=process_element, **kwargs)
         process_elements(data)
@@ -253,6 +267,10 @@ class FeatureExtractor:
         return self.out_path / self.get_label_file_name()
 
     def export_new_labels(self):
+        if not self.new_labels:
+            # if new_labels is empty, then transform did nothing
+            print('warning: {} did not process any data'.format(self))
+            return
         df = pd.DataFrame(np.asarray(self.new_labels))
         df.columns = ['filename', 'label']
         df.to_csv(self.get_label_file_path(), index=False)
@@ -312,7 +330,7 @@ class MelSpectralCoefficientsFeatureExtractor(FeatureExtractor):
     feature_name = 'spec'
 
     @staticmethod
-    def process_element(feature_name, new_labels, out_path, raw_path, **kwargs):
+    def process_element(feature_name, new_labels, out_path, source_path, **kwargs):
         def __process_element(data):
             """
             :param x: filename (str)
@@ -322,7 +340,7 @@ class MelSpectralCoefficientsFeatureExtractor(FeatureExtractor):
             print('prosessing {}'.format(data))
             x = data[0]
             y = data[1]
-            wav, _ = librosa.load(raw_path / x, sr=SR)
+            wav, _ = librosa.load(source_path / x, sr=SR)
             # Normalize audio signal
             wav = librosa.util.normalize(wav)
             # Get Mel-Spectrogram
@@ -341,7 +359,7 @@ class WindowedMelSpectralCoefficientsFeatureExtractor(FeatureExtractor):
     feature_name = 'windowed_spec'
 
     @staticmethod
-    def process_element(feature_name, new_labels, out_path, raw_path, **kwargs):
+    def process_element(feature_name, new_labels, out_path, source_path, **kwargs):
         def __process_element(data):
             """
             :param x: filename (str)
@@ -355,7 +373,7 @@ class WindowedMelSpectralCoefficientsFeatureExtractor(FeatureExtractor):
             # params
 
             # get song and split
-            wav, _ = librosa.load(raw_path / x, sr=SR)
+            wav, _ = librosa.load(source_path / x, sr=SR)
             intervals = librosa.effects.split(
                 # todo: split this extractor in two. One for this split, other for the windows
                 wav,
@@ -398,18 +416,19 @@ class DoubleHPSSFeatureExtractor(FeatureExtractor):
     feature_name = '2hpss'
 
     @staticmethod
-    def process_element(feature_name, new_labels, out_path, raw_path, **kwargs):
+    def process_element(feature_name, new_labels, out_path, source_path, **kwargs):
         """
         Wrapper for actual function __process_elements(data)
         :param feature_name:
         :param new_labels:
         :param out_path:
-        :param raw_path:
+        :param source_path:
         :param fun:
         :param model_name:
         :param kwargs:
         :return:
         """
+
         def __process_element(data):
             """
             Compute double stage HPSS for the given audio file
@@ -430,7 +449,7 @@ class DoubleHPSSFeatureExtractor(FeatureExtractor):
                 new_labels.append([file_name, y_i])
             except FileNotFoundError or OSError or EOFError:
                 # OSError and EOFError are raised if file are inconsistent
-                audio_src, _ = librosa.load(raw_path / x_i, sr=SR_HPSS)
+                audio_src, _ = librosa.load(source_path / x_i, sr=SR_HPSS)
                 # Normalize audio signal
                 audio_src = librosa.util.normalize(audio_src)
                 # first HPSS
@@ -496,19 +515,21 @@ class VoiceActivationFeatureExtractor(FeatureExtractor):
         return np.asarray(VoiceActivationFeatureExtractor.frame_level_predict(input, number_of_mel_samples))
 
     @staticmethod
-    def proccess_elements(feature_name, new_labels, out_path, raw_path, fun=None, model_name=VOICE_DETECTION_MODEL_NAME,
-                          **kwargs):
+    def process_elements(feature_name, new_labels, out_path, source_path, fun=None,
+                         model_name=VOICE_DETECTION_MODEL_NAME,
+                         **kwargs):
         """
         Wrapper for actual function __process_elements(data)
         :param feature_name:
         :param new_labels:
         :param out_path:
-        :param raw_path:
+        :param source_path:
         :param fun:
         :param model_name:
         :param kwargs:
         :return:
         """
+
         def __process_elements(data):
             """
             :param data: shape (#_songs, 2) the axis 1 corresponds to the filename/label pair
@@ -544,7 +565,7 @@ class VoiceActivationFeatureExtractor(FeatureExtractor):
                     new_labels.append([file_name, y_i])
                 except FileNotFoundError or OSError or EOFError:
                     # OSError and EOFError are raised if file are inconsistent
-                    hpss = np.load(raw_path / x_i)  # _data, #_coefs, #_samples)
+                    hpss = np.load(source_path / x_i)  # _data, #_coefs, #_samples)
                     padding = RNN_INPUT_SIZE_VOICE_ACTIVATION - hpss.shape[1]
                     if padding > 0:
                         # if hpss is shorter that RNN input shape, then add padding on axis=1
@@ -580,7 +601,7 @@ class MeanSVDFeatureExtractor(FeatureExtractor):
     dependency_feature_name = VoiceActivationFeatureExtractor.feature_name
 
     @staticmethod
-    def process_element(feature_name, new_labels, out_path, raw_path, **kwargs):
+    def process_element(feature_name, new_labels, out_path, source_path, **kwargs):
         def __process_element(data):
             """
             Flatten overlapped prediction by Leglaive SVD prediction by calculating mean for every frame.
@@ -597,10 +618,11 @@ class MeanSVDFeatureExtractor(FeatureExtractor):
                 new_labels.append([file_name, y_i])
             except FileNotFoundError or OSError or EOFError:
                 # OSError and EOFError are raised if file are inconsistent
-                voice_activation = np.load(raw_path / x_i, allow_pickle=True)
+                voice_activation = np.load(source_path / x_i, allow_pickle=True)
                 mean_voice_activation = np.asarray([np.mean(elem) for elem in voice_activation[
                     1]])  # calculate mean for each frame predictions (~218 per frame)
-                mean_voice_activation = np.nan_to_num(mean_voice_activation)  # remove NaNs product of mean of empty frame
+                mean_voice_activation = np.nan_to_num(
+                    mean_voice_activation)  # remove NaNs product of mean of empty frame
                 # this is kind-of standard
                 FeatureExtractor.save_feature([voice_activation[0], mean_voice_activation], feature_name, out_path, x_i,
                                               y_i, new_labels)
@@ -613,7 +635,7 @@ class SVDPonderatedVolumeFeatureExtractor(FeatureExtractor):
     dependency_feature_name = MeanSVDFeatureExtractor.feature_name
 
     @staticmethod
-    def process_element(feature_name, new_labels, out_path, raw_path, **kwargs):
+    def process_element(feature_name, new_labels, out_path, source_path, raw_path, **kwargs):
         def __process_element(data):
             """
 
@@ -625,14 +647,14 @@ class SVDPonderatedVolumeFeatureExtractor(FeatureExtractor):
             file_name = FeatureExtractor.get_file_name(x_i, feature_name, 'wav')
             try:
                 # try to load if file already exist
-                np.load(out_path / file_name, allow_pickle=True)
+                librosa.load(out_path / file_name, sr=SR)
                 print('info: {} loaded from .npy !'.format(file_name))
                 new_labels.append([file_name, y_i])
             except FileNotFoundError or OSError or EOFError:
                 # OSError and EOFError are raised if file are inconsistent
-                mean_voice_activation = np.load(raw_path / x_i, allow_pickle=True)
+                mean_voice_activation = np.load(source_path / x_i, allow_pickle=True)
                 audio_src, _ = librosa.load(
-                    RAW_DATA_PATH / '{}.mp3'.format(x_i.split('.{}'.format(DoubleHPSSFeatureExtractor.feature_name))[0]),
+                    raw_path / '{}.mp3'.format(x_i.split('.{}'.format(DoubleHPSSFeatureExtractor.feature_name))[0]),
                     sr=SR)  # todo: support other formats
 
                 time = mean_voice_activation[0]
@@ -654,7 +676,7 @@ class IntensitySplitterFeatureExtractor(FeatureExtractor):
     feature_name = 'intensity_split'
 
     @staticmethod
-    def process_element(feature_name, new_labels, out_path, raw_path, **kwargs):
+    def process_element(feature_name, new_labels, out_path, source_path, **kwargs):
         def __process_element(data):
             """
             :param x: filename (str)
@@ -668,7 +690,7 @@ class IntensitySplitterFeatureExtractor(FeatureExtractor):
             # params
 
             # get song and split
-            wav, _ = librosa.load(raw_path / x, sr=SR)
+            wav, _ = librosa.load(source_path / x, sr=SR)
             intervals = librosa.effects.split(
                 # todo: split this extractor in two. One for this split, other for the windows
                 wav,

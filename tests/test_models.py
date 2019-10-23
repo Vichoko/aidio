@@ -18,7 +18,7 @@ class TestResnetModel(unittest.TestCase):
         cls.extractor = MelSpectralCoefficientsFeatureExtractor.from_label_file(
             TEST_RAW_DATA_PATH / 'labels.csv',
             out_path=TEST_FEATURES_DATA_PATH,
-            raw_path=TEST_RAW_DATA_PATH
+            source_path=TEST_RAW_DATA_PATH
         )
         extractor = cls.extractor
         cls.assertEqual(len(extractor.new_labels), 0)
@@ -100,7 +100,7 @@ class TestSimpleConvModel(unittest.TestCase):
         cls.extractor = MelSpectralCoefficientsFeatureExtractor.from_label_file(
             TEST_RAW_DATA_PATH / 'labels.csv',
             out_path=TEST_FEATURES_DATA_PATH,
-            raw_path=TEST_RAW_DATA_PATH
+            source_path=TEST_RAW_DATA_PATH
         )
         extractor = cls.extractor
         cls.assertEqual(len(extractor.new_labels), 0)
