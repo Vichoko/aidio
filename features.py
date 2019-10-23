@@ -65,7 +65,7 @@ class FeatureExtractor:
 
     @classmethod
     def magic_init(cls, feature_path=FEATURES_DATA_PATH, raw_path=RAW_DATA_PATH,
-                   default_raw_label_file_name='labels.csv'):
+                   raw_label_filename='labels.csv'):
         """
         Initiate extractor deducting the paths by the extractor definition.
 
@@ -80,14 +80,15 @@ class FeatureExtractor:
             dependency_extractor = AVAILABLE_FEATURES[cls.dependency_feature_name]
             source_path = feature_path / dependency_extractor.feature_name
             label_file_name = dependency_extractor.get_label_file_name()
-            print('info: read metadata from dependency path {}'.format(label_path))
         else:
             # source path is raw data path
             source_path = raw_path
-            label_file_name = default_raw_label_file_name
-            print('info: read metadata from raw path {}'.format(label_path))
+            label_file_name = raw_label_filename
+
+        label_path = source_path / label_file_name
+        print('info: read metadata from {}'.format(label_path))
         print('info: init extractor from {} to {}'.format(source_path, out_path))
-        df = pd.read_csv(source_path / label_file_name)
+        df = pd.read_csv(label_path)
         filenames = df['filename']
         labels = df['label']
         print('info: got filenames {}'.format(filenames))
@@ -571,19 +572,9 @@ class VoiceActivationFeatureExtractor(FeatureExtractor):
                     new_labels.append([file_name, y_i])
                 except FileNotFoundError or OSError or EOFError:
                     # OSError and EOFError are raised if file are inconsistent
-                    hpss = np.load(source_path / x_i)  # _data, #_coefs, #_samples)
-                    padding = RNN_INPUT_SIZE_VOICE_ACTIVATION - hpss.shape[1]
-                    if padding > 0:
-                        # if hpss is shorter that RNN input shape, then add padding on axis=1
-                        hpss = np.pad(hpss, ((0, 0), (0, padding)), mode='constant')
-                    number_of_mel_samples = hpss.shape[1]
-                    # at least should have 1 window
-                    number_of_steps = max(number_of_mel_samples - RNN_INPUT_SIZE_VOICE_ACTIVATION, 1)
-                    total_x = np.array([hpss[:, i: i + RNN_INPUT_SIZE_VOICE_ACTIVATION]
-                                        for i in range(0, number_of_steps, 1)])
                     # final_shape: (#_hops, #_mel_filters, #_window)
                     print('info: loading hpss data for {}'.format(x_i))
-                    hpss = np.load(raw_path / x_i)  # _data, #_coefs, #_samples)
+                    hpss = np.load(source_path / x_i)  # _data, #_coefs, #_samples)
                     print('info: formatting data')
                     try:
                         padding = RNN_INPUT_SIZE_VOICE_ACTIVATION - hpss.shape[1]
@@ -743,18 +734,18 @@ AVAILABLE_FEATURES = {MelSpectralCoefficientsFeatureExtractor.feature_name: MelS
                       SVDPonderatedVolumeFeatureExtractor.feature_name: SVDPonderatedVolumeFeatureExtractor}
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Extract features from a data folder to another')
-    parser.add_argument('--source_path', help='Source path where data files is stored', default=RAW_DATA_PATH)
-    parser.add_argument('--out_path', help='Output path where exported data will be placed', default=FEATURES_DATA_PATH)
-    parser.add_argument('--label_filename', help='Source path where label file is stored', default='labels.csv')
+    parser.add_argument('--raw_path', help='Source path where audio data files are stored', default=RAW_DATA_PATH)
+    parser.add_argument('--features_path', help='Output path where exported data will be placed', default=FEATURES_DATA_PATH)
+    # parser.add_argument('--label_filename', help='Source path where label file is stored', default='labels.csv')
     parser.add_argument('--feature', help='name of the feature to be extracted (options: mfsc, leglaive)',
                         default='windowed_spec')
 
     args = parser.parse_args()
-    source_path = pathlib.Path(args.source_path)
-    out_path = pathlib.Path(args.out_path)
-    label_path = source_path / args.label_filename
+    raw_path = pathlib.Path(args.raw_path)
+    features_path = pathlib.Path(args.features_path)
+    # label_path = raw_path / args.label_filename
     feature_name = args.feature
-    print('info: from {} to {}'.format(source_path, out_path))
+    print('info: from {} to {}'.format(raw_path, features_path))
     extractor = AVAILABLE_FEATURES[feature_name]
-    extractor = extractor.magic_init(feature_path=out_path, raw_path=source_path)
+    extractor = extractor.magic_init(feature_path=features_path, raw_path=raw_path)
     extractor.transform()
