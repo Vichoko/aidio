@@ -34,6 +34,7 @@ class FeatureExtractor:
         self.new_labels = []
         self.trigger_dependency_warnings_if_needed()
         self.trigger_dependency_extraction_if_needed()
+        print('info: extractor initialized with following data {}'.format(self.x))
 
     def trigger_dependency_extraction_if_needed(self):
         if self.dependency_feature_name:
@@ -79,13 +80,17 @@ class FeatureExtractor:
             dependency_extractor = AVAILABLE_FEATURES[cls.dependency_feature_name]
             source_path = feature_path / dependency_extractor.feature_name
             label_file_name = dependency_extractor.get_label_file_name()
+            print('info: read metadata from dependency path {}'.format(label_path))
         else:
             # source path is raw data path
             source_path = raw_path
             label_file_name = default_raw_label_file_name
+            print('info: read metadata from raw path {}'.format(label_path))
+        print('info: init extractor from {} to {}'.format(source_path, out_path))
         df = pd.read_csv(source_path / label_file_name)
         filenames = df['filename']
         labels = df['label']
+        print('info: got filenames {}'.format(filenames))
         return cls(filenames, labels, out_path=out_path, source_path=source_path, feature_path=feature_path,
                    raw_path=raw_path)
 
@@ -229,6 +234,8 @@ class FeatureExtractor:
         """
         self.clean_references()
         data = np.asarray([self.x, self.y]).swapaxes(0, 1)
+        print('info: starting sequential transform on data {}'.format(data))
+        print('from {} to {}'.format(self.source_path, self.out_path))
         process_element = self.process_element(
             feature_name=self.feature_name,
             new_labels=self.new_labels,
@@ -244,6 +251,7 @@ class FeatureExtractor:
             raw_path=self.raw_path,
             fun=process_element, **kwargs)
         process_elements(data)
+        print('info: finished sequential transform, new labels are {}'.format(self.new_labels))
         self.export_new_labels()
         return np.asarray(self.new_labels)
 
@@ -428,7 +436,6 @@ class DoubleHPSSFeatureExtractor(FeatureExtractor):
         :param kwargs:
         :return:
         """
-
         def __process_element(data):
             """
             Compute double stage HPSS for the given audio file
@@ -467,7 +474,6 @@ class DoubleHPSSFeatureExtractor(FeatureExtractor):
                 FeatureExtractor.save_feature(mel_total, feature_name, out_path, x_i, y_i, new_labels)
 
         return __process_element
-
 
 class VoiceActivationFeatureExtractor(FeatureExtractor):
     feature_name = 'voice_activation'
@@ -529,7 +535,6 @@ class VoiceActivationFeatureExtractor(FeatureExtractor):
         :param kwargs:
         :return:
         """
-
         def __process_elements(data):
             """
             :param data: shape (#_songs, 2) the axis 1 corresponds to the filename/label pair
@@ -537,6 +542,7 @@ class VoiceActivationFeatureExtractor(FeatureExtractor):
             """
             x = data[:, 0]
             y = data[:, 1]
+            print('loaded metadata in {}'.format(data))
 
             from keras.models import load_model
             from keras import backend
@@ -576,17 +582,35 @@ class VoiceActivationFeatureExtractor(FeatureExtractor):
                     total_x = np.array([hpss[:, i: i + RNN_INPUT_SIZE_VOICE_ACTIVATION]
                                         for i in range(0, number_of_steps, 1)])
                     # final_shape: (#_hops, #_mel_filters, #_window)
+                    print('info: loading hpss data for {}'.format(x_i))
+                    hpss = np.load(raw_path / x_i)  # _data, #_coefs, #_samples)
+                    print('info: formatting data')
+                    try:
+                        padding = RNN_INPUT_SIZE_VOICE_ACTIVATION - hpss.shape[1]
+                        if padding > 0:
+                            # if hpss is shorter that RNN input shape, then add padding on axis=1
+                            hpss = np.pad(hpss, ((0, 0), (0, padding)), mode='constant')
+                        number_of_mel_samples = hpss.shape[1]
+                        # at least should have 1 window
+                        number_of_steps = max(number_of_mel_samples - RNN_INPUT_SIZE_VOICE_ACTIVATION, 1)
+                        total_x = np.array([hpss[:, i: i + RNN_INPUT_SIZE_VOICE_ACTIVATION]
+                                            for i in range(0, number_of_steps, 1)])
+                        # final_shape: (#_hops, #_mel_filters, #_window)
 
-                    total_x_norm = (total_x - mean) / std
-                    total_x_norm = np.swapaxes(total_x_norm, 1, 2)
-                    # final_shape: (#_hops, #_window, #_mel_filters)
+                        total_x_norm = (total_x - mean) / std
+                        total_x_norm = np.swapaxes(total_x_norm, 1, 2)
+                        # final_shape: (#_hops, #_window, #_mel_filters)
 
-                    x_test = total_x_norm
-                    y_pred = loaded_model.predict(x_test, verbose=1)  # Shape=(total_frames,)
-                    time, aligned_y_pred = VoiceActivationFeatureExtractor.post_process(y_pred, number_of_mel_samples)
-                    print('info: predicted!')
-                    result_array = np.asarray([time, aligned_y_pred])
-                    FeatureExtractor.save_feature(result_array, feature_name, out_path, x_i, y_i, new_labels)
+                        x_test = total_x_norm
+                        print('info: predicting')
+                        y_pred = loaded_model.predict(x_test, verbose=1)  # Shape=(total_frames,)
+                        time, aligned_y_pred = VoiceActivationFeatureExtractor.post_process(y_pred, number_of_mel_samples)
+                        print('info: predicted!')
+                        result_array = np.asarray([time, aligned_y_pred])
+                        FeatureExtractor.save_feature(result_array, feature_name, out_path, x_i, y_i, new_labels)
+                    except MemoryError as e:
+                        print('error: memory error while proccessing {}. Ignoring...'.format(x_i))
+                        print(e)
 
         return __process_elements
 
@@ -730,8 +754,7 @@ if __name__ == '__main__':
     out_path = pathlib.Path(args.out_path)
     label_path = source_path / args.label_filename
     feature_name = args.feature
-
     print('info: from {} to {}'.format(source_path, out_path))
     extractor = AVAILABLE_FEATURES[feature_name]
-    extractor = extractor.magic_init()
+    extractor = extractor.magic_init(feature_path=out_path, raw_path=source_path)
     extractor.transform()
