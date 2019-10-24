@@ -214,6 +214,8 @@ class FeatureExtractor:
         """
         self.clean_references()
         data = np.asarray([self.x, self.y]).swapaxes(0, 1)
+
+        # define per-item callable to be processed
         process_element = self.process_element(
             feature_name=self.feature_name,
             new_labels=self.new_labels,
@@ -221,10 +223,12 @@ class FeatureExtractor:
             source_path=self.source_path,
             raw_path=self.raw_path,
             **kwargs)
-        with concurrent.futures.ThreadPoolExecutor(max_workers=CPU_WORKERS) as executor:
-            iterator = executor.map(process_element, data)
-        list(iterator)
-        self.export_new_labels()
+        try:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=CPU_WORKERS) as executor:
+                iterator = executor.map(process_element, data)
+            list(iterator)
+        finally:
+            self.export_new_labels()
         return np.asarray(self.new_labels)
 
     def _sequential_transform(self, **kwargs):
@@ -237,6 +241,7 @@ class FeatureExtractor:
         data = np.asarray([self.x, self.y]).swapaxes(0, 1)
         print('info: starting sequential transform on data {}'.format(data))
         print('from {} to {}'.format(self.source_path, self.out_path))
+        # define per-item callable to be processed
         process_element = self.process_element(
             feature_name=self.feature_name,
             new_labels=self.new_labels,
@@ -244,6 +249,7 @@ class FeatureExtractor:
             source_path=self.source_path,
             raw_path=self.raw_path,
             **kwargs)
+        # define collection callable to process whole data
         process_elements = self.process_elements(
             feature_name=self.feature_name,
             new_labels=self.new_labels,
@@ -251,9 +257,11 @@ class FeatureExtractor:
             source_path=self.source_path,
             raw_path=self.raw_path,
             fun=process_element, **kwargs)
-        process_elements(data)
-        print('info: finished sequential transform, new labels are {}'.format(self.new_labels))
-        self.export_new_labels()
+        try:
+            process_elements(data)
+            print('info: finished sequential transform, new labels are {}'.format(self.new_labels))
+        finally:
+            self.export_new_labels()
         return np.asarray(self.new_labels)
 
     def transform(self, parallel=True, **kwargs):
@@ -280,6 +288,7 @@ class FeatureExtractor:
             # if new_labels is empty, then transform did nothing
             print('warning: {} did not process any data'.format(self))
             return
+        print('info: exporting processed meta-data to label file in {}'.format(self.get_label_file_path()))
         df = pd.DataFrame(np.asarray(self.new_labels))
         df.columns = ['filename', 'label']
         df.to_csv(self.get_label_file_path(), index=False)
