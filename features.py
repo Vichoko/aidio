@@ -751,7 +751,8 @@ AVAILABLE_FEATURES = {MelSpectralCoefficientsFeatureExtractor.feature_name: MelS
                       DoubleHPSSFeatureExtractor.feature_name: DoubleHPSSFeatureExtractor,
                       VoiceActivationFeatureExtractor.feature_name: VoiceActivationFeatureExtractor,
                       MeanSVDFeatureExtractor.feature_name: MeanSVDFeatureExtractor,
-                      SVDPonderatedVolumeFeatureExtractor.feature_name: SVDPonderatedVolumeFeatureExtractor}
+                      SVDPonderatedVolumeFeatureExtractor.feature_name: SVDPonderatedVolumeFeatureExtractor,
+                      IntensitySplitterFeatureExtractor.feature_name: IntensitySplitterFeatureExtractor}
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Extract features from a data folder to another')
     parser.add_argument('--raw_path', help='Source path where audio data files are stored', default=RAW_DATA_PATH)
