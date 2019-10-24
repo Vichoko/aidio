@@ -709,6 +709,7 @@ class SVDPonderatedVolumeFeatureExtractor(FeatureExtractor):
 
 class IntensitySplitterFeatureExtractor(FeatureExtractor):
     feature_name = 'intensity_split'
+    dependency_feature_name = SVDPonderatedVolumeFeatureExtractor.feature_name
 
     @staticmethod
     def process_element(feature_name, new_labels, out_path, source_path, **kwargs):
