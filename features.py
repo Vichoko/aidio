@@ -227,7 +227,10 @@ class FeatureExtractor:
             with concurrent.futures.ThreadPoolExecutor(max_workers=CPU_WORKERS) as executor:
                 iterator = executor.map(process_element, data)
             list(iterator)
+        except KeyboardInterrupt:
+            print('KeyboardInterrupt catched')
         finally:
+            print('info: exporting extraction meta-data')
             self.export_new_labels()
         return np.asarray(self.new_labels)
 
@@ -260,7 +263,10 @@ class FeatureExtractor:
         try:
             process_elements(data)
             print('info: finished sequential transform, new labels are {}'.format(self.new_labels))
+        except KeyboardInterrupt:
+            print('KeyboardInterrupt catched')
         finally:
+            print('info: exporting extraction meta-data')
             self.export_new_labels()
         return np.asarray(self.new_labels)
 
