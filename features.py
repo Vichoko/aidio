@@ -265,6 +265,9 @@ class FeatureExtractor:
             print('info: finished sequential transform, new labels are {}'.format(self.new_labels))
         except KeyboardInterrupt:
             print('KeyboardInterrupt catched')
+        except Exception as e:
+            print(e)
+            print('warning: un-catched exception')
         finally:
             print('info: exporting extraction meta-data')
             self.export_new_labels()
