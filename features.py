@@ -121,7 +121,7 @@ class FeatureExtractor:
         """
         input_path_warning_flag = True \
             if (self.dependency_feature_name and self.source_path != (
-                    FEATURES_DATA_PATH / self.dependency_feature_name)) \
+                FEATURES_DATA_PATH / self.dependency_feature_name)) \
                or \
                (not self.dependency_feature_name and self.source_path != RAW_DATA_PATH) else False
         filename_format_warning_flag = True \
@@ -457,6 +457,7 @@ class DoubleHPSSFeatureExtractor(FeatureExtractor):
         :param kwargs:
         :return:
         """
+
         def __process_element(data):
             """
             Compute double stage HPSS for the given audio file
@@ -495,6 +496,7 @@ class DoubleHPSSFeatureExtractor(FeatureExtractor):
                 FeatureExtractor.save_feature(mel_total, feature_name, out_path, x_i, y_i, new_labels)
 
         return __process_element
+
 
 class VoiceActivationFeatureExtractor(FeatureExtractor):
     feature_name = 'voice_activation'
@@ -556,6 +558,7 @@ class VoiceActivationFeatureExtractor(FeatureExtractor):
         :param kwargs:
         :return:
         """
+
         def __process_elements(data):
             """
             :param data: shape (#_songs, 2) the axis 1 corresponds to the filename/label pair
@@ -615,7 +618,8 @@ class VoiceActivationFeatureExtractor(FeatureExtractor):
                         x_test = total_x_norm
                         print('info: predicting')
                         y_pred = loaded_model.predict(x_test, verbose=1)  # Shape=(total_frames,)
-                        time, aligned_y_pred = VoiceActivationFeatureExtractor.post_process(y_pred, number_of_mel_samples)
+                        time, aligned_y_pred = VoiceActivationFeatureExtractor.post_process(y_pred,
+                                                                                            number_of_mel_samples)
                         print('info: predicted!')
                         result_array = np.asarray([time, aligned_y_pred])
                         FeatureExtractor.save_feature(result_array, feature_name, out_path, x_i, y_i, new_labels)
@@ -737,7 +741,11 @@ class IntensitySplitterFeatureExtractor(FeatureExtractor):
                 if interval[1] - interval[0] < MIN_INTERVAL_LEN_WINDOWED_MFCC:
                     # if length is lesser that 1 second, discard interval
                     continue
-                FeatureExtractor.save_audio(wav[interval[0]:interval[1]], feature_name, out_path, x, y, new_labels)
+
+                filename = FeatureExtractor.get_file_name(x, feature_name,
+                                                          ext='{}.wav'.format(interval_idx))
+                FeatureExtractor.save_audio(wav[interval[0]:interval[1]], feature_name, out_path, x, y, new_labels,
+                                            filename=filename)
 
         return __process_element
 
@@ -757,7 +765,8 @@ AVAILABLE_FEATURES = {MelSpectralCoefficientsFeatureExtractor.feature_name: MelS
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Extract features from a data folder to another')
     parser.add_argument('--raw_path', help='Source path where audio data files are stored', default=RAW_DATA_PATH)
-    parser.add_argument('--features_path', help='Output path where exported data will be placed', default=FEATURES_DATA_PATH)
+    parser.add_argument('--features_path', help='Output path where exported data will be placed',
+                        default=FEATURES_DATA_PATH)
     # parser.add_argument('--label_filename', help='Source path where label file is stored', default='labels.csv')
     parser.add_argument('--feature', help='name of the feature to be extracted (options: mfsc, leglaive)',
                         default='windowed_spec')
