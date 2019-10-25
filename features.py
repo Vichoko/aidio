@@ -9,13 +9,14 @@ from math import ceil
 import librosa
 import numpy as np
 import pandas as pd
-from librosa import frames_to_time
+from librosa import frames_to_time, stft, magphase
+from librosa.core import istft
 
 from config import SR, RAW_DATA_PATH, FEATURES_DATA_PATH, HOP_LENGTH, N_FFT, N_MELS, FMIN, FMAX, POWER, \
     VOICE_DETECTION_MODEL_NAME, N_FFT_HPSS_1, N_HOP_HPSS_1, N_FFT_HPSS_2, N_HOP_HPSS_2, SR_HPSS, \
     N_MELS_HPSS, MODELS_DATA_PATH, RNN_INPUT_SIZE_VOICE_ACTIVATION, TOP_DB_WINDOWED_MFCC, \
     MIN_INTERVAL_LEN_WINDOWED_MFCC, WINDOW_LEN_WINDOWED_MFCC, WINDOW_HOP_WINDOWED_MFCC, makedirs, AVAIL_MEDIA_TYPES, \
-    CPU_WORKERS
+    CPU_WORKERS, MAGPHASE_WINDOW_SIZE, MAGPHASE_HOP_LENGTH, MAGPHASE_SAMPLE_RATE, MAGPHASE_PATCH_SIZE
 from util.leglaive.audio import ono_hpss, log_melgram
 
 
@@ -337,7 +338,7 @@ class FeatureExtractor:
         return filename
 
     @staticmethod
-    def save_audio(ndarray, feature_name, out_path, x, y, new_labels, filename=None):
+    def save_audio(ndarray, feature_name, out_path, x, y, new_labels, filename=None, sr=SR):
         """
         Save any numpy object in Feature File System.
         :param ndarray:
@@ -349,7 +350,7 @@ class FeatureExtractor:
         """
         # this is kind-of standard
         filename = filename or FeatureExtractor.get_file_name(x, feature_name, 'wav')
-        librosa.output.write_wav(out_path / filename, ndarray, sr=SR, norm=True)
+        librosa.output.write_wav(out_path / filename, ndarray, sr=sr, norm=True)
         new_labels.append([filename, y])
         print('info: {} transformed and saved!'.format(filename))
         return filename
@@ -755,13 +756,218 @@ class IntensitySplitterFeatureExtractor(FeatureExtractor):
     #     return super().transform(parallel, **kwargs)
 
 
+# Vocal Separation Pipeline
+class MagPhaseFeatureExtractor(FeatureExtractor):
+    feature_name = 'mag_phase'
+
+    @staticmethod
+    def process_element(feature_name, new_labels, out_path, source_path, **kwargs):
+        """
+        Wrapper for actual function __process_elements(data)
+        :param feature_name:
+        :param new_labels:
+        :param out_path:
+        :param source_path:
+        :param fun:
+        :param model_name:
+        :param kwargs:
+        :return:
+        """
+
+        def __process_element(data):
+            """
+            Compute double stage HPSS for the given audio file
+            extracted from https://github.com/kyungyunlee/ismir2018-revisiting-svd/blob/master/leglaive_lstm/audio_processor.py
+            :param x: filename (str)
+            :param y: label (str)
+            :return: mel_D2_total : concatenated melspectrogram of percussive, harmonic components of double stage HPSS. Shape=(2 * n_bins, total_frames) ex. (80, 2004)
+            """
+            print('processing {}'.format(data))
+            x_i = data[0]
+            y_i = data[1]
+
+            file_name = FeatureExtractor.get_file_name(x_i, feature_name)
+            try:
+                # try to load if file already exist
+                np.load(out_path / file_name, allow_pickle=True)
+                print('info: {} loaded from .npy !'.format(file_name))
+                new_labels.append([file_name, y_i])
+            except FileNotFoundError or OSError or EOFError:
+                # OSError and EOFError are raised if file are inconsistent
+                audio_src, _ = librosa.load(source_path / x_i, sr=MAGPHASE_SAMPLE_RATE)
+
+                mix_wav_mag, mix_wav_phase = magphase(
+                    stft(
+                        audio_src,
+                        n_fft=MAGPHASE_WINDOW_SIZE,
+                        hop_length=MAGPHASE_HOP_LENGTH
+                    ))
+
+                # mix_wav_mag = mix_wav_mag[:, START:END]  # 513, SR * Duracion en segundos de x_i
+                # mix_wav_phase = mix_wav_phase[:, START:END] # ~
+                # mix_wav_mag = mix_wav_mag[1:].reshape(1, 512, 128, 1)  # reshape to match train data
+                array = np.stack((mix_wav_mag, mix_wav_phase))
+
+                # stacks the magnitude and phase,
+                # final shape should be (2, 513 (n_fft/2 + 1), 128 (patchsize), 1 (dummy channels)
+
+                # this is kind-of standard
+                FeatureExtractor.save_feature(array, feature_name, out_path, x_i, y_i, new_labels)
+
+        return __process_element
+
+
+class SingingVoiceSeparationUnetFeatureExtractor(FeatureExtractor):
+    feature_name = 'svs_unet'
+    dependency_feature_name = MagPhaseFeatureExtractor.feature_name
+
+    # @staticmethod
+    # def frame_level_predict(y_pred, number_of_mel_samples):
+    #     """
+    #     Predict Voice Activity Regions at a Frame Level for a given song.
+    #     For each frame of the MFCC a Voice Detection Probability is predicted, then the output have shape: (n_frames, 1)
+    #
+    #     :param model_name: name of the trained model
+    #     :param filename:  path to the music file to be predicted
+    #     :param cache: flag to optimize heavy operations with caching in disk
+    #     :param plot: flag to plot MFCCs and SVD in an aligned plot if GUI available.
+    #     :return: (Time, Predictions): SVD probabilities at frame level with time markings
+    #     """
+    #     # transform raw predictions to frame level
+    #     aligned_y_pred = [[] for _ in range(number_of_mel_samples)]
+    #     for first_frame_idx, window_prediction in enumerate(y_pred):
+    #         # for each prediction
+    #         for offset, frame_prediction in enumerate(window_prediction):
+    #             # accumulate overlapped predictions in a list
+    #             aligned_y_pred[first_frame_idx + offset].append(frame_prediction[0])
+    #
+    #     # frame_level_y_pred = []
+    #     # for _, predictions in enumerate(aligned_y_pred[:-1]):
+    #     #     # -1 because last element is empty
+    #     #     # reduce the overlapped predictions to a single value
+    #     #     frame_level_y_pred.append(min(predictions))
+    #
+    #     time = frames_to_time(range(number_of_mel_samples), sr=SR_HPSS, n_fft=N_FFT_HPSS_2,
+    #                           hop_length=N_HOP_HPSS_2)
+    #
+    #     print('info: done')
+    #     return time, aligned_y_pred
+    #
+    # @staticmethod
+    # def post_process(input, number_of_mel_samples):
+    #     """
+    #     Export in a time-dependant domain instead of sample-domain; as sample rate change between methods.
+    #     :param input:
+    #     :return:
+    #     """
+    #     return np.asarray(VoiceActivationFeatureExtractor.frame_level_predict(input, number_of_mel_samples))
+
+    @staticmethod
+    def process_elements(feature_name, new_labels, out_path, source_path, fun=None,
+                         model_name=VOICE_DETECTION_MODEL_NAME,
+                         **kwargs):
+        """
+        Wrapper for actual function __process_elements(data)
+        :param feature_name:
+        :param new_labels:
+        :param out_path:
+        :param source_path:
+        :param fun:
+        :param model_name:
+        :param kwargs:
+        :return:
+        """
+
+        def __process_elements(data):
+            """
+            :param data: shape (#_songs, 2) the axis 1 corresponds to the filename/label pair
+            :return:
+            """
+            x = data[:, 0]
+            y = data[:, 1]
+            print('loaded metadata in {}'.format(data))
+
+            from keras.models import load_model
+            from keras import backend
+
+            if len(backend.tensorflow_backend._get_available_gpus()) > 0:
+                # set gpu number
+                os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+
+            # load mode
+            loaded_model = load_model(str(MODELS_DATA_PATH / 'unet_svs' / 'latest.h5'.format(model_name)))
+            print("loaded model")
+            print(loaded_model.summary())
+
+            for idx, x_i in enumerate(x):
+                # this is kind-of standard
+                y_i = y[idx]
+                file_name = FeatureExtractor.get_file_name(x_i, feature_name, ext='wav')
+                try:
+                    # try to load if file already exist
+                    librosa.load(out_path / file_name, sr=MAGPHASE_SAMPLE_RATE)
+                    print('info: {} loaded from .npy !'.format(file_name))
+                    new_labels.append([file_name, y_i])
+                except FileNotFoundError or OSError or EOFError:
+                    # OSError and EOFError are raised if file are inconsistent
+                    # final_shape: (#_hops, #_mel_filters, #_window)
+                    print('info: loading magphase data for {}'.format(x_i))
+                    magphase = np.load(source_path / x_i)  # _data, #_coefs, #_samples)
+                    print('info: formatting data')
+                    try:
+                        # magphase shape (2, 513, #_windows (~4000))
+                        assert len(magphase.shape) == 3
+
+                        # padding the last dim to fit window_size strictly
+                        number_of_windows = ceil(magphase.shape[2] / MAGPHASE_PATCH_SIZE)
+                        padding = number_of_windows * MAGPHASE_PATCH_SIZE - magphase.shape[2]
+                        if padding > 0:
+                            magphase = np.pad(magphase, ((0, 0), (0, 0), (0, padding)), mode='constant')
+                        # discard first coeficient in both
+                        mag = magphase[0, 1:, :]  # shape (512, #_windows)
+                        phase = magphase[1, :, :]  # shape (513, #_windows)
+                        x = np.array([mag[:, i * MAGPHASE_PATCH_SIZE:(i + 1) + MAGPHASE_PATCH_SIZE] for i in
+                                      range(number_of_windows)])
+
+                        x = x.reshape(-1, int(MAGPHASE_WINDOW_SIZE / 2), MAGPHASE_PATCH_SIZE, 1)
+
+                        # stack in a batch of size (512, 128)
+
+                        print('info: predicting')
+                        y_pred = loaded_model.predict(x, verbose=1)  # Shape=(total_frames,)
+
+                        target_pred_mag = np.vstack((np.zeros((128)), y_pred.reshape(512, 128)))
+                        out_wav = istft(
+                            target_pred_mag * phase
+                            #     (mix_wav_mag * target_pred_mag) * mix_wav_phase
+                            , win_length=MAGPHASE_WINDOW_SIZE,
+                            hop_length=MAGPHASE_HOP_LENGTH)
+
+                        FeatureExtractor.save_audio(out_wav, feature_name, out_path, x_i, y_i, new_labels,
+                                                    sr=MAGPHASE_SAMPLE_RATE)
+                    except MemoryError as e:
+                        print('error: memory error while proccessing {}. Ignoring...'.format(x_i))
+                        print(e)
+
+        return __process_elements
+
+    def transform(self, parallel=False, **kwargs):
+        if parallel:
+            raise Exception('error: {} cannot be ran in paralel'.format(self.feature_name))
+        return super().transform(parallel, **kwargs)
+
+
 AVAILABLE_FEATURES = {MelSpectralCoefficientsFeatureExtractor.feature_name: MelSpectralCoefficientsFeatureExtractor,
                       WindowedMelSpectralCoefficientsFeatureExtractor.feature_name: WindowedMelSpectralCoefficientsFeatureExtractor,
                       DoubleHPSSFeatureExtractor.feature_name: DoubleHPSSFeatureExtractor,
                       VoiceActivationFeatureExtractor.feature_name: VoiceActivationFeatureExtractor,
                       MeanSVDFeatureExtractor.feature_name: MeanSVDFeatureExtractor,
                       SVDPonderatedVolumeFeatureExtractor.feature_name: SVDPonderatedVolumeFeatureExtractor,
-                      IntensitySplitterFeatureExtractor.feature_name: IntensitySplitterFeatureExtractor}
+                      IntensitySplitterFeatureExtractor.feature_name: IntensitySplitterFeatureExtractor,
+                      MagPhaseFeatureExtractor.feature_name: MagPhaseFeatureExtractor,
+                      SingingVoiceSeparationUnetFeatureExtractor.feature_name: SingingVoiceSeparationUnetFeatureExtractor
+                      }
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Extract features from a data folder to another')
     parser.add_argument('--raw_path', help='Source path where audio data files are stored', default=RAW_DATA_PATH)
@@ -769,7 +975,7 @@ if __name__ == '__main__':
                         default=FEATURES_DATA_PATH)
     # parser.add_argument('--label_filename', help='Source path where label file is stored', default='labels.csv')
     parser.add_argument('--feature', help='name of the feature to be extracted (options: mfsc, leglaive)',
-                        default='windowed_spec')
+                        default=MagPhaseFeatureExtractor.feature_name)
 
     args = parser.parse_args()
     raw_path = pathlib.Path(args.raw_path)

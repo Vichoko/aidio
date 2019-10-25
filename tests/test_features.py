@@ -6,9 +6,9 @@ import librosa
 import numpy as np
 import pandas as pd
 
-from config import AVAIL_MEDIA_TYPES, RAW_DATA_PATH, SR, N_MELS
+from config import AVAIL_MEDIA_TYPES, RAW_DATA_PATH, SR, N_MELS, MAGPHASE_WINDOW_SIZE, MAGPHASE_SAMPLE_RATE
 from features import FeatureExtractor, MelSpectralCoefficientsFeatureExtractor, DoubleHPSSFeatureExtractor, \
-    VoiceActivationFeatureExtractor
+    VoiceActivationFeatureExtractor, MagPhaseFeatureExtractor, SingingVoiceSeparationUnetFeatureExtractor
 from tests.config import TEST_RAW_DATA_PATH, TEST_FEATURES_DATA_PATH
 
 
@@ -431,6 +431,61 @@ class TestVoiceActivationFeatureExtraction(_TestFeatureExtractor):
         super().remove_feature_files(self.extractor_dep)
         # clean this one as naturally
         super().remove_feature_files(extractor)
+
+
+class TestMagPhaseFeatureExtraction(_TestFeatureExtractor):
+
+    def _test_feature_element(self, x_i):
+        self.assertEqual(len(x_i.shape), 3)
+        self.assertEqual(x_i.shape[0], 2)  # mag and phase
+        self.assertEqual(x_i.shape[1], MAGPHASE_WINDOW_SIZE / 2 + 1)  # number of coeffocients
+        self.assertGreaterEqual(x_i.shape[2], 0)
+
+    def create_extractor(self):
+        extractor = MagPhaseFeatureExtractor.magic_init(feature_path=TEST_FEATURES_DATA_PATH,
+                                                        raw_path=TEST_RAW_DATA_PATH)
+        return extractor
+
+
+class TestVocalSeparationUnetFeatureExtraction(_TestFeatureExtractor):
+
+    def _test_feature_element(self, x_i):
+        print('voice: {}'.format(x_i.shape))
+        pass
+
+    def create_extractor(self):
+        self.extractor_dep = MagPhaseFeatureExtractor.magic_init(
+            feature_path=TEST_FEATURES_DATA_PATH,
+            raw_path=TEST_RAW_DATA_PATH)
+        self.extractor_dep.transform()
+
+        extractor = SingingVoiceSeparationUnetFeatureExtractor.magic_init(
+            feature_path=TEST_FEATURES_DATA_PATH,
+            raw_path=TEST_RAW_DATA_PATH)
+        return extractor
+
+    def test_parallel_transform(self, clean=True):
+        with self.assertRaises(NotImplementedError):
+            super().test_parallel_transform(clean=False)
+
+    def remove_feature_files(self, extractor, feature_filenames=None):
+        # clean dependency feature files
+        super().remove_feature_files(self.extractor_dep)
+        # clean this one as naturally
+        super().remove_feature_files(extractor)
+
+    def _transform_load_test(self, clean, extractor, transform_fun):
+        self.assertEqual(len(extractor.new_labels), 0)
+        transform_fun()
+        self.assertGreater(len(extractor.new_labels), 0)
+        extracted_data = np.asarray(extractor.new_labels)
+        feature_filenames = extracted_data[:, 0]
+        # feature_labels = extracted_data[:, 1]
+        for filename in feature_filenames:
+            x_i, _ = librosa.load(extractor.out_path / filename, sr=MAGPHASE_SAMPLE_RATE)
+            self._test_feature_element(x_i)
+        self._test_post_processing(extractor)
+        self.remove_feature_files(extractor) if clean else None
 
 
 del _TestFeatureExtractor

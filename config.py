@@ -62,6 +62,22 @@ MIN_INTERVAL_LEN_WINDOWED_MFCC = SR
 WINDOW_LEN_WINDOWED_MFCC = SR
 WINDOW_HOP_WINDOWED_MFCC = int(SR / 3)
 
+# Magnitude Phase STFT
+MAGPHASE_SAMPLE_RATE = 8192
+MAGPHASE_WINDOW_SIZE = 1024
+MAGPHASE_HOP_LENGTH = 768
+MAGPHASE_PATCH_SIZE = 128
+
+# OpenUnmixPytorch
+
+OUNMIX_SAMPLE_RATE = 44100
+OUNMIX_NITER = 1
+OUNMIX_ALPHA = 1
+OUNMIX_TARGETS = ['vocals', 'drums', 'bass', 'other']
+OUNMIX_SOFTMAX = False
+OUNMIX_RESIDUAL_MODEL = False
+OUNMIX_MODEL = 'umxhq'
+
 #########################################
 ####    MODELS
 #########################################
