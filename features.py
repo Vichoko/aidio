@@ -857,7 +857,7 @@ class SingingVoiceSeparationUnetFeatureExtractor(FeatureExtractor):
                 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
             # load mode
-            loaded_model = load_model(str(MODELS_DATA_PATH / 'unet_svs' / 'latest.h5'.format(model_name)))
+            loaded_model = load_model(str(MODELS_DATA_PATH / feature_name / 'latest.h5'.format(model_name)))
             print("loaded model")
             print(loaded_model.summary())
 

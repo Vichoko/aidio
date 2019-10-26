@@ -1,6 +1,5 @@
 import argparse
 import io
-import json
 import warnings
 from contextlib import redirect_stderr
 from pathlib import Path
@@ -10,7 +9,6 @@ import norbert
 import numpy as np
 import resampy
 import scipy.signal
-import soundfile as sf
 import torch
 import tqdm
 
@@ -414,10 +412,10 @@ if __name__ == '__main__':
             outdir = Path(args.outdir)
         outdir.mkdir(exist_ok=True, parents=True)
 
-        # write out estimates
-        for target, estimate in estimates.items():
-            sf.write(
-                outdir / Path(target).with_suffix('.wav'),
-                estimate,
-                args.samplerate
-            )
+        # # write out estimates
+        # for target, estimate in estimates.items():
+        #     sf.write(
+        #         outdir / Path(target).with_suffix('.wav'),
+        #         estimate,
+        #         args.samplerate
+        #     )
