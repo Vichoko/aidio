@@ -2,6 +2,8 @@ import argparse
 import concurrent.futures
 import os
 
+import resampy
+
 from util.open_unmix.test import separate_music_file
 
 os.environ['FOR_DISABLE_CONSOLE_CTRL_HANDLER'] = '1'
@@ -948,7 +950,7 @@ class SingingVoiceSeparationOpenUnmixFeatureExtractor(FeatureExtractor):
             print('loaded metadata in {}'.format(data))
 
             import torch
-            no_cuda = False
+            no_cuda = True # no cabe en mi gpu :c
             use_cuda = not no_cuda and torch.cuda.is_available()
             device = torch.device("cuda" if use_cuda else "cpu")
 
@@ -964,12 +966,14 @@ class SingingVoiceSeparationOpenUnmixFeatureExtractor(FeatureExtractor):
                 except FileNotFoundError or OSError or EOFError:
                     # OSError and EOFError are raised if file are inconsistent
                     # final_shape: (#_hops, #_mel_filters, #_window)
-                    print('info: loading magphase data for {}'.format(x_i))
+                    print('info: processing {}'.format(x_i))
                     try:
                         estimates = separate_music_file(source_path / x_i, device)
-
-                        FeatureExtractor.save_audio(estimates['vocals'], feature_name, out_path, x_i, y_i, new_labels,
-                                                    sr=OUNMIX_SAMPLE_RATE)
+                        vocal_wav = estimates['vocals']
+                        if OUNMIX_SAMPLE_RATE != SR:
+                            vocal_wav = resampy.resample(vocal_wav, OUNMIX_SAMPLE_RATE, SR, axis=0)
+                        FeatureExtractor.save_audio(vocal_wav, feature_name, out_path, x_i, y_i, new_labels,
+                                                    sr=SR)
                     except MemoryError as e:
                         print('error: memory error while proccessing {}. Ignoring...'.format(x_i))
                         print(e)
