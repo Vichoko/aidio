@@ -2,6 +2,8 @@ import argparse
 import concurrent.futures
 import os
 
+from util.open_unmix.test import separate_music_file
+
 os.environ['FOR_DISABLE_CONSOLE_CTRL_HANDLER'] = '1'
 import pathlib
 from math import ceil
@@ -16,7 +18,8 @@ from config import SR, RAW_DATA_PATH, FEATURES_DATA_PATH, HOP_LENGTH, N_FFT, N_M
     VOICE_DETECTION_MODEL_NAME, N_FFT_HPSS_1, N_HOP_HPSS_1, N_FFT_HPSS_2, N_HOP_HPSS_2, SR_HPSS, \
     N_MELS_HPSS, MODELS_DATA_PATH, RNN_INPUT_SIZE_VOICE_ACTIVATION, TOP_DB_WINDOWED_MFCC, \
     MIN_INTERVAL_LEN_WINDOWED_MFCC, WINDOW_LEN_WINDOWED_MFCC, WINDOW_HOP_WINDOWED_MFCC, makedirs, AVAIL_MEDIA_TYPES, \
-    CPU_WORKERS, MAGPHASE_WINDOW_SIZE, MAGPHASE_HOP_LENGTH, MAGPHASE_SAMPLE_RATE, MAGPHASE_PATCH_SIZE
+    CPU_WORKERS, MAGPHASE_WINDOW_SIZE, MAGPHASE_HOP_LENGTH, MAGPHASE_SAMPLE_RATE, MAGPHASE_PATCH_SIZE, \
+    OUNMIX_SAMPLE_RATE
 from util.leglaive.audio import ono_hpss, log_melgram
 
 
@@ -821,47 +824,6 @@ class SingingVoiceSeparationUnetFeatureExtractor(FeatureExtractor):
     feature_name = 'svs_unet'
     dependency_feature_name = MagPhaseFeatureExtractor.feature_name
 
-    # @staticmethod
-    # def frame_level_predict(y_pred, number_of_mel_samples):
-    #     """
-    #     Predict Voice Activity Regions at a Frame Level for a given song.
-    #     For each frame of the MFCC a Voice Detection Probability is predicted, then the output have shape: (n_frames, 1)
-    #
-    #     :param model_name: name of the trained model
-    #     :param filename:  path to the music file to be predicted
-    #     :param cache: flag to optimize heavy operations with caching in disk
-    #     :param plot: flag to plot MFCCs and SVD in an aligned plot if GUI available.
-    #     :return: (Time, Predictions): SVD probabilities at frame level with time markings
-    #     """
-    #     # transform raw predictions to frame level
-    #     aligned_y_pred = [[] for _ in range(number_of_mel_samples)]
-    #     for first_frame_idx, window_prediction in enumerate(y_pred):
-    #         # for each prediction
-    #         for offset, frame_prediction in enumerate(window_prediction):
-    #             # accumulate overlapped predictions in a list
-    #             aligned_y_pred[first_frame_idx + offset].append(frame_prediction[0])
-    #
-    #     # frame_level_y_pred = []
-    #     # for _, predictions in enumerate(aligned_y_pred[:-1]):
-    #     #     # -1 because last element is empty
-    #     #     # reduce the overlapped predictions to a single value
-    #     #     frame_level_y_pred.append(min(predictions))
-    #
-    #     time = frames_to_time(range(number_of_mel_samples), sr=SR_HPSS, n_fft=N_FFT_HPSS_2,
-    #                           hop_length=N_HOP_HPSS_2)
-    #
-    #     print('info: done')
-    #     return time, aligned_y_pred
-    #
-    # @staticmethod
-    # def post_process(input, number_of_mel_samples):
-    #     """
-    #     Export in a time-dependant domain instead of sample-domain; as sample rate change between methods.
-    #     :param input:
-    #     :return:
-    #     """
-    #     return np.asarray(VoiceActivationFeatureExtractor.frame_level_predict(input, number_of_mel_samples))
-
     @staticmethod
     def process_elements(feature_name, new_labels, out_path, source_path, fun=None,
                          model_name=VOICE_DETECTION_MODEL_NAME,
@@ -945,6 +907,69 @@ class SingingVoiceSeparationUnetFeatureExtractor(FeatureExtractor):
 
                         FeatureExtractor.save_audio(out_wav, feature_name, out_path, x_i, y_i, new_labels,
                                                     sr=MAGPHASE_SAMPLE_RATE)
+                    except MemoryError as e:
+                        print('error: memory error while proccessing {}. Ignoring...'.format(x_i))
+                        print(e)
+
+        return __process_elements
+
+    def transform(self, parallel=False, **kwargs):
+        if parallel:
+            raise Exception('error: {} cannot be ran in paralel'.format(self.feature_name))
+        return super().transform(parallel, **kwargs)
+
+
+class SingingVoiceSeparationOpenUnmixFeatureExtractor(FeatureExtractor):
+    feature_name = 'svs_openunmix'
+
+    @staticmethod
+    def process_elements(feature_name, new_labels, out_path, source_path, fun=None,
+                         model_name=VOICE_DETECTION_MODEL_NAME,
+                         **kwargs):
+        """
+        Wrapper for actual function __process_elements(data)
+        :param feature_name:
+        :param new_labels:
+        :param out_path:
+        :param source_path:
+        :param fun:
+        :param model_name:
+        :param kwargs:
+        :return:
+        """
+
+        def __process_elements(data):
+            """
+            :param data: shape (#_songs, 2) the axis 1 corresponds to the filename/label pair
+            :return:
+            """
+            x = data[:, 0]
+            y = data[:, 1]
+            print('loaded metadata in {}'.format(data))
+
+            import torch
+            no_cuda = False
+            use_cuda = not no_cuda and torch.cuda.is_available()
+            device = torch.device("cuda" if use_cuda else "cpu")
+
+            for idx, x_i in enumerate(x):
+                # this is kind-of standard
+                y_i = y[idx]
+                file_name = FeatureExtractor.get_file_name(x_i, feature_name, ext='wav')
+                try:
+                    # try to load if file already exist
+                    librosa.load(out_path / file_name, sr=OUNMIX_SAMPLE_RATE)
+                    print('info: {} loaded from .WAV !'.format(file_name))
+                    new_labels.append([file_name, y_i])
+                except FileNotFoundError or OSError or EOFError:
+                    # OSError and EOFError are raised if file are inconsistent
+                    # final_shape: (#_hops, #_mel_filters, #_window)
+                    print('info: loading magphase data for {}'.format(x_i))
+                    try:
+                        estimates = separate_music_file(source_path / x_i, device)
+
+                        FeatureExtractor.save_audio(estimates['vocals'], feature_name, out_path, x_i, y_i, new_labels,
+                                                    sr=OUNMIX_SAMPLE_RATE)
                     except MemoryError as e:
                         print('error: memory error while proccessing {}. Ignoring...'.format(x_i))
                         print(e)

@@ -5,8 +5,9 @@ Audio Artificial Intelligence Suite (Aidio) provides:
     * Mel Frequency Spectral Coefficients (MFSC)
     * Mel Frequency Cesptral Coefficients (MFCC)
     * Double Harmonic-Percussive Signal Separation (HPSS)
+    * Magnitude & Phase separation of STFT (MagPhase)
     * Singing Voice Detection (SVD) [1]
-    * Singing Voice Separation (SVS)
+    * Singing Voice Separation (SVS) [2] [3]
 * Classification Models
     * Deep Learning
         * ResNet
@@ -85,7 +86,18 @@ The Singing Voice Detection Pipeline is defined by the following sequential feat
 3. ```MeanSVDFeatureExtractor```
 4. ```SVDPonderatedVolumeFeatureExtractor```
 
+##### Singing Voice Separation Pipeline
+
+###### Open-Unmix
+
+Use ```SingingVoiceSeparationOpenUnmixFeatureExtractor``` directly.
+
+##### U-Net
+
+WIP
 
 ## Reference
 
 * [1] Simon Leglaive, Romain Hennequin, and Roland Badeau. "Singing voice detection with deep recurrent neural network." [pdf](https://hal.archives-ouvertes.fr/hal-01110035/document)
+* [2] Stöter et al. "Open-Unmix - A Reference Implementation for MusicSource Separation" [pdf](https://joss.theoj.org/papers/10.21105/joss.01667)
+* [3] A. Jansson, et al. "SINGING VOICE SEPARATION WITH DEEP U-NET CONVOLUTIONAL NETWORKS." [pdf](https://ismir2017.smcnus.org/wp-content/uploads/2017/10/171_Paper.pdf)
