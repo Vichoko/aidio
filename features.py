@@ -990,8 +990,8 @@ AVAILABLE_FEATURES = {MelSpectralCoefficientsFeatureExtractor.feature_name: MelS
                       SVDPonderatedVolumeFeatureExtractor.feature_name: SVDPonderatedVolumeFeatureExtractor,
                       IntensitySplitterFeatureExtractor.feature_name: IntensitySplitterFeatureExtractor,
                       MagPhaseFeatureExtractor.feature_name: MagPhaseFeatureExtractor,
-                      SingingVoiceSeparationUnetFeatureExtractor.feature_name: SingingVoiceSeparationUnetFeatureExtractor
-                      }
+                      SingingVoiceSeparationUnetFeatureExtractor.feature_name: SingingVoiceSeparationUnetFeatureExtractor,
+                      SingingVoiceSeparationOpenUnmixFeatureExtractor.feature_name: SingingVoiceSeparationOpenUnmixFeatureExtractor}
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Extract features from a data folder to another')
