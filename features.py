@@ -371,7 +371,7 @@ class FeatureExtractor:
         """
 
         def _save_mp3(source_path, out_path):
-            cmd = 'lame --preset insane {} {}'.format(source_path, out_path)
+            cmd = 'lame --preset insane \"{}\" \"{}\"'.format(source_path, out_path)
             print(subprocess.call(cmd))
             os.remove(source_path)
 
