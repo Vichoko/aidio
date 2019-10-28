@@ -359,29 +359,41 @@ class FeatureExtractor:
         return filename
 
     @staticmethod
-    def save_mp3(ndarray, sr, feature_name, out_path, x, y, new_labels, filename=None):
+    def save_mp3(ndarray, sr, feature_name, out_path, x, y, new_labels, mp3_filename=None):
         """
         Save any numpy object in Feature File System.
         :param ndarray:
         :param feature_name:
         :param out_path:
         :param x:
-        :param filename:
+        :param mp3_filename:
         :return:
         """
 
         def _save_mp3(source_path, out_path):
             cmd = 'lame --preset insane \"{}\" \"{}\"'.format(source_path, out_path)
-            print(subprocess.call(cmd))
+            errno = subprocess.call(cmd)
+            if errno != 0:
+                print('{} failed with code', end=' ')
+                print(errno)
+                print('skipping...')
+                return errno
             os.remove(source_path)
+            return 0
 
         # this is kind-of standard
-        filename = filename or FeatureExtractor.get_file_name(x, feature_name, 'mp3')
-        sf.write(str(out_path / filename.replace('mp3', 'wav')), ndarray, sr)
-        _save_mp3(out_path / filename.replace('mp3', 'wav'), out_path / filename)
-        new_labels.append([filename, y])
-        print('info: {} transformed and saved!'.format(filename))
-        return filename
+        mp3_filename = mp3_filename or FeatureExtractor.get_file_name(x, feature_name, 'mp3')
+        wav_filename = mp3_filename.replace('mp3', 'wav')
+        sf.write(str(out_path / wav_filename), ndarray, sr)
+        errno = _save_mp3(out_path / wav_filename, out_path / mp3_filename)
+        if errno:
+            # if any error, then keep wav
+            new_labels.append([wav_filename, y])
+        else:
+            # then it was exported to mp3 successfully
+            new_labels.append([mp3_filename, y])
+        print('info: {} transformed and saved!'.format(mp3_filename))
+        return mp3_filename
     # @staticmethod
     # def save_ogg(ndarray, sr, feature_name, out_path, x, y, new_labels, filename=None):
     #     """
@@ -1040,7 +1052,7 @@ class SingingVoiceSeparationOpenUnmixFeatureExtractor(FeatureExtractor):
                         FeatureExtractor.save_mp3(
                             vocal_wav, OUNMIX_SAMPLE_RATE,
                             feature_name,
-                            out_path, x_i, y_i, new_labels, filename=file_name)
+                            out_path, x_i, y_i, new_labels, mp3_filename=file_name)
                     except MemoryError as e:
                         print('error: memory error while proccessing {}. Ignoring...'.format(x_i))
                         print(e)
