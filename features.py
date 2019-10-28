@@ -388,12 +388,13 @@ class FeatureExtractor:
         errno = _save_mp3(out_path / wav_filename, out_path / mp3_filename)
         if errno:
             # if any error, then keep wav
-            new_labels.append([wav_filename, y])
+            filename = wav_filename
         else:
-            # then it was exported to mp3 successfully
-            new_labels.append([mp3_filename, y])
-        print('info: {} transformed and saved!'.format(mp3_filename))
-        return mp3_filename
+            # non-error clause, then it was successfully exported to mp3
+            filename = mp3_filename
+        new_labels.append([filename, y])
+        print('info: {} transformed and saved!'.format(filename))
+        return filename
     # @staticmethod
     # def save_ogg(ndarray, sr, feature_name, out_path, x, y, new_labels, filename=None):
     #     """
