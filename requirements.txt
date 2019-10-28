@@ -2,4 +2,9 @@ numpy
 pandas
 librosa
 keras
-ffmpeg
+pydub
+pysoundfile
+
+# conda
+# conda install cffi numpy
+# conda install ffmpeg

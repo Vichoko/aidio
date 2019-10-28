@@ -1,8 +1,9 @@
 import argparse
 import concurrent.futures
 import os
+import subprocess
 
-import resampy
+import soundfile as sf
 
 from util.open_unmix.test import separate_music_file
 
@@ -273,9 +274,6 @@ class FeatureExtractor:
             print('info: finished sequential transform, new labels are {}'.format(self.new_labels))
         except KeyboardInterrupt:
             print('KeyboardInterrupt catched')
-        except Exception as e:
-            print(e)
-            print('warning: un-catched exception')
         finally:
             print('info: exporting extraction meta-data')
             self.export_new_labels()
@@ -359,6 +357,74 @@ class FeatureExtractor:
         new_labels.append([filename, y])
         print('info: {} transformed and saved!'.format(filename))
         return filename
+
+    @staticmethod
+    def save_mp3(ndarray, sr, feature_name, out_path, x, y, new_labels, filename=None):
+        """
+        Save any numpy object in Feature File System.
+        :param ndarray:
+        :param feature_name:
+        :param out_path:
+        :param x:
+        :param filename:
+        :return:
+        """
+
+        def _save_mp3(source_path, out_path):
+            cmd = 'lame --preset insane {} {}'.format(source_path, out_path)
+            print(subprocess.call(cmd))
+            os.remove(source_path)
+
+        # this is kind-of standard
+        filename = filename or FeatureExtractor.get_file_name(x, feature_name, 'mp3')
+        sf.write(str(out_path / filename.replace('mp3', 'wav')), ndarray, sr)
+        _save_mp3(out_path / filename.replace('mp3', 'wav'), out_path / filename)
+        new_labels.append([filename, y])
+        print('info: {} transformed and saved!'.format(filename))
+        return filename
+    # @staticmethod
+    # def save_ogg(ndarray, sr, feature_name, out_path, x, y, new_labels, filename=None):
+    #     """
+    #     Save any numpy object in Feature File System.
+    #     :param ndarray: in shape (2, num_samples) or (, num_samples)
+    #     :param feature_name:
+    #     :param out_path:
+    #     :param x:
+    #     :param filename:
+    #     :return:
+    #     """
+    #     # this is kind-of standard
+    #     filename = filename or FeatureExtractor.get_file_name(x, feature_name, 'ogg')
+    #     sf.write(out_path / filename, ndarray, sr, format='ogg', subtype='vorbis')
+    #     new_labels.append([filename, y])
+    #     print('info: {} transformed and saved!'.format(filename))
+    #     return filename
+
+    # @staticmethod
+    # def save_mp3(ndarray, source_sr, sample_width, feature_name, out_path, x, y, new_labels, n_channels=1,
+    #              filename=None):
+    #     """
+    #     Save any numpy object in Feature File System.
+    #     :param ndarray:
+    #     :param feature_name:
+    #     :param out_path:
+    #     :param x:
+    #     :param filename:
+    #     :return:
+    #     """
+    #     # this is kind-of standard
+    #     filename = filename or FeatureExtractor.get_file_name(x, feature_name, 'mp3')
+    #     ndarray = ndarray.astype('int32')
+    #     audio_segment = pydub.AudioSegment(
+    #         ndarray.tobytes(),
+    #         frame_rate=4,
+    #         sample_width=sample_width,
+    #         channels=3
+    #     )
+    #     audio_segment.export(out_path / filename, format='mp3')
+    #     new_labels.append([filename, y])
+    #     print('info: {} transformed and saved!'.format(filename))
+    #     return filename
 
 
 class MelSpectralCoefficientsFeatureExtractor(FeatureExtractor):
@@ -950,18 +1016,19 @@ class SingingVoiceSeparationOpenUnmixFeatureExtractor(FeatureExtractor):
             print('loaded metadata in {}'.format(data))
 
             import torch
-            no_cuda = True # no cabe en mi gpu :c
+            no_cuda = True  # no cabe en mi gpu :c
             use_cuda = not no_cuda and torch.cuda.is_available()
             device = torch.device("cuda" if use_cuda else "cpu")
 
             for idx, x_i in enumerate(x):
                 # this is kind-of standard
                 y_i = y[idx]
-                file_name = FeatureExtractor.get_file_name(x_i, feature_name, ext='wav')
+                ext = 'mp3'
+                file_name = FeatureExtractor.get_file_name(x_i, feature_name, ext=ext)
                 try:
                     # try to load if file already exist
                     librosa.load(out_path / file_name, sr=OUNMIX_SAMPLE_RATE)
-                    print('info: {} loaded from .WAV !'.format(file_name))
+                    print('info: {} loaded from .{} !'.format(file_name, ext))
                     new_labels.append([file_name, y_i])
                 except FileNotFoundError or OSError or EOFError:
                     # OSError and EOFError are raised if file are inconsistent
@@ -970,10 +1037,10 @@ class SingingVoiceSeparationOpenUnmixFeatureExtractor(FeatureExtractor):
                     try:
                         estimates = separate_music_file(source_path / x_i, device)
                         vocal_wav = estimates['vocals']
-                        if OUNMIX_SAMPLE_RATE != SR:
-                            vocal_wav = resampy.resample(vocal_wav, OUNMIX_SAMPLE_RATE, SR, axis=0)
-                        FeatureExtractor.save_audio(vocal_wav, feature_name, out_path, x_i, y_i, new_labels,
-                                                    sr=SR)
+                        FeatureExtractor.save_mp3(
+                            vocal_wav, OUNMIX_SAMPLE_RATE,
+                            feature_name,
+                            out_path, x_i, y_i, new_labels, filename=file_name)
                     except MemoryError as e:
                         print('error: memory error while proccessing {}. Ignoring...'.format(x_i))
                         print(e)
@@ -1004,7 +1071,7 @@ if __name__ == '__main__':
                         default=FEATURES_DATA_PATH)
     # parser.add_argument('--label_filename', help='Source path where label file is stored', default='labels.csv')
     parser.add_argument('--feature', help='name of the feature to be extracted (options: mfsc, leglaive)',
-                        default=MagPhaseFeatureExtractor.feature_name)
+                        default=SingingVoiceSeparationOpenUnmixFeatureExtractor.feature_name)
 
     args = parser.parse_args()
     raw_path = pathlib.Path(args.raw_path)

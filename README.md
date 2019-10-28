@@ -94,7 +94,26 @@ Use ```SingingVoiceSeparationOpenUnmixFeatureExtractor``` directly.
 
 ##### U-Net
 
-WIP
+Deprecated, but functioning as OpenUnmix does the job faster and better.
+
+## Dependencies
+
+### Python
+
+#### PIP
+
+Stated in requirements.txt
+
+#### Conda
+
+Stated in comments inside requirements.txt
+
+#### Other
+
+##### MP3 Encoding
+
+LAME is needed to Feature Extractors that exports to MP3.
+lame (or lame.exe) should be set in PATH environment variable to work properly.
 
 ## Reference
 
