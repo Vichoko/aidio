@@ -4,7 +4,7 @@ from numpy.testing import assert_allclose
 
 from features import MelSpectralCoefficientsFeatureExtractor
 from loaders import DataManager, ResnetDataManager, TorchVisionDataManager
-from models import ResNetV2, SimpleConvNet
+from models import ResNetV2, Simple2dConvNet
 from tests.config import TEST_RAW_DATA_PATH, TEST_FEATURES_DATA_PATH, TEST_MODELS_DATA_PATH
 
 import numpy as np
@@ -136,7 +136,7 @@ class TestSimpleConvModel(unittest.TestCase):
         y_test = self.test_dm.Y
 
         # padding to meet requirement
-        self.model = SimpleConvNet(
+        self.model = Simple2dConvNet(
             'test_init',
             num_classes=len(set([label_id for label_id in y_train])),
             input_shape=x_train.shape,

@@ -2,7 +2,7 @@ import argparse
 import os
 from collections import defaultdict
 from functools import reduce
-from math import ceil
+from math import ceil, floor
 
 import numpy as np
 import torch
@@ -12,15 +12,20 @@ from keras.engine.saving import load_model
 from torch.utils.data.dataloader import DataLoader
 
 from config import MODELS_DATA_PATH, RESNET_V2_BATCH_SIZE, RESNET_V2_EPOCHS, RESNET_V2_DEPTH, \
-    RESNET_V2_VERSION, SIMPLECONV_BATCH_SIZE, SIMPLECONV_EPOCHS
-from features import WindowedMelSpectralCoefficientsFeatureExtractor
-from loaders import ResnetDataManager, TorchVisionDataManager
+    RESNET_V2_VERSION, SIMPLECONV_BATCH_SIZE, SIMPLECONV_EPOCHS, makedirs, FEATURES_DATA_PATH, WAVEFORM_NUM_CHANNELS, \
+    WAVEFORM_SEQUENCE_LENGTH, S1DCONV_BATCH_SIZE, S1DCONV_EPOCHS, WAVENET_LAYERS, WAVENET_BLOCKS, \
+    WAVENET_DILATION_CHANNELS, WAVENET_RESIDUAL_CHANNELS, WAVENET_SKIP_CHANNELS, WAVENET_OUTPUT_LENGTH, \
+    WAVENET_KERNEL_SIZE, WAVENET_END_CHANNELS, WAVENET_CLASSES, WAVENET_EPOCHS, WAVENET_BATCH_SIZE
+from features import WindowedMelSpectralCoefficientsFeatureExtractor, SingingVoiceSeparationOpenUnmixFeatureExtractor
+from loaders import ResnetDataManager, TorchVisionDataManager, WaveformDataset
+from util.wavenet.wavenet_model import WaveNetModel
 
 
 class ClassificationModel:
 
     def __init__(self, model_name, model_type, num_classes, input_shape, model_path, epochs,
                  batch_size,
+                 initial_epoch=0,
                  **kwargs):
         """
 
@@ -40,10 +45,20 @@ class ClassificationModel:
         self.num_classes = num_classes
         self.input_shape = input_shape
         self.epochs = epochs
-        model_filename = '%s_%s_model.{epoch:03d}.h5' % (self.model_name, self.model_type)
-        self.model_checkpoint_path = model_path / model_filename
+        model_filename = '%s_model.{epoch:03d}.h5' % self.model_name
+        self.model_path = model_path / self.model_type
+        makedirs(self.model_path)
+        self.model_checkpoint_path = self.model_path / model_filename
         self.batch_size = batch_size
-        self.initial_epoch = 0
+        self.initial_epoch = initial_epoch
+
+    def reset_hyper_parameters(self, model_name, model_type, num_classes, input_shape, initial_epoch,
+                               model_path,
+                               epochs,
+                               batch_size):
+        ClassificationModel.__init__(self, model_name, model_type, num_classes, input_shape, model_path, epochs,
+                      batch_size,
+                      initial_epoch)
 
     @property
     def checkpoint_files(self):
@@ -66,23 +81,29 @@ class ClassificationModel:
     def remove_checkpoint(self):
         [os.remove(path) for path in self.checkpoint_files[0]]
 
-
-class TorchClassificationModel(nn.Module):
-
-    def __init__(self, model_name, model_type, num_classes, input_shape, model_path, epochs,
-                 batch_size,
-                 **kwargs):
-        super().__init__()
-        self.model_name = model_name
-        self.model_type = model_type
-
-        self.num_classes = num_classes
-        self.input_shape = input_shape
-        self.epochs = epochs
-        model_filename = '%s_%s_model.{epoch:03d}.h5' % (self.model_name, self.model_type)
-        self.model_checkpoint_path = model_path / model_filename
-        self.batch_size = batch_size
-        self.initial_epoch = 0
+    def load_checkpoint(self):
+        """
+        Load model object from last checkpoint if exist.
+        :return:
+        """
+        # check for existing checkpoints
+        chkp_files, chkp_epoch = self.checkpoint_files
+        assert len(chkp_files) == len(chkp_epoch)
+        if len(chkp_files) != 0:
+            # load from checkpoint
+            max_idx = int(np.argmax(chkp_epoch))
+            model = torch.load(str(chkp_files[max_idx]))
+            print('info: loading model from checkpoint {}'.format(chkp_files[max_idx]))
+            initial_epoch = int(chkp_epoch[max_idx])
+            model.reset_hyper_parameters(
+                model.model_name,
+                model.model_type,
+                model.num_classes,
+                model.input_shape,
+                initial_epoch
+            )
+            return model
+        return self
 
 
 class ResNetV2(ClassificationModel):
@@ -348,8 +369,177 @@ class ResNetV2(ClassificationModel):
         return self.model.predict(x)
 
 
-class SimpleConvNet(ClassificationModel, nn.Module):
-    model_name = 'simpleConvNet'
+class TorchClassificationModel(ClassificationModel, nn.Module):
+    """
+    Provides the train, evaluation, checkpoints behaviour to the architecture.
+    """
+    model_name = 'TorchClassificationModel_unspecified'
+
+    def __init__(self, model_type, num_classes, input_shape, model_path,
+                 epochs,
+                 batch_size,
+                 **kwargs):
+        ClassificationModel.__init__(self,
+                                     self.model_name,
+                                     model_type,
+                                     num_classes,
+                                     input_shape,
+                                     model_path,
+                                     epochs,
+                                     batch_size,
+                                     **kwargs)
+        nn.Module.__init__(self)
+
+    def post_epoch(self, epoch, **kwargs):
+        """
+        Called in between-epochs.
+        Evaluate, Save checkpoint and check early stop by default.
+        :return:
+        """
+        print("metric: finished epoch {}. Starting evaluation...".format(epoch))
+        losses = kwargs['losses']
+        batch_train_loss = reduce(lambda x, y: x + y, losses)
+        print("metric: epoch total train loss: {}".format(batch_train_loss))
+        val_dataset = kwargs['val_dataset']
+        name = kwargs['name']
+        val_loss = self.evaluate(val_dataset, name)
+        self.save_checkpoint(epoch, val_loss)
+        self.early_stop(epoch, val_loss)
+
+    def early_stop(self, epoch, val_loss):
+        """
+        If val loss reach a minimum value, it stops the training
+        to avoid overfitting
+        :param epoch: Integer, number of current epoch
+        :param val_loss: Float, loss on validation set
+        :return:
+        """
+
+        # GL criteria
+        gl = 100 * (val_loss / self.best_loss - 1)
+        print('debug: early stopping gl = {}'.format(gl))
+
+    def save_checkpoint(self, epoch, current_loss, save_best_only=True):
+        """
+        Save checkpoint of the model,
+        :param epoch: Index of epoch
+        :param current_loss: current train loss
+        :param save_best_only: Bool if True save only if best is True else save always
+        :return:
+        """
+        filename = str(self.model_checkpoint_path).format(epoch=epoch)
+        if save_best_only == True and current_loss > self.best_loss:
+            return
+        print('info: saving checkpoint {}'.format(filename))
+        torch.save(self, filename)
+        self.best_loss = current_loss
+
+    def train_now(self, train_dataset, val_dataset):
+        """
+        Trains the model giving useful metrics between epochs.
+
+        :param x_train:
+        :param y_train:
+        :param x_val:
+        :param y_val:
+        :return:
+        """
+        print('info: training classifier...')
+        batches_per_epoch = len(train_dataset) / self.batch_size
+        quarter_epoch_batches = int(batches_per_epoch / 4)
+        import torch.optim as optim
+
+        criterion = nn.CrossEntropyLoss()
+        optimizer = optim.SGD(self.parameters(), lr=0.001, momentum=0.9)
+        dataloader = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=False,
+                                num_workers=4)
+        epoch = self.initial_epoch
+        while epoch < self.epochs:  # loop over the dataset multiple times
+            epoch += 1
+            running_loss = 0.0
+            losses = []
+            for i_batch, sample_batched in enumerate(dataloader):
+                # get the inputs; data is a list of [inputs, labels]
+                x_i = sample_batched['wav']
+                y_i = sample_batched['label']
+
+                # zero the parameter gradients
+                optimizer.zero_grad()
+
+                # forward + backward + optimize
+                outputs = self(x_i)
+                loss = criterion(outputs, y_i)
+                loss.backward()
+                optimizer.step()
+
+                # print statistics
+                running_loss += loss.item()
+                losses.append(loss)
+                if i_batch % quarter_epoch_batches == quarter_epoch_batches - 1:  # print every 2000 mini-batches
+                    print('metric: [%d, %5d] train loss: %.3f' %
+                          (epoch, i_batch + 1, running_loss / quarter_epoch_batches))
+                    running_loss = 0.0
+            # post-epoch behaviour
+            feed_dict = {'val_dataset': val_dataset,
+                         'name': 'validation',
+                         'losses': losses
+                         }
+            self.post_epoch(epoch, **feed_dict)
+        print('info: finished training by batch count')
+
+    def evaluate(self, dataset, name='test'):
+        """
+        Evaluate model parameters against input data.
+        It logs multi-class classification performance metrics in runtime.
+        :param x: Input feed tensor
+        :param y: Expected abels tensor
+        :param name: Evaluation title name for logs.
+        :return: Total Test set Loss
+        """
+        print('info: evaluating classifier with {} set...'.format(name))
+        criterion = nn.CrossEntropyLoss()
+        dataloader = DataLoader(dataset, batch_size=self.batch_size, shuffle=False, num_workers=4)
+
+        losses = []
+        total = 0
+        metrics = defaultdict(lambda: {'hit': 0, 'total': 0})
+        for i_batch, sample_batched in enumerate(dataloader):
+            # get the inputs; data is a list of [inputs, labels]
+            x = sample_batched['wav']
+            labels = sample_batched['label']
+
+            # forward + backward + optimize
+            outputs = self(x)
+            loss = criterion(outputs, labels)
+            losses.append(loss.item())
+            total += labels.size(0)
+            _, predicted = torch.max(outputs.data, 1)
+            matches = (predicted == labels).squeeze()
+            for idx in range(labels.size(0)):
+                label = labels[idx]
+                metrics[label.item()]['hit'] += matches[idx].item()
+                metrics[label.item()]['total'] += 1
+
+        evaluation_loss = reduce(lambda x, y: x + y, losses)
+        print('metric: total {} loss: {}'.format(name, evaluation_loss))
+        for key in metrics.keys():
+            print('metric: %s accuracy of %5s : %2d %%' % (name,
+                                                           key, 100 * metrics[key]['hit'] / metrics[key]['total']))
+        return evaluation_loss
+
+    def predict(self, x):
+        return self.forward(x)
+
+    def num_flat_features(self, x):
+        size = x.size()[1:]  # all dimensions except the batch dimension
+        num_features = 1
+        for s in size:
+            num_features *= s
+        return num_features
+
+
+class Simple2dConvNet(ClassificationModel, nn.Module):
+    model_name = 'simple_2d_conv_net'
 
     def __init__(self, model_name, model_type, num_classes, input_shape, model_path=MODELS_DATA_PATH,
                  epochs=SIMPLECONV_EPOCHS,
@@ -555,11 +745,163 @@ class SimpleConvNet(ClassificationModel, nn.Module):
         return num_features
 
 
+class Simple1dConvNet(TorchClassificationModel):
+    def reset_hyper_parameters(self, model_name, model_type, num_classes, input_shape, initial_epoch,
+                               model_path=MODELS_DATA_PATH,
+                               epochs=S1DCONV_EPOCHS,
+                               batch_size=S1DCONV_BATCH_SIZE):
+        """
+        Override Reset model hyper-parameters as epochs and batch_size.
+        The purpose of this override is to set the default values for each configuration varible.
+        :param model_name:
+        :param model_type:
+        :param num_classes:
+        :param input_shape:
+        :param initial_epoch:
+        :param model_path:
+        :param epochs:
+        :param batch_size:
+        :return:
+        """
+        super().reset_hyper_parameters(model_name, model_type, num_classes, input_shape, initial_epoch, model_path,
+                                       epochs, batch_size)
+
+    model_name = 'simple_1d_conv_net'
+
+    def __init__(self, model_type, num_classes, input_shape, model_path=MODELS_DATA_PATH,
+                 epochs=S1DCONV_EPOCHS,
+                 batch_size=S1DCONV_BATCH_SIZE,
+                 **kwargs):
+        TorchClassificationModel.__init__(self,
+                                          model_type,
+                                          num_classes,
+                                          input_shape,
+                                          model_path,
+                                          epochs,
+                                          batch_size,
+                                          **kwargs)
+
+        assert len(self.input_shape) == 3  # (#, N_Channels, L)
+        input_channels = self.input_shape[1]
+        self.conv_kernel_size = 9
+        self.pool_kernel_size = 4
+        self.pool_stride = 2
+
+        # 1 input image channel, 6 output channels, 9 linear convolution
+        # kernel
+        self.conv1 = nn.Conv1d(input_channels, 6, self.conv_kernel_size)
+        self.conv2 = nn.Conv1d(6, 16, self.conv_kernel_size)
+        self.pool = nn.MaxPool1d(self.pool_kernel_size, self.pool_stride)
+
+        # calculate output shape of the encoder
+        output_shape_l = self.input_shape[2]
+
+        # first block
+        output_shape_l = ceil((output_shape_l - self.conv_kernel_size + 1) / 1)
+        output_shape_l = ceil((output_shape_l - self.pool_kernel_size + 1) / self.pool_stride)
+        # second block
+        output_shape_l = ceil((output_shape_l - self.conv_kernel_size + 1) / 1)
+        output_shape_l = ceil((output_shape_l - self.pool_kernel_size + 1) / self.pool_stride)
+
+        # classificator
+        # an affine operation: y = Wx + b
+        self.fc1 = nn.Linear(16 * output_shape_l, 120)  # 6*6 from image dimension
+        self.fc2 = nn.Linear(120, 84)
+        self.fc3 = nn.Linear(84, self.num_classes)
+
+        # auxiliary state variables
+        self.best_loss = float('inf')
+        self.early_stop_flag = False
+
+    def forward(self, x):
+        # Max pooling over a (2, 2) window
+        x = self.pool(F.relu(self.conv1(x)))
+        # If the size is a square you can only specify a single number
+        x = self.pool(F.relu(self.conv2(x)))
+        x = x.view(-1, self.num_flat_features(x))
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
+        x = self.fc3(x)
+        return x
+
+
+class WaveNetClassificator(TorchClassificationModel):
+    model_name = 'wavenet_classif'
+
+    def reset_hyper_parameters(self, model_name, model_type, num_classes, input_shape, initial_epoch,
+                               model_path=MODELS_DATA_PATH,
+                               epochs=WAVENET_EPOCHS,
+                               batch_size=WAVENET_BATCH_SIZE):
+        """
+        Override Reset model hyper-parameters as epochs and batch_size.
+        The purpose of this override is to set the default values for each configuration varible.
+        :param model_name:
+        :param model_type:
+        :param num_classes:
+        :param input_shape:
+        :param initial_epoch:
+        :param model_path:
+        :param epochs:
+        :param batch_size:
+        :return:
+        """
+        super().reset_hyper_parameters(model_name, model_type, num_classes, input_shape, initial_epoch, model_path,
+                                       epochs, batch_size)
+
+    def __init__(self, model_type, num_classes, input_shape, model_path=MODELS_DATA_PATH,
+                 epochs=WAVENET_EPOCHS,
+                 batch_size=WAVENET_BATCH_SIZE,
+                 **kwargs):
+        TorchClassificationModel.__init__(self,
+                                          model_type,
+                                          num_classes,
+                                          input_shape,
+                                          model_path,
+                                          epochs,
+                                          batch_size,
+                                          **kwargs)
+        self.wavenet = WaveNetModel(
+            WAVENET_LAYERS,
+            WAVENET_BLOCKS,
+            WAVENET_DILATION_CHANNELS,
+            WAVENET_RESIDUAL_CHANNELS,
+            WAVENET_SKIP_CHANNELS,
+            WAVENET_END_CHANNELS,
+            WAVENET_CLASSES,
+            WAVENET_OUTPUT_LENGTH,
+            WAVENET_KERNEL_SIZE)
+
+
+        # reduce dim from 160k to 32k
+        pooling_kz = 10
+        pooling_stride = 5
+        self.last_pooling = nn.AvgPool1d(kernel_size=10, stride=5)
+
+        # for now output length is fixed to 159968
+
+        self.fc1 = nn.Linear(self.wavenet.end_channels * floor((159968 - pooling_kz) / pooling_stride + 1), 120)  # 6*6 from image dimension
+        self.fc2 = nn.Linear(120, 84)
+        self.fc3 = nn.Linear(84, self.num_classes)
+
+    def forward(self, x):
+
+        x = self.wavenet.forward(x)
+
+        # reduce samples
+        x = self.last_pooling(x)
+
+        # simple classifier
+        x = x.view(-1, x.shape[1]*x.shape[2])
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
+        x = self.fc3(x)
+        return x
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Train a model from features from a data folder')
 
     parser.add_argument('--model', help='name of the model to be trained (options: ResNetV2, leglaive)',
-                        default='SimpleConvNet')
+                        default='waveNet')
 
     args = parser.parse_args()
     model = args.model
@@ -593,18 +935,10 @@ if __name__ == '__main__':
         x_val = val_dm.X
         y_val = val_dm.Y
 
-        model = SimpleConvNet('faith_tull_binary_sid', num_classes=len(set([label_id for label_id in y_train])),
-                              input_shape=x_train.shape, model_type='simpleconv')
+        model = Simple2dConvNet('faith_tull_binary_sid', num_classes=len(set([label_id for label_id in y_train])),
+                                input_shape=x_train.shape, model_type='simpleconv')
 
-        # check for existing checkpoints
-        chkp_files, chkp_epoch = model.checkpoint_files
-        assert len(chkp_files) == len(chkp_epoch)
-        if len(chkp_files) != 0:
-            # load from checkpoint
-            max_idx = int(np.argmax(chkp_epoch))
-            model = torch.load(str(chkp_files[max_idx]))
-            model.initial_epoch = int(chkp_epoch[max_idx])
-            print('info: loading model from checkpoint {}'.format(chkp_files[max_idx]))
+        model = model.load_checkpoint()
         # train
         model.train_now(x_train, y_train, x_val, y_val)
 
@@ -614,3 +948,45 @@ if __name__ == '__main__':
         x_test = test_dm.X
         y_test = test_dm.Y
         model.evaluate(x_test, y_test)
+    elif model == 'Simple1dConvNet':
+        train_dataset, test_dataset, val_dataset = WaveformDataset.init_sets(
+            SingingVoiceSeparationOpenUnmixFeatureExtractor.feature_name,
+            FEATURES_DATA_PATH,
+            ratio=(0.5, 0.25, 0.25)
+        )
+
+        train_dataloader = DataLoader(train_dataset, batch_size=S1DCONV_BATCH_SIZE, shuffle=True, num_workers=2)
+        test_dataloader = DataLoader(test_dataset, batch_size=S1DCONV_BATCH_SIZE, shuffle=True, num_workers=2)
+        val_dataloader = DataLoader(val_dataset, batch_size=S1DCONV_BATCH_SIZE, shuffle=True, num_workers=2)
+
+        # model hyper parameters should be modified in config file
+        input_shape = (S1DCONV_BATCH_SIZE, WAVEFORM_NUM_CHANNELS, WAVEFORM_SEQUENCE_LENGTH)
+        model = Simple1dConvNet(
+            'faith_tull_binary2',
+            num_classes=2,
+            input_shape=input_shape
+        )
+        model = model.load_checkpoint()
+        model.train_now(train_dataset, val_dataset)
+        model.evaluate(test_dataset)
+    elif model == 'waveNet':
+        train_dataset, test_dataset, val_dataset = WaveformDataset.init_sets(
+            SingingVoiceSeparationOpenUnmixFeatureExtractor.feature_name,
+            FEATURES_DATA_PATH,
+            ratio=(0.5, 0.25, 0.25)
+        )
+
+        train_dataloader = DataLoader(train_dataset, batch_size=S1DCONV_BATCH_SIZE, shuffle=True, num_workers=2)
+        test_dataloader = DataLoader(test_dataset, batch_size=S1DCONV_BATCH_SIZE, shuffle=True, num_workers=2)
+        val_dataloader = DataLoader(val_dataset, batch_size=S1DCONV_BATCH_SIZE, shuffle=True, num_workers=2)
+
+        # model hyper parameters should be modified in config file
+        input_shape = (S1DCONV_BATCH_SIZE, WAVEFORM_NUM_CHANNELS, WAVEFORM_SEQUENCE_LENGTH)
+        model = WaveNetClassificator(
+            'faith_tull_binary2',
+            num_classes=2,
+            input_shape=input_shape
+        )
+        model = model.load_checkpoint()
+        model.train_now(train_dataset, val_dataset)
+        model.evaluate(test_dataset)

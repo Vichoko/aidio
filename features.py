@@ -3,6 +3,7 @@ import concurrent.futures
 import os
 import subprocess
 
+import audioread
 import soundfile as sf
 
 from util.open_unmix.test import separate_music_file
@@ -384,8 +385,9 @@ class FeatureExtractor:
         # this is kind-of standard
         mp3_filename = mp3_filename or FeatureExtractor.get_file_name(x, feature_name, 'mp3')
         wav_filename = mp3_filename.replace('mp3', 'wav')
-        sf.write(str(out_path / wav_filename), ndarray, sr)
-        errno = _save_mp3(out_path / wav_filename, out_path / mp3_filename)
+        sf.write(str(out_path / wav_filename), ndarray, sr)  # write wav file
+        errno = _save_mp3(out_path / wav_filename,
+                          out_path / mp3_filename)  # load wav, encode as mp3 and remove wav file
         if errno:
             # if any error, then keep wav
             filename = wav_filename
@@ -1040,10 +1042,10 @@ class SingingVoiceSeparationOpenUnmixFeatureExtractor(FeatureExtractor):
                 file_name = FeatureExtractor.get_file_name(x_i, feature_name, ext=ext)
                 try:
                     # try to load if file already exist
+                    print('info: trying to load {}'.format(out_path / file_name))
                     librosa.load(out_path / file_name, sr=OUNMIX_SAMPLE_RATE)
-                    print('info: {} loaded from .{} !'.format(file_name, ext))
                     new_labels.append([file_name, y_i])
-                except FileNotFoundError or OSError or EOFError:
+                except (FileNotFoundError, OSError, EOFError, audioread.NoBackendError):
                     # OSError and EOFError are raised if file are inconsistent
                     # final_shape: (#_hops, #_mel_filters, #_window)
                     print('info: processing {}'.format(x_i))

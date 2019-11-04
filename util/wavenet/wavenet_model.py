@@ -2,7 +2,7 @@ import os
 import os.path
 import time
 from util.wavenet.wavenet_modules import *
-from util.audio_data import *
+from util.wavenet.audio_data import *
 
 
 class WaveNetModel(nn.Module):
@@ -48,6 +48,7 @@ class WaveNetModel(nn.Module):
         self.classes = classes
         self.kernel_size = kernel_size
         self.dtype = dtype
+        self.end_channels = end_channels
 
         # build model
         receptive_field = 1
@@ -109,12 +110,12 @@ class WaveNetModel(nn.Module):
                 new_dilation *= 2
 
         self.end_conv_1 = nn.Conv1d(in_channels=skip_channels,
-                                  out_channels=end_channels,
+                                  out_channels=self.end_channels,
                                   kernel_size=1,
                                   bias=True)
 
-        self.end_conv_2 = nn.Conv1d(in_channels=end_channels,
-                                    out_channels=classes,
+        self.end_conv_2 = nn.Conv1d(in_channels=self.end_channels,
+                                    out_channels=self.end_channels,
                                     kernel_size=1,
                                     bias=True)
 
@@ -187,12 +188,14 @@ class WaveNetModel(nn.Module):
         x = self.wavenet(input,
                          dilation_func=self.wavenet_dilate)
 
-        # reshape output
-        [n, c, l] = x.size()
-        l = self.output_length
-        x = x[:, :, -l:]
-        x = x.transpose(1, 2).contiguous()
-        x = x.view(n * l, c)
+        # x = self.last_pooling(x)
+
+        # # reshape output
+        # [n, c, l] = x.size()
+        # l = self.output_length
+        # x = x[:, :, -l:]
+        # x = x.transpose(1, 2).contiguous()
+        # x = x.view(n * l, c)
         return x
 
     def generate(self,

@@ -4,7 +4,6 @@ librosa
 keras
 pydub
 pysoundfile
-
+ffmpeg
 # conda
 # conda install cffi numpy
-# conda install ffmpeg

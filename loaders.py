@@ -1,12 +1,19 @@
 import os
 from math import ceil
 
+# import torch
+import librosa
 import numpy as np
 import pandas as pd
+import torch
+from pandas import Series
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import OneHotEncoder, OrdinalEncoder
+from torch.utils.data.dataset import Dataset
+from torchvision import transforms
 
-from config import FEATURES_DATA_PATH, RESNET_MIN_DIM, ADISAN_BATCH_SIZE, ADISAN_EPOCHS
+from config import FEATURES_DATA_PATH, RESNET_MIN_DIM, ADISAN_BATCH_SIZE, ADISAN_EPOCHS, SR, WAVEFORM_SEQUENCE_LENGTH, \
+    WAVEFORM_NUM_CHANNELS, WAVEFORM_SAMPLE_RATE
 
 
 # def get_shuffle_split(self, n_splits=2, test_size=0.5, train_size=0.5):
@@ -447,3 +454,134 @@ class ADiSANDataManager(DataManager):
                      model.batch_access_mask: batch_access_mask,
                      model.is_train: True if data_type == 'train' else False}
         return feed_dict
+
+
+class WaveformDataset(Dataset):
+    """
+    Load the input data as a wave net with a specified sample rate.
+    """
+
+    class ToTensor:
+        def __call__(self, sample):
+            wav, label = sample['wav'], sample['label']
+            return {'wav': torch.from_numpy(wav), 'label': torch.from_numpy(np.asarray(label))}
+
+    class RandomCrop:
+        """Crop randomly the image in a sample.
+
+        Args:
+            output_size (tuple or int): Desired output size. If int, square crop
+                is made.
+        """
+
+        def __init__(self, output_size):
+            assert isinstance(output_size, int)
+            if isinstance(output_size, int):
+                self.output_size = output_size
+
+        def __call__(self, sample):
+            wav, label = sample['wav'], sample['label']
+            # wav shape is n_channels, n_samples
+            l = wav.shape[1]
+            new_l = self.output_size
+
+            pivot = np.random.randint(0, l - new_l)
+            wav = wav[:, pivot: pivot + new_l]
+            return {'wav': wav, 'label': label}
+
+    @classmethod
+    def init_sets(cls, feature_name, features_path,
+                  ratio=(0.5, 0.3, 0.2),
+                  shuffle=True,
+                  random_state=None, ):
+        """
+        Initiate 3 Datasets: Train, Validation and Test, splitted by the given ratios.
+        :param feature_name:
+        :param feature_path:
+        :param shuffle:
+        :param ratio:
+        :param random_state:
+        :return:
+        """
+
+        metadata_df = pd.read_csv(
+            features_path /
+            feature_name /
+            'labels.{}.csv'.format(feature_name)
+        )
+        filenames = metadata_df['filename']
+        labels = metadata_df['label']
+        print('info: starting split...')
+        assert ratio[0] + ratio[1] + ratio[2] == 1
+
+        # split metadata in 3 sets: train, test and dev
+        filenames_train, filenames_test, labels_train, labels_test = train_test_split(
+            filenames, labels, test_size=ratio[1] + ratio[2], random_state=random_state, shuffle=shuffle
+        )
+        test_dev_pivot = round(ratio[1] / (ratio[1] + ratio[2]) * len(filenames_test))
+        filenames_dev, labels_dev = filenames_test[test_dev_pivot:], labels_test[test_dev_pivot:]
+        filenames_test, labels_test = filenames_test[:test_dev_pivot], labels_test[:test_dev_pivot]
+
+        # random crop over many epochs ensure data augmentation
+        transform = transforms.Compose(
+            [cls.RandomCrop(WAVEFORM_SEQUENCE_LENGTH),
+             cls.ToTensor()]
+        )
+
+        # instance 3 datasets
+        train_dataset = cls(filenames_train, labels_train, features_path / feature_name, transform=transform)
+        test_dataset = cls(filenames_test, labels_test, features_path / feature_name, transform=transform)
+        dev_dataset = cls(filenames_dev, labels_dev, features_path / feature_name, transform=transform)
+        return train_dataset, test_dataset, dev_dataset
+
+    def __getitem__(self, index: int):
+        label = self.labels[index]
+        wav, sr = librosa.load(self.data_path / self.filenames[index], sr=WAVEFORM_SAMPLE_RATE, mono=True if WAVEFORM_NUM_CHANNELS == 1 else WAVEFORM_NUM_CHANNELS)
+
+        # wav shape is (n_samples) or (n_channels, n_samples)
+        # torch 1d image is n_channels, n_samples
+        if len(wav.shape) == 1:
+            wav = wav.reshape(1, -1)
+        elif len(wav.shape) == 2:
+            if wav.shape[0] > 2:
+                print("warning: wav channel size is uncommon {}; expected is 2 (stereo) or 1 (mono) ".format(
+                    wav.shape[0]))
+        else:
+            print('error: wav shape is {}, expected N_channels x N_samples'.format(wav.shape))
+        # unify wav shape to (n_channels, n_samples)
+
+        sample = {'wav': wav, 'label': label}
+
+        if self.transform:
+            sample = self.transform(sample)
+        return sample
+
+    def __len__(self) -> int:
+        return len(self.filenames)
+
+    def __init__(self, filenames, labels, data_path, transform=None) -> None:
+        self.filenames = np.asarray(filenames)
+        self.labels = self.labels_to_ordinal(np.asarray(labels))
+
+        self.data_path = data_path
+        assert len(self.filenames) == len(self.labels)
+        self.transform = transform
+        super().__init__()
+
+    @staticmethod
+    def labels_to_ordinal(labels):
+        """
+        Y = ['foo', 'foo', 'bar']
+        to
+        Y = [['foo'], ['foo'], ['bar']]
+        to
+        Y = [[0],[0],[1.0]]
+        to
+        Y = [0,0,1]
+        :return: None
+        """
+        enc = OrdinalEncoder()
+        labels = np.asarray(labels)
+        labels = enc.fit_transform(labels.reshape(-1, 1))
+        labels = np.array(labels.reshape(labels.shape[:-1]), dtype=np.int64)  # drop last axis and cast to int32
+        return labels
