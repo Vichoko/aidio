@@ -978,15 +978,18 @@ class WaveNetBiLSTMClassifier(TorchClassificationModel):
 
 
     def forward(self, x):
+        print('info: feeding wavenet...')
         x = self.wavenet.forward(x)
         # reduce sequence_length / 5
         x = self.avg_pooling(x)
         # x.shape is n_data, n_channels, n_sequence
         # rnn expected input is n_sequence, n_data, wavenet_channels
         x = x.transpose(0, 2).transpose(1, 2)
+        print('info: feeding lstm...')
         x, _ = self.enc_lstm(x)  # shape n_sequence, n_data, lstm_hidden_size * 2
         x, _ = x.max(0)  # max pooling over the sequence dim; drop sequence axis
         # x final shape is n_data, lstm_hidden_size * 2
+        print('info: feeding fully-connected...')
         # simple classifier
         x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))
