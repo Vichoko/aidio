@@ -463,8 +463,8 @@ class WaveformDataset(Dataset):
 
     class ToTensor:
         def __call__(self, sample):
-            wav, label = sample['wav'], sample['label']
-            return {'wav': torch.from_numpy(wav), 'label': torch.from_numpy(np.asarray(label))}
+            wav, label = sample['x'], sample['y']
+            return {'x': torch.from_numpy(wav), 'y': torch.from_numpy(np.asarray(label))}
 
     class RandomCrop:
         """Crop randomly the image in a sample.
@@ -480,14 +480,14 @@ class WaveformDataset(Dataset):
                 self.output_size = output_size
 
         def __call__(self, sample):
-            wav, label = sample['wav'], sample['label']
+            wav, label = sample['x'], sample['y']
             # wav shape is n_channels, n_samples
             l = wav.shape[1]
             new_l = self.output_size
 
             pivot = np.random.randint(0, l - new_l)
             wav = wav[:, pivot: pivot + new_l]
-            return {'wav': wav, 'label': label}
+            return {'x': wav, 'y': label}
 
     @classmethod
     def init_sets(cls, feature_name, features_path,
@@ -550,7 +550,7 @@ class WaveformDataset(Dataset):
             print('error: wav shape is {}, expected N_channels x N_samples'.format(wav.shape))
         # unify wav shape to (n_channels, n_samples)
 
-        sample = {'wav': wav, 'label': label}
+        sample = {'x': wav, 'y': label}
 
         if self.transform:
             sample = self.transform(sample)

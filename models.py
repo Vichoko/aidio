@@ -16,7 +16,7 @@ from config import MODELS_DATA_PATH, RESNET_V2_BATCH_SIZE, RESNET_V2_EPOCHS, RES
     WAVEFORM_SEQUENCE_LENGTH, S1DCONV_BATCH_SIZE, S1DCONV_EPOCHS, WAVENET_LAYERS, WAVENET_BLOCKS, \
     WAVENET_DILATION_CHANNELS, WAVENET_RESIDUAL_CHANNELS, WAVENET_SKIP_CHANNELS, WAVENET_OUTPUT_LENGTH, \
     WAVENET_KERNEL_SIZE, WAVENET_END_CHANNELS, WAVENET_CLASSES, WAVENET_EPOCHS, WAVENET_BATCH_SIZE, LSTM_HIDDEN_SIZE, \
-    LSTM_NUM_LAYERS, LSTM_DROPOUT_PROB
+    LSTM_NUM_LAYERS, LSTM_DROPOUT_PROB, WAVENET_POOLING_KERNEL_SIZE, WAVENET_POOLING_STRIDE
 from features import WindowedMelSpectralCoefficientsFeatureExtractor, SingingVoiceSeparationOpenUnmixFeatureExtractor
 from loaders import ResnetDataManager, TorchVisionDataManager, WaveformDataset
 from util.wavenet.wavenet_model import WaveNetModel
@@ -391,6 +391,8 @@ class TorchClassificationModel(ClassificationModel, nn.Module):
                                      batch_size,
                                      **kwargs)
         nn.Module.__init__(self)
+        self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
 
     def post_epoch(self, epoch, **kwargs):
         """
@@ -455,6 +457,7 @@ class TorchClassificationModel(ClassificationModel, nn.Module):
         optimizer = optim.SGD(self.parameters(), lr=0.001, momentum=0.9)
         dataloader = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=False,
                                 num_workers=4)
+
         epoch = self.initial_epoch
         while epoch < self.epochs:  # loop over the dataset multiple times
             epoch += 1
@@ -462,8 +465,8 @@ class TorchClassificationModel(ClassificationModel, nn.Module):
             losses = []
             for i_batch, sample_batched in enumerate(dataloader):
                 # get the inputs; data is a list of [inputs, labels]
-                x_i = sample_batched['wav']
-                y_i = sample_batched['label']
+                x_i = sample_batched['x'].to(self.device)
+                y_i = sample_batched['y'].to(self.device)
 
                 # zero the parameter gradients
                 optimizer.zero_grad()
@@ -507,8 +510,8 @@ class TorchClassificationModel(ClassificationModel, nn.Module):
         metrics = defaultdict(lambda: {'hit': 0, 'total': 0})
         for i_batch, sample_batched in enumerate(dataloader):
             # get the inputs; data is a list of [inputs, labels]
-            x = sample_batched['wav']
-            labels = sample_batched['label']
+            x = sample_batched['x']
+            labels = sample_batched['y']
 
             # forward + backward + optimize
             outputs = self(x)
@@ -951,7 +954,10 @@ class WaveNetBiLSTMClassifier(TorchClassificationModel):
 
         # reduce sample resolution from 160k to 32k
         # output_length = floor((input_length - stride)/kernel_size + 1)
-        self.avg_pooling = nn.AvgPool1d(kernel_size=10, stride=5)
+        self.avg_pooling = nn.AvgPool1d(
+            kernel_size=WAVENET_POOLING_KERNEL_SIZE,
+            stride=WAVENET_POOLING_STRIDE
+        )
 
         self.enc_lstm = nn.LSTM(
             self.wavenet.end_channels,
@@ -965,9 +971,12 @@ class WaveNetBiLSTMClassifier(TorchClassificationModel):
         self.fc2 = nn.Linear(120, 84)
         self.fc3 = nn.Linear(84, self.num_classes)
 
+        self.to(self.device)
+        self.wavenet.to(self.device)
+
+
     def forward(self, x):
         x = self.wavenet.forward(x)
-
         # reduce sequence_length / 5
         x = self.avg_pooling(x)
         # x.shape is n_data, n_channels, n_sequence
