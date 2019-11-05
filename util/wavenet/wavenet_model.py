@@ -114,11 +114,6 @@ class WaveNetModel(nn.Module):
                                   kernel_size=1,
                                   bias=True)
 
-        self.end_conv_2 = nn.Conv1d(in_channels=self.end_channels,
-                                    out_channels=self.end_channels,
-                                    kernel_size=1,
-                                    bias=True)
-
         # self.output_length = 2 ** (layers - 1)
         self.output_length = output_length
         self.receptive_field = receptive_field
@@ -166,9 +161,7 @@ class WaveNetModel(nn.Module):
             x = x + residual[:, :, (self.kernel_size - 1):]
 
         x = F.relu(skip)
-        x = F.relu(self.end_conv_1(x))
-        x = self.end_conv_2(x)
-
+        x = self.end_conv_1(x)
         return x
 
     def wavenet_dilate(self, input, dilation, init_dilation, i):
