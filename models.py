@@ -9,6 +9,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import tqdm
 from torch.utils.data.dataloader import DataLoader
 
 from config import MODELS_DATA_PATH, RESNET_V2_BATCH_SIZE, RESNET_V2_EPOCHS, RESNET_V2_DEPTH, \
@@ -463,7 +464,8 @@ class TorchClassificationModel(ClassificationModel, nn.Module):
             epoch += 1
             running_loss = 0.0
             losses = []
-            for i_batch, sample_batched in enumerate(dataloader):
+            pb = tqdm.tqdm(dataloader, desc='training in batches', unit='batch')
+            for i_batch, sample_batched in enumerate(pb):
                 # get the inputs; data is a list of [inputs, labels]
                 x_i = sample_batched['x'].to(self.device)
                 y_i = sample_batched['y'].to(self.device)
