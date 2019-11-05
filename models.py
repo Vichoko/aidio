@@ -392,8 +392,7 @@ class TorchClassificationModel(ClassificationModel, nn.Module):
                                      batch_size,
                                      **kwargs)
         nn.Module.__init__(self)
-        #self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-        self.device = 'cpu'
+        self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
     def post_epoch(self, epoch, **kwargs):
         """
