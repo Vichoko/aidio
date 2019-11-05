@@ -976,7 +976,6 @@ class WaveNetBiLSTMClassifier(TorchClassificationModel):
         self.to(self.device)
         self.wavenet.to(self.device)
 
-
     def forward(self, x):
         print('info: feeding wavenet...')
         x = self.wavenet.forward(x)
@@ -1095,7 +1094,7 @@ if __name__ == '__main__':
         model.train_now(train_dataset, val_dataset)
         model.evaluate(test_dataset)
     elif model == 'waveNetLstm':
-        train_dataset, test_dataset, val_dataset = WaveformDataset.init_sets(
+        train_dataset, test_dataset, val_dataset, number_of_classes = WaveformDataset.init_sets(
             SingingVoiceSeparationOpenUnmixFeatureExtractor.feature_name,
             features_path,
             ratio=(0.5, 0.25, 0.25)
@@ -1109,7 +1108,7 @@ if __name__ == '__main__':
         input_shape = (WAVENET_BATCH_SIZE, WAVEFORM_NUM_CHANNELS, WAVEFORM_SEQUENCE_LENGTH)
         model = WaveNetBiLSTMClassifier(
             'faith_tull_binary2',
-            num_classes=2,
+            num_classes=number_of_classes,
             input_shape=input_shape
         )
         model = model.load_checkpoint()

@@ -514,6 +514,11 @@ class WaveformDataset(Dataset):
         print('info: starting split...')
         assert ratio[0] + ratio[1] + ratio[2] == 1
 
+        # check the nmber of classes and fit an ordinal ecoder
+        labels = np.asarray(labels)
+        number_of_classes = len(set(labels))
+        label_encoder = OrdinalEncoder().fit(labels.reshape(-1, 1))
+
         # split metadata in 3 sets: train, test and dev
         filenames_train, filenames_test, labels_train, labels_test = train_test_split(
             filenames, labels, test_size=ratio[1] + ratio[2], random_state=random_state, shuffle=shuffle
@@ -529,10 +534,10 @@ class WaveformDataset(Dataset):
         )
 
         # instance 3 datasets
-        train_dataset = cls(filenames_train, labels_train, features_path / feature_name, transform=transform)
-        test_dataset = cls(filenames_test, labels_test, features_path / feature_name, transform=transform)
-        dev_dataset = cls(filenames_dev, labels_dev, features_path / feature_name, transform=transform)
-        return train_dataset, test_dataset, dev_dataset
+        train_dataset = cls(filenames_train, labels_train, features_path / feature_name, transform=transform, label_encoder=label_encoder)
+        test_dataset = cls(filenames_test, labels_test, features_path / feature_name, transform=transform, label_encoder=label_encoder)
+        dev_dataset = cls(filenames_dev, labels_dev, features_path / feature_name, transform=transform, label_encoder=label_encoder)
+        return train_dataset, test_dataset, dev_dataset, number_of_classes
 
     def __getitem__(self, index: int):
         label = self.labels[index]
@@ -559,17 +564,16 @@ class WaveformDataset(Dataset):
     def __len__(self) -> int:
         return len(self.filenames)
 
-    def __init__(self, filenames, labels, data_path, transform=None) -> None:
+    def __init__(self, filenames, labels, data_path, transform=None, label_encoder=None) -> None:
         self.filenames = np.asarray(filenames)
-        self.labels = self.labels_to_ordinal(np.asarray(labels))
-
+        self.labels = self.encode_labels(np.asarray(labels), label_encoder)
         self.data_path = data_path
         assert len(self.filenames) == len(self.labels)
         self.transform = transform
         super().__init__()
 
     @staticmethod
-    def labels_to_ordinal(labels):
+    def encode_labels(labels, enc=None):
         """
         Y = ['foo', 'foo', 'bar']
         to
@@ -580,8 +584,13 @@ class WaveformDataset(Dataset):
         Y = [0,0,1]
         :return: None
         """
-        enc = OrdinalEncoder()
         labels = np.asarray(labels)
-        labels = enc.fit_transform(labels.reshape(-1, 1))
-        labels = np.array(labels.reshape(labels.shape[:-1]), dtype=np.int64)  # drop last axis and cast to int32
+        if enc is None:
+            """
+            OrdinalEncoder is used for CE Loss criteria 
+            """
+            enc = OrdinalEncoder()
+            enc.fit(labels.reshape(-1, 1))
+        labels = enc.transform(labels.reshape(-1, 1))
+        labels = np.array(labels.reshape(labels.shape[:-1]), dtype=np.int64)  # drop last axis and cast to int64 aka long
         return labels
