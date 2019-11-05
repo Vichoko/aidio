@@ -463,7 +463,7 @@ class TorchClassificationModel(ClassificationModel, nn.Module):
             epoch += 1
             running_loss = 0.0
             losses = []
-            pb = tqdm.tqdm(dataloader, desc='training in batches', unit='batch')
+            pb = tqdm.tqdm(dataloader, desc='training in batches', unit='batch', position=0, leave=True)
             for i_batch, sample_batched in enumerate(pb):
                 # get the inputs; data is a list of [inputs, labels]
                 x_i = sample_batched['x'].to(self.device)
@@ -503,35 +503,38 @@ class TorchClassificationModel(ClassificationModel, nn.Module):
         :return: Total Test set Loss
         """
         print('info: evaluating classifier with {} set...'.format(name))
-        criterion = nn.CrossEntropyLoss()
-        dataloader = DataLoader(dataset, batch_size=self.batch_size, shuffle=False, num_workers=4)
+        with torch.no_grad():
+            criterion = nn.CrossEntropyLoss()
+            dataloader = DataLoader(dataset, batch_size=self.batch_size, shuffle=False, num_workers=4)
 
-        losses = []
-        total = 0
-        metrics = defaultdict(lambda: {'hit': 0, 'total': 0})
-        for i_batch, sample_batched in enumerate(dataloader):
-            # get the inputs; data is a list of [inputs, labels]
-            x = sample_batched['x'].to(self.device)
-            labels = sample_batched['y'].to(self.device)
+            losses = []
+            total = 0
+            metrics = defaultdict(lambda: {'hit': 0, 'total': 0})
+            pb = tqdm.tqdm(dataloader, desc='evaluating in batches', unit='batch', position=0, leave=True)
+            for i_batch, sample_batched in enumerate(pb):
 
-            # forward + backward + optimize
-            outputs = self(x)
-            loss = criterion(outputs, labels)
-            losses.append(loss.item())
-            total += labels.size(0)
-            _, predicted = torch.max(outputs.data, 1)
-            matches = (predicted == labels).squeeze()
-            for idx in range(labels.size(0)):
-                label = labels[idx]
-                metrics[label.item()]['hit'] += matches[idx].item()
-                metrics[label.item()]['total'] += 1
+                # get the inputs; data is a list of [inputs, labels]
+                x = sample_batched['x'].to(self.device)
+                labels = sample_batched['y'].to(self.device)
 
-        evaluation_loss = reduce(lambda x, y: x + y, losses)
-        print('metric: total {} loss: {}'.format(name, evaluation_loss))
-        for key in metrics.keys():
-            print('metric: %s accuracy of %5s : %2d %%' % (name,
-                                                           key, 100 * metrics[key]['hit'] / metrics[key]['total']))
-        return evaluation_loss
+                # forward + backward + optimize
+                outputs = self(x)
+                loss = criterion(outputs, labels)
+                losses.append(loss.item())
+                total += labels.size(0)
+                _, predicted = torch.max(outputs.data, 1)
+                matches = (predicted == labels).squeeze()
+                for idx in range(labels.size(0)):
+                    label = labels[idx]
+                    metrics[label.item()]['hit'] += matches[idx].item()
+                    metrics[label.item()]['total'] += 1
+
+            evaluation_loss = reduce(lambda x, y: x + y, losses)
+            print('metric: total {} loss: {}'.format(name, evaluation_loss))
+            for key in metrics.keys():
+                print('metric: %s accuracy of %5s : %2d %%' % (name,
+                                                               key, 100 * metrics[key]['hit'] / metrics[key]['total']))
+            return evaluation_loss
 
     def predict(self, x):
         return self.forward(x)
