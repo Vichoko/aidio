@@ -511,8 +511,8 @@ class TorchClassificationModel(ClassificationModel, nn.Module):
         metrics = defaultdict(lambda: {'hit': 0, 'total': 0})
         for i_batch, sample_batched in enumerate(dataloader):
             # get the inputs; data is a list of [inputs, labels]
-            x = sample_batched['x']
-            labels = sample_batched['y']
+            x = sample_batched['x'].to(self.device)
+            labels = sample_batched['y'].to(self.device)
 
             # forward + backward + optimize
             outputs = self(x)
@@ -972,26 +972,29 @@ class WaveNetBiLSTMClassifier(TorchClassificationModel):
         self.fc2 = nn.Linear(120, 84)
         self.fc3 = nn.Linear(84, self.num_classes)
 
+        self.soft_max = nn.Softmax(dim=1)
+
         self.to(self.device)
         self.wavenet.to(self.device)
 
     def forward(self, x):
-        print('info: feeding wavenet...')
+        # print('info: feeding wavenet...')
         x = self.wavenet.forward(x)
         # reduce sequence_length / 5
         x = self.avg_pooling(x)
         # x.shape is n_data, n_channels, n_sequence
         # rnn expected input is n_sequence, n_data, wavenet_channels
         x = x.transpose(0, 2).transpose(1, 2)
-        print('info: feeding lstm...')
+        # print('info: feeding lstm...')
         x, _ = self.enc_lstm(x)  # shape n_sequence, n_data, lstm_hidden_size * 2
         x, _ = x.max(0)  # max pooling over the sequence dim; drop sequence axis
         # x final shape is n_data, lstm_hidden_size * 2
-        print('info: feeding fully-connected...')
+        # print('info: feeding fully-connected...')
         # simple classifier
         x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))
         x = self.fc3(x)
+        x = self.soft_max(x)
         return x
 
 
