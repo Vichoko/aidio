@@ -1,7 +1,7 @@
 import concurrent.futures
 from functools import partial
 
-from config import CPU_WORKERS, N_FFT_HPSS_2, N_HOP_HPSS_2, SR_HPSS, RNN_INPUT_SIZE_VOICE_ACTIVATION
+from config import NUM_WORKERS, N_FFT_HPSS_2, N_HOP_HPSS_2, SR_HPSS, RNN_INPUT_SIZE_VOICE_ACTIVATION
 from util.leglaive.audio_processor import process_single_audio
 import argparse
 import numpy as np
@@ -23,7 +23,7 @@ def predict_songs(model_name, list_of_filenames, cache=True):
     import sys
 
     input_mels = []
-    with concurrent.futures.ThreadPoolExecutor(max_workers=CPU_WORKERS) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=NUM_WORKERS) as executor:
         _process_single_audio = partial(process_single_audio, res_list=input_mels)
         executor.map(_process_single_audio, list_of_filenames)
 

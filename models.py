@@ -17,7 +17,7 @@ from config import MODELS_DATA_PATH, RESNET_V2_BATCH_SIZE, RESNET_V2_EPOCHS, RES
     WAVEFORM_SEQUENCE_LENGTH, S1DCONV_BATCH_SIZE, S1DCONV_EPOCHS, WAVENET_LAYERS, WAVENET_BLOCKS, \
     WAVENET_DILATION_CHANNELS, WAVENET_RESIDUAL_CHANNELS, WAVENET_SKIP_CHANNELS, WAVENET_OUTPUT_LENGTH, \
     WAVENET_KERNEL_SIZE, WAVENET_END_CHANNELS, WAVENET_CLASSES, WAVENET_EPOCHS, WAVENET_BATCH_SIZE, LSTM_HIDDEN_SIZE, \
-    LSTM_NUM_LAYERS, LSTM_DROPOUT_PROB, WAVENET_POOLING_KERNEL_SIZE, WAVENET_POOLING_STRIDE
+    LSTM_NUM_LAYERS, LSTM_DROPOUT_PROB, WAVENET_POOLING_KERNEL_SIZE, WAVENET_POOLING_STRIDE, NUM_WORKERS
 from features import WindowedMelSpectralCoefficientsFeatureExtractor, SingingVoiceSeparationOpenUnmixFeatureExtractor
 from loaders import ResnetDataManager, TorchVisionDataManager, WaveformDataset
 from util.wavenet.wavenet_model import WaveNetModel
@@ -1069,9 +1069,9 @@ if __name__ == '__main__':
             ratio=(0.5, 0.25, 0.25)
         )
 
-        train_dataloader = DataLoader(train_dataset, batch_size=S1DCONV_BATCH_SIZE, shuffle=True, num_workers=2)
-        test_dataloader = DataLoader(test_dataset, batch_size=S1DCONV_BATCH_SIZE, shuffle=True, num_workers=2)
-        val_dataloader = DataLoader(val_dataset, batch_size=S1DCONV_BATCH_SIZE, shuffle=True, num_workers=2)
+        train_dataloader = DataLoader(train_dataset, batch_size=S1DCONV_BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
+        test_dataloader = DataLoader(test_dataset, batch_size=S1DCONV_BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
+        val_dataloader = DataLoader(val_dataset, batch_size=S1DCONV_BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
 
         # model hyper parameters should be modified in config file
         input_shape = (S1DCONV_BATCH_SIZE, WAVEFORM_NUM_CHANNELS, WAVEFORM_SEQUENCE_LENGTH)
@@ -1090,9 +1090,9 @@ if __name__ == '__main__':
             ratio=(0.5, 0.25, 0.25)
         )
 
-        train_dataloader = DataLoader(train_dataset, batch_size=S1DCONV_BATCH_SIZE, shuffle=True, num_workers=2)
-        test_dataloader = DataLoader(test_dataset, batch_size=S1DCONV_BATCH_SIZE, shuffle=True, num_workers=2)
-        val_dataloader = DataLoader(val_dataset, batch_size=S1DCONV_BATCH_SIZE, shuffle=True, num_workers=2)
+        train_dataloader = DataLoader(train_dataset, batch_size=S1DCONV_BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
+        test_dataloader = DataLoader(test_dataset, batch_size=S1DCONV_BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
+        val_dataloader = DataLoader(val_dataset, batch_size=S1DCONV_BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
 
         # model hyper parameters should be modified in config file
         input_shape = (S1DCONV_BATCH_SIZE, WAVEFORM_NUM_CHANNELS, WAVEFORM_SEQUENCE_LENGTH)
@@ -1111,9 +1111,9 @@ if __name__ == '__main__':
             ratio=(0.5, 0.25, 0.25)
         )
 
-        train_dataloader = DataLoader(train_dataset, batch_size=WAVENET_BATCH_SIZE, shuffle=True, num_workers=2)
-        test_dataloader = DataLoader(test_dataset, batch_size=WAVENET_BATCH_SIZE, shuffle=True, num_workers=2)
-        val_dataloader = DataLoader(val_dataset, batch_size=WAVENET_BATCH_SIZE, shuffle=True, num_workers=2)
+        train_dataloader = DataLoader(train_dataset, batch_size=WAVENET_BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
+        test_dataloader = DataLoader(test_dataset, batch_size=WAVENET_BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
+        val_dataloader = DataLoader(val_dataset, batch_size=WAVENET_BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
 
         # model hyper parameters should be modified in config file
         input_shape = (WAVENET_BATCH_SIZE, WAVEFORM_NUM_CHANNELS, WAVEFORM_SEQUENCE_LENGTH)
