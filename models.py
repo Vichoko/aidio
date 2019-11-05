@@ -8,7 +8,6 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from keras.engine.saving import load_model
 from torch.utils.data.dataloader import DataLoader
 
 from config import MODELS_DATA_PATH, RESNET_V2_BATCH_SIZE, RESNET_V2_EPOCHS, RESNET_V2_DEPTH, \
@@ -140,6 +139,7 @@ class ResNetV2(ClassificationModel):
         :return: Model, Callbacks for model operations
         """
         import keras
+        from keras.engine.saving import load_model
         from keras.layers import Dense, Conv2D, BatchNormalization, Activation, AveragePooling2D, Input, Flatten
         from keras.regularizers import l2
         from keras.optimizers import Adam
