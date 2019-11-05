@@ -58,8 +58,8 @@ class ClassificationModel:
                                epochs,
                                batch_size):
         ClassificationModel.__init__(self, model_name, model_type, num_classes, input_shape, model_path, epochs,
-                      batch_size,
-                      initial_epoch)
+                                     batch_size,
+                                     initial_epoch)
 
     @property
     def checkpoint_files(self):
@@ -872,7 +872,6 @@ class WaveNetClassifier(TorchClassificationModel):
             WAVENET_OUTPUT_LENGTH,
             WAVENET_KERNEL_SIZE)
 
-
         # reduce dim from 160k to 32k
         pooling_kz = 10
         pooling_stride = 5
@@ -880,19 +879,19 @@ class WaveNetClassifier(TorchClassificationModel):
 
         # for now output length is fixed to 159968
 
-        self.fc1 = nn.Linear(self.wavenet.end_channels * floor((159968 - pooling_kz) / pooling_stride + 1), 120)  # 6*6 from image dimension
+        self.fc1 = nn.Linear(self.wavenet.end_channels * floor((159968 - pooling_kz) / pooling_stride + 1),
+                             120)  # 6*6 from image dimension
         self.fc2 = nn.Linear(120, 84)
         self.fc3 = nn.Linear(84, self.num_classes)
 
     def forward(self, x):
-
         x = self.wavenet.forward(x)
 
         # reduce samples
         x = self.last_pooling(x)
 
         # simple classifier
-        x = x.view(-1, x.shape[1]*x.shape[2])
+        x = x.view(-1, x.shape[1] * x.shape[2])
         x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))
         x = self.fc3(x)
@@ -949,7 +948,6 @@ class WaveNetBiLSTMClassifier(TorchClassificationModel):
             WAVENET_OUTPUT_LENGTH,
             WAVENET_KERNEL_SIZE)
 
-
         # reduce sample resolution from 160k to 32k
         # output_length = floor((input_length - stride)/kernel_size + 1)
         self.avg_pooling = nn.AvgPool1d(kernel_size=10, stride=5)
@@ -959,7 +957,6 @@ class WaveNetBiLSTMClassifier(TorchClassificationModel):
             LSTM_HIDDEN_SIZE, LSTM_NUM_LAYERS,
             bidirectional=True,
             dropout=LSTM_DROPOUT_PROB)
-
 
         # for now output length is fixed to 159968
 
@@ -985,15 +982,18 @@ class WaveNetBiLSTMClassifier(TorchClassificationModel):
         return x
 
 
-
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Train a model from features from a data folder')
 
     parser.add_argument('--model', help='name of the model to be trained (options: ResNetV2, leglaive)',
                         default='waveNetLstm')
 
+    parser.add_argument('--features_path', help='name of the model to be trained (options: ResNetV2, leglaive)',
+                        default=FEATURES_DATA_PATH)
+
     args = parser.parse_args()
     model = args.model
+    features_path = args.features_path
 
     if model == 'ResNetV2':
         train_dm, test_dm, _ = ResnetDataManager.init_n_split(
@@ -1040,7 +1040,7 @@ if __name__ == '__main__':
     elif model == 'Simple1dConvNet':
         train_dataset, test_dataset, val_dataset = WaveformDataset.init_sets(
             SingingVoiceSeparationOpenUnmixFeatureExtractor.feature_name,
-            FEATURES_DATA_PATH,
+            features_path,
             ratio=(0.5, 0.25, 0.25)
         )
 
@@ -1061,7 +1061,7 @@ if __name__ == '__main__':
     elif model == 'waveNet':
         train_dataset, test_dataset, val_dataset = WaveformDataset.init_sets(
             SingingVoiceSeparationOpenUnmixFeatureExtractor.feature_name,
-            FEATURES_DATA_PATH,
+            features_path,
             ratio=(0.5, 0.25, 0.25)
         )
 
@@ -1082,16 +1082,16 @@ if __name__ == '__main__':
     elif model == 'waveNetLstm':
         train_dataset, test_dataset, val_dataset = WaveformDataset.init_sets(
             SingingVoiceSeparationOpenUnmixFeatureExtractor.feature_name,
-            FEATURES_DATA_PATH,
+            features_path,
             ratio=(0.5, 0.25, 0.25)
         )
 
-        train_dataloader = DataLoader(train_dataset, batch_size=S1DCONV_BATCH_SIZE, shuffle=True, num_workers=2)
-        test_dataloader = DataLoader(test_dataset, batch_size=S1DCONV_BATCH_SIZE, shuffle=True, num_workers=2)
-        val_dataloader = DataLoader(val_dataset, batch_size=S1DCONV_BATCH_SIZE, shuffle=True, num_workers=2)
+        train_dataloader = DataLoader(train_dataset, batch_size=WAVENET_BATCH_SIZE, shuffle=True, num_workers=2)
+        test_dataloader = DataLoader(test_dataset, batch_size=WAVENET_BATCH_SIZE, shuffle=True, num_workers=2)
+        val_dataloader = DataLoader(val_dataset, batch_size=WAVENET_BATCH_SIZE, shuffle=True, num_workers=2)
 
         # model hyper parameters should be modified in config file
-        input_shape = (S1DCONV_BATCH_SIZE, WAVEFORM_NUM_CHANNELS, WAVEFORM_SEQUENCE_LENGTH)
+        input_shape = (WAVENET_BATCH_SIZE, WAVEFORM_NUM_CHANNELS, WAVEFORM_SEQUENCE_LENGTH)
         model = WaveNetBiLSTMClassifier(
             'faith_tull_binary2',
             num_classes=2,
