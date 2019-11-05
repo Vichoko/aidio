@@ -1,5 +1,6 @@
 import argparse
 import os
+import pathlib
 from collections import defaultdict
 from functools import reduce
 from math import ceil, floor
@@ -988,12 +989,12 @@ if __name__ == '__main__':
     parser.add_argument('--model', help='name of the model to be trained (options: ResNetV2, leglaive)',
                         default='waveNetLstm')
 
-    parser.add_argument('--features_path', help='name of the model to be trained (options: ResNetV2, leglaive)',
+    parser.add_argument('--features_path', help='Path to features folder',
                         default=FEATURES_DATA_PATH)
 
     args = parser.parse_args()
     model = args.model
-    features_path = args.features_path
+    features_path = pathlib.Path(args.features_path)
 
     if model == 'ResNetV2':
         train_dm, test_dm, _ = ResnetDataManager.init_n_split(
