@@ -1020,10 +1020,11 @@ class IntensitySplitterFeatureExtractor(FeatureExtractor):
                     continue
 
                 filename = FeatureExtractor.get_file_name(x, feature_name,
-                                                          ext='{}.wav'.format(interval_idx))
-                FeatureExtractor.save_audio(wav[interval[0]:interval[1]], feature_name, out_path, x, y, new_labels,
-                                            filename=filename)
-
+                                                          ext='{}.mp3'.format(interval_idx))
+                FeatureExtractor.save_mp3(
+                    wav[interval[0]:interval[1]], SR,
+                    feature_name,
+                    out_path, x, y, new_labels, mp3_filename=filename)
         return __process_element
 
 
