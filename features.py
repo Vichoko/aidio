@@ -5,7 +5,6 @@ os.environ['FOR_DISABLE_CONSOLE_CTRL_HANDLER'] = '1'
 import subprocess
 
 import audioread
-import soundfile as sf
 
 from util.open_unmix.test import separate_music_file
 
@@ -377,6 +376,7 @@ class FeatureExtractor:
         :param mp3_filename:
         :return:
         """
+        import soundfile as sf
 
         def _save_mp3(source_path, out_path):
             cmd = 'lame --preset insane \"{}\" \"{}\"'.format(source_path, out_path)
