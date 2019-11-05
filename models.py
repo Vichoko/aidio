@@ -393,6 +393,8 @@ class TorchClassificationModel(ClassificationModel, nn.Module):
                                      **kwargs)
         nn.Module.__init__(self)
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        self.best_loss = float('inf')
+
 
     def post_epoch(self, epoch, **kwargs):
         """
@@ -407,6 +409,7 @@ class TorchClassificationModel(ClassificationModel, nn.Module):
         val_dataset = kwargs['val_dataset']
         name = kwargs['name']
         val_loss = self.evaluate(val_dataset, name)
+        self.train()
         self.save_checkpoint(epoch, val_loss)
         self.early_stop(epoch, val_loss)
 
@@ -449,6 +452,7 @@ class TorchClassificationModel(ClassificationModel, nn.Module):
         :return:
         """
         print('info: training classifier...')
+        self.train()
         batches_per_epoch = len(train_dataset) / self.batch_size
         quarter_epoch_batches = int(batches_per_epoch / 4)
         import torch.optim as optim
@@ -503,6 +507,7 @@ class TorchClassificationModel(ClassificationModel, nn.Module):
         :return: Total Test set Loss
         """
         print('info: evaluating classifier with {} set...'.format(name))
+        self.eval()
         with torch.no_grad():
             criterion = nn.CrossEntropyLoss()
             dataloader = DataLoader(dataset, batch_size=self.batch_size, shuffle=False, num_workers=4)
@@ -593,8 +598,9 @@ class Simple2dConvNet(ClassificationModel, nn.Module):
         self.fc3 = nn.Linear(84, self.num_classes)
 
         # auxiliary state variables
-        self.best_loss = float('inf')
         self.early_stop_flag = False
+        self.best_loss = float('inf')
+
 
     def forward(self, x):
         # Max pooling over a (2, 2) window

@@ -1,6 +1,7 @@
 import argparse
 import concurrent.futures
 import os
+
 os.environ['FOR_DISABLE_CONSOLE_CTRL_HANDLER'] = '1'
 import subprocess
 
@@ -404,49 +405,6 @@ class FeatureExtractor:
         new_labels.append([filename, y])
         print('info: {} transformed and saved!'.format(filename))
         return filename
-    # @staticmethod
-    # def save_ogg(ndarray, sr, feature_name, out_path, x, y, new_labels, filename=None):
-    #     """
-    #     Save any numpy object in Feature File System.
-    #     :param ndarray: in shape (2, num_samples) or (, num_samples)
-    #     :param feature_name:
-    #     :param out_path:
-    #     :param x:
-    #     :param filename:
-    #     :return:
-    #     """
-    #     # this is kind-of standard
-    #     filename = filename or FeatureExtractor.get_file_name(x, feature_name, 'ogg')
-    #     sf.write(out_path / filename, ndarray, sr, format='ogg', subtype='vorbis')
-    #     new_labels.append([filename, y])
-    #     print('info: {} transformed and saved!'.format(filename))
-    #     return filename
-
-    # @staticmethod
-    # def save_mp3(ndarray, source_sr, sample_width, feature_name, out_path, x, y, new_labels, n_channels=1,
-    #              filename=None):
-    #     """
-    #     Save any numpy object in Feature File System.
-    #     :param ndarray:
-    #     :param feature_name:
-    #     :param out_path:
-    #     :param x:
-    #     :param filename:
-    #     :return:
-    #     """
-    #     # this is kind-of standard
-    #     filename = filename or FeatureExtractor.get_file_name(x, feature_name, 'mp3')
-    #     ndarray = ndarray.astype('int32')
-    #     audio_segment = pydub.AudioSegment(
-    #         ndarray.tobytes(),
-    #         frame_rate=4,
-    #         sample_width=sample_width,
-    #         channels=3
-    #     )
-    #     audio_segment.export(out_path / filename, format='mp3')
-    #     new_labels.append([filename, y])
-    #     print('info: {} transformed and saved!'.format(filename))
-    #     return filename
 
 
 class MelSpectralCoefficientsFeatureExtractor(FeatureExtractor):
@@ -805,50 +763,6 @@ class SVDPonderatedVolumeFeatureExtractor(FeatureExtractor):
         return __process_element
 
 
-class IntensitySplitterFeatureExtractor(FeatureExtractor):
-    feature_name = 'intensity_split'
-    dependency_feature_name = SVDPonderatedVolumeFeatureExtractor.feature_name
-
-    @staticmethod
-    def process_element(feature_name, new_labels, out_path, source_path, **kwargs):
-        def __process_element(data):
-            """
-            :param x: filename (str)
-            :param y: label (str)
-            :return:
-            """
-            print('prosessing {}'.format(data))
-            x = data[0]
-            y = data[1]
-
-            # params
-
-            # get song and split
-            wav, _ = librosa.load(source_path / x, sr=SR)
-            intervals = librosa.effects.split(
-                # todo: split this extractor in two. One for this split, other for the windows
-                wav,
-                top_db=TOP_DB_WINDOWED_MFCC
-            )
-            # export intervals as new songs (wav)
-            for interval_idx, interval in enumerate(intervals):
-                if interval[1] - interval[0] < MIN_INTERVAL_LEN_WINDOWED_MFCC:
-                    # if length is lesser that 1 second, discard interval
-                    continue
-
-                filename = FeatureExtractor.get_file_name(x, feature_name,
-                                                          ext='{}.wav'.format(interval_idx))
-                FeatureExtractor.save_audio(wav[interval[0]:interval[1]], feature_name, out_path, x, y, new_labels,
-                                            filename=filename)
-
-        return __process_element
-
-    # def transform(self, parallel=False, **kwargs):
-    #     if parallel:
-    #         raise Exception('error: {} cannot be ran in paralel'.format(self.feature_name))
-    #     return super().transform(parallel, **kwargs)
-
-
 # Vocal Separation Pipeline
 class MagPhaseFeatureExtractor(FeatureExtractor):
     feature_name = 'mag_phase'
@@ -1052,7 +966,7 @@ class SingingVoiceSeparationOpenUnmixFeatureExtractor(FeatureExtractor):
                     print('info: trying to load {}'.format(out_path / file_name))
                     librosa.load(out_path / file_name, sr=OUNMIX_SAMPLE_RATE)
                     new_labels.append([file_name, y_i])
-                except (FileNotFoundError, OSError, EOFError, audioread.NoBackendError) :
+                except (FileNotFoundError, OSError, EOFError, audioread.NoBackendError):
                     # OSError and EOFError are raised if file are inconsistent
                     # final_shape: (#_hops, #_mel_filters, #_window)
                     print('info: processing {}'.format(x_i))
@@ -1073,6 +987,44 @@ class SingingVoiceSeparationOpenUnmixFeatureExtractor(FeatureExtractor):
         if parallel:
             raise Exception('error: {} cannot be ran in paralel'.format(self.feature_name))
         return super().transform(parallel, **kwargs)
+
+
+class IntensitySplitterFeatureExtractor(FeatureExtractor):
+    feature_name = 'intensity_split'
+    dependency_feature_name = SingingVoiceSeparationOpenUnmixFeatureExtractor.feature_name
+
+    @staticmethod
+    def process_element(feature_name, new_labels, out_path, source_path, **kwargs):
+        def __process_element(data):
+            """
+            :param x: filename (str)
+            :param y: label (str)
+            :return:
+            """
+            print('prosessing {}'.format(data))
+            x = data[0]
+            y = data[1]
+
+            # params
+
+            # get song and split
+            wav, _ = librosa.load(source_path / x, sr=SR)
+            intervals = librosa.effects.split(
+                wav,
+                top_db=TOP_DB_WINDOWED_MFCC
+            )
+            # export intervals as new songs (wav)
+            for interval_idx, interval in enumerate(intervals):
+                if interval[1] - interval[0] < MIN_INTERVAL_LEN_WINDOWED_MFCC:
+                    # if length is lesser that 1 second, discard interval
+                    continue
+
+                filename = FeatureExtractor.get_file_name(x, feature_name,
+                                                          ext='{}.wav'.format(interval_idx))
+                FeatureExtractor.save_audio(wav[interval[0]:interval[1]], feature_name, out_path, x, y, new_labels,
+                                            filename=filename)
+
+        return __process_element
 
 
 AVAILABLE_FEATURES = {MelSpectralCoefficientsFeatureExtractor.feature_name: MelSpectralCoefficientsFeatureExtractor,
