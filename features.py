@@ -239,6 +239,9 @@ class FeatureExtractor:
             list(iterator)
         except KeyboardInterrupt:
             print('KeyboardInterrupt catched')
+        except Exception as e:
+            print('error: in tranform')
+            print(e)
         finally:
             print('info: exporting extraction meta-data')
             self.export_new_labels()
@@ -275,6 +278,9 @@ class FeatureExtractor:
             print('info: finished sequential transform, new labels are {}'.format(self.new_labels))
         except KeyboardInterrupt:
             print('KeyboardInterrupt catched')
+        except Exception as e:
+            print('error: in tranform')
+            print(e)
         finally:
             print('info: exporting extraction meta-data')
             self.export_new_labels()
@@ -1045,7 +1051,7 @@ class SingingVoiceSeparationOpenUnmixFeatureExtractor(FeatureExtractor):
                     print('info: trying to load {}'.format(out_path / file_name))
                     librosa.load(out_path / file_name, sr=OUNMIX_SAMPLE_RATE)
                     new_labels.append([file_name, y_i])
-                except (FileNotFoundError, OSError, EOFError, audioread.NoBackendError):
+                except (FileNotFoundError, OSError, EOFError, audioread.NoBackendError) :
                     # OSError and EOFError are raised if file are inconsistent
                     # final_shape: (#_hops, #_mel_filters, #_window)
                     print('info: processing {}'.format(x_i))
