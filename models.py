@@ -484,7 +484,7 @@ class TorchClassificationModel(ClassificationModel, nn.Module):
 
                 # print statistics
                 running_loss += loss.item()
-                losses.append(loss)
+                losses.append(loss.item())
                 if i_batch % quarter_epoch_batches == quarter_epoch_batches - 1:  # print every 2000 mini-batches
                     print('metric: [%d, %5d] train loss: %.3f' %
                           (epoch, i_batch + 1, running_loss / quarter_epoch_batches))
@@ -995,6 +995,7 @@ class WaveNetBiLSTMClassifier(TorchClassificationModel):
         # rnn expected input is n_sequence, n_data, wavenet_channels
         x = x.transpose(0, 2).transpose(1, 2)
         # print('info: feeding lstm...')
+        self.enc_lstm.flatten_parameters()
         x, _ = self.enc_lstm(x)  # shape n_sequence, n_data, lstm_hidden_size * 2
         x, _ = x.max(0)  # max pooling over the sequence dim; drop sequence axis
         # x final shape is n_data, lstm_hidden_size * 2
