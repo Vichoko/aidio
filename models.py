@@ -404,8 +404,8 @@ class TorchClassificationModel(ClassificationModel, nn.Module):
         """
         print("metric: finished epoch {}. Starting evaluation...".format(epoch))
         losses = kwargs['losses']
-        batch_train_loss = reduce(lambda x, y: x + y, losses)
-        print("metric: epoch total train loss: {}".format(batch_train_loss))
+        train_mean_loss = np.mean(losses)
+        print("metric: train mean loss: {}".format(train_mean_loss))
         val_dataset = kwargs['val_dataset']
         name = kwargs['name']
         val_loss = self.evaluate(val_dataset, name)
@@ -534,12 +534,12 @@ class TorchClassificationModel(ClassificationModel, nn.Module):
                     metrics[label.item()]['hit'] += matches[idx].item()
                     metrics[label.item()]['total'] += 1
 
-            evaluation_loss = reduce(lambda x, y: x + y, losses)
-            print('metric: total {} loss: {}'.format(name, evaluation_loss))
+            mean_eval_loss = np.mean(losses)
+            print('metric: mean {} loss: {}'.format(name, mean_eval_loss))
             for key in metrics.keys():
                 print('metric: %s accuracy of %5s : %2d %%' % (name,
                                                                key, 100 * metrics[key]['hit'] / metrics[key]['total']))
-            return evaluation_loss
+            return mean_eval_loss
 
     def predict(self, x):
         return self.forward(x)
