@@ -394,6 +394,7 @@ class TorchClassificationModel(ClassificationModel, nn.Module):
                                      **kwargs)
         nn.Module.__init__(self)
         self.device = torch.device(device_name if torch.cuda.is_available() else "cpu")
+        print('info: using {} for this model'.format(self.device))
         self.best_loss = float('inf')
 
 
@@ -1032,6 +1033,10 @@ if __name__ == '__main__':
     features_path = pathlib.Path(args.features_path)
     experiment_name = args.experiment
     device_name = args.device_name
+
+    print('info: feature_path is {}'.format(features_path))
+    print('info: experiment_name is {}'.format(experiment_name))
+    print('info: device_name is {}'.format(device_name))
 
     if model == 'ResNetV2':
         train_dm, test_dm, _ = ResnetDataManager.init_n_split(
