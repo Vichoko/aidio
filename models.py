@@ -1017,9 +1017,14 @@ if __name__ == '__main__':
     parser.add_argument('--features_path', help='Path to features folder',
                         default=FEATURES_DATA_PATH)
 
+    parser.add_argument('--experiment', help='Name of the experiment. affects checkpoint names',
+                        default='faith_tull_binary2')
+
+
     args = parser.parse_args()
     model = args.model
     features_path = pathlib.Path(args.features_path)
+    experiment_name = args.experiment
 
     if model == 'ResNetV2':
         train_dm, test_dm, _ = ResnetDataManager.init_n_split(
@@ -1119,7 +1124,7 @@ if __name__ == '__main__':
         # model hyper parameters should be modified in config file
         input_shape = (WAVENET_BATCH_SIZE, WAVEFORM_NUM_CHANNELS, WAVEFORM_SEQUENCE_LENGTH)
         model = WaveNetBiLSTMClassifier(
-            'faith_tull_binary2',
+            experiment_name,
             num_classes=number_of_classes,
             input_shape=input_shape
         )
