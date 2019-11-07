@@ -541,7 +541,7 @@ class WaveformDataset(Dataset):
 
     def __getitem__(self, index: int):
         label = self.labels[index]
-        wav, sr = librosa.load(self.data_path / self.filenames[index], sr=WAVEFORM_SAMPLE_RATE, mono=True if WAVEFORM_NUM_CHANNELS == 1 else WAVEFORM_NUM_CHANNELS)
+        wav, sr = librosa.load(str(self.data_path / self.filenames[index]), sr=WAVEFORM_SAMPLE_RATE, mono=True if WAVEFORM_NUM_CHANNELS == 1 else WAVEFORM_NUM_CHANNELS)
 
         # wav shape is (n_samples) or (n_channels, n_samples)
         # torch 1d image is n_channels, n_samples

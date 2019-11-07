@@ -8,3 +8,4 @@ ffmpeg
 # conda
 # conda install cffi numpy
 norbert
+tqdm
