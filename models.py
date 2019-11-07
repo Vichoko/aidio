@@ -1,4 +1,5 @@
 import argparse
+import math
 import os
 import pathlib
 from collections import defaultdict
@@ -17,7 +18,8 @@ from config import MODELS_DATA_PATH, RESNET_V2_BATCH_SIZE, RESNET_V2_EPOCHS, RES
     WAVEFORM_SEQUENCE_LENGTH, S1DCONV_BATCH_SIZE, S1DCONV_EPOCHS, WAVENET_LAYERS, WAVENET_BLOCKS, \
     WAVENET_DILATION_CHANNELS, WAVENET_RESIDUAL_CHANNELS, WAVENET_SKIP_CHANNELS, WAVENET_OUTPUT_LENGTH, \
     WAVENET_KERNEL_SIZE, WAVENET_END_CHANNELS, WAVENET_CLASSES, WAVENET_EPOCHS, WAVENET_BATCH_SIZE, LSTM_HIDDEN_SIZE, \
-    LSTM_NUM_LAYERS, LSTM_DROPOUT_PROB, WAVENET_POOLING_KERNEL_SIZE, WAVENET_POOLING_STRIDE, NUM_WORKERS
+    LSTM_NUM_LAYERS, LSTM_DROPOUT_PROB, WAVENET_POOLING_KERNEL_SIZE, WAVENET_POOLING_STRIDE, NUM_WORKERS, \
+    TRANSFORMER_N_HEAD, TRANSFORMER_D_MODEL, TRANSFORMER_N_LAYERS
 from features import WindowedMelSpectralCoefficientsFeatureExtractor, SingingVoiceSeparationOpenUnmixFeatureExtractor
 from loaders import ResnetDataManager, TorchVisionDataManager, WaveformDataset
 from util.wavenet.wavenet_model import WaveNetModel
@@ -397,7 +399,6 @@ class TorchClassificationModel(ClassificationModel, nn.Module):
         print('info: using {} for this model'.format(self.device))
         self.best_loss = float('inf')
 
-
     def post_epoch(self, epoch, **kwargs):
         """
         Called in between-epochs.
@@ -602,7 +603,6 @@ class Simple2dConvNet(ClassificationModel, nn.Module):
         # auxiliary state variables
         self.early_stop_flag = False
         self.best_loss = float('inf')
-
 
     def forward(self, x):
         # Max pooling over a (2, 2) window
@@ -1012,11 +1012,151 @@ class WaveNetBiLSTMClassifier(TorchClassificationModel):
         return x
 
 
+class PositionalEncoder(torch.nn.Module):
+    def __init__(self, d_model, max_seq_len=160):
+        super().__init__()
+        self.d_model = d_model
+        pe = torch.zeros(max_seq_len, d_model)
+        for pos in range(max_seq_len):
+            for i in range(0, d_model, 2):
+                pe[pos, i] = \
+                    math.sin(pos / (10000 ** ((2 * i) / d_model)))
+                pe[pos, i + 1] = \
+                    math.cos(pos / (10000 ** ((2 * (i + 1)) / d_model)))
+        pe = pe.unsqueeze(0)
+        self.register_buffer('pe', pe)
+
+    def forward(self, x):
+        with torch.no_grad():
+            x = x * math.sqrt(self.d_model)
+            seq_len = x.size(1)
+            pe = torch.Tensor(self.pe[:, :seq_len])
+            x = x + pe
+            return x
+
+
+class WaveNetTransformerEncoderClassifier(TorchClassificationModel):
+    model_name = 'wavenet_transformer_classif'
+
+    def reset_hyper_parameters(self, model_name, model_type, num_classes, input_shape, initial_epoch,
+                               model_path=MODELS_DATA_PATH,
+                               epochs=WAVENET_EPOCHS,
+                               batch_size=WAVENET_BATCH_SIZE):
+        """
+        Override Reset model hyper-parameters as epochs and batch_size.
+        The purpose of this override is to set the default values for each configuration varible.
+        :param model_name:
+        :param model_type:
+        :param num_classes:
+        :param input_shape:
+        :param initial_epoch:
+        :param model_path:
+        :param epochs:
+        :param batch_size:
+        :return:
+        """
+        super().reset_hyper_parameters(model_name, model_type, num_classes, input_shape, initial_epoch, model_path,
+                                       epochs, batch_size)
+
+    def __init__(self, model_type, num_classes, input_shape, model_path=MODELS_DATA_PATH,
+                 epochs=WAVENET_EPOCHS,
+                 batch_size=WAVENET_BATCH_SIZE,
+                 device_name='cuda:0',
+                 **kwargs):
+        TorchClassificationModel.__init__(self,
+                                          model_type,
+                                          num_classes,
+                                          input_shape,
+                                          model_path,
+                                          epochs,
+                                          batch_size,
+                                          device_name=device_name,
+                                          **kwargs)
+
+        # first encoder
+        # neural audio embeddings
+        # captures local representations through convolutions
+        self.wavenet = WaveNetModel(
+            WAVENET_LAYERS,
+            WAVENET_BLOCKS,
+            WAVENET_DILATION_CHANNELS,
+            WAVENET_RESIDUAL_CHANNELS,
+            WAVENET_SKIP_CHANNELS,
+            WAVENET_END_CHANNELS,
+            WAVENET_CLASSES,
+            WAVENET_OUTPUT_LENGTH,
+            WAVENET_KERNEL_SIZE)
+
+        d_model = TRANSFORMER_D_MODEL
+        nhead = TRANSFORMER_N_HEAD
+        num_layers = TRANSFORMER_N_LAYERS
+
+        # reduce sample resolution from 160k to 32k
+        # output_length = floor((input_length - stride)/kernel_size + 1)
+        self.conv_downsampler_1 = nn.Conv1d(
+            in_channels=WAVENET_END_CHANNELS,
+            out_channels=128,
+            kernel_size=20,
+            stride=10,
+            dilation=2
+        )
+        self.conv_downsampler_2 = nn.Conv1d(
+            in_channels=128,
+            out_channels=256,
+            kernel_size=20,
+            stride=10,
+            dilation=2
+        )
+        self.conv_downsampler_3 = nn.Conv1d(
+            in_channels=256,
+            out_channels=d_model,
+            kernel_size=20,
+            stride=10,
+            dilation=2
+        )
+
+        self.positional_encoder = PositionalEncoder(d_model)
+
+        encoder_layer = nn.TransformerEncoderLayer(d_model=d_model, nhead=nhead)
+        self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
+
+        self.fc1 = nn.Linear(d_model, 120)  # 6*6 from image dimension
+        self.fc2 = nn.Linear(120, 84)
+        self.fc3 = nn.Linear(84, self.num_classes)
+
+        self.soft_max = nn.Softmax(dim=1)
+
+        self.to(self.device)
+        self.wavenet.to(self.device)
+
+    def forward(self, x):
+        # print('info: feeding wavenet...')
+        x = self.wavenet.forward(x)
+        # reduce sequence_length / 10 three times == 16Khz to 10Hz; increase the number of channels
+        x = self.conv_downsampler_1(x)
+        x = self.conv_downsampler_2(x)
+        x = self.conv_downsampler_3(x)
+        # x.shape for convs is n_data, n_channels, n_sequence
+        # transformer expected input is n_data, n_sequence, wavenet_channels
+        x = x.transpose(1, 2)
+        # print('info: feeding transformer...')
+        x = self.positional_encoder(x)
+        x = self.transformer_encoder(x)  # shape  n_data, n_sequence, d_model
+        x = x[:, -1, :]  # pick the last vector from the output as the sentence embedding
+        # x final shape is n_data, lstm_hidden_size * 2
+        # print('info: feeding fully-connected...')
+        # simple classifier
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
+        x = self.fc3(x)
+        return x
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Train a model from features from a data folder')
 
     parser.add_argument('--model', help='name of the model to be trained (options: ResNetV2, leglaive)',
-                        default='waveNetLstm')
+                        default='waveNetTransformer')
 
     parser.add_argument('--features_path', help='Path to features folder',
                         default=FEATURES_DATA_PATH)
@@ -1087,7 +1227,8 @@ if __name__ == '__main__':
             ratio=(0.5, 0.25, 0.25)
         )
 
-        train_dataloader = DataLoader(train_dataset, batch_size=S1DCONV_BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
+        train_dataloader = DataLoader(train_dataset, batch_size=S1DCONV_BATCH_SIZE, shuffle=True,
+                                      num_workers=NUM_WORKERS)
         test_dataloader = DataLoader(test_dataset, batch_size=S1DCONV_BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
         val_dataloader = DataLoader(val_dataset, batch_size=S1DCONV_BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
 
@@ -1108,7 +1249,8 @@ if __name__ == '__main__':
             ratio=(0.5, 0.25, 0.25)
         )
 
-        train_dataloader = DataLoader(train_dataset, batch_size=S1DCONV_BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
+        train_dataloader = DataLoader(train_dataset, batch_size=S1DCONV_BATCH_SIZE, shuffle=True,
+                                      num_workers=NUM_WORKERS)
         test_dataloader = DataLoader(test_dataset, batch_size=S1DCONV_BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
         val_dataloader = DataLoader(val_dataset, batch_size=S1DCONV_BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
 
@@ -1129,13 +1271,37 @@ if __name__ == '__main__':
             ratio=(0.5, 0.25, 0.25)
         )
 
-        train_dataloader = DataLoader(train_dataset, batch_size=WAVENET_BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
+        train_dataloader = DataLoader(train_dataset, batch_size=WAVENET_BATCH_SIZE, shuffle=True,
+                                      num_workers=NUM_WORKERS)
         test_dataloader = DataLoader(test_dataset, batch_size=WAVENET_BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
         val_dataloader = DataLoader(val_dataset, batch_size=WAVENET_BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
 
         # model hyper parameters should be modified in config file
         input_shape = (WAVENET_BATCH_SIZE, WAVEFORM_NUM_CHANNELS, WAVEFORM_SEQUENCE_LENGTH)
         model = WaveNetBiLSTMClassifier(
+            experiment_name,
+            num_classes=number_of_classes,
+            input_shape=input_shape,
+            device_name=device_name
+        )
+        model = model.load_checkpoint()
+        model.train_now(train_dataset, val_dataset)
+        model.evaluate(test_dataset)
+    elif model == 'waveNetTransformer':
+        train_dataset, test_dataset, val_dataset, number_of_classes = WaveformDataset.init_sets(
+            SingingVoiceSeparationOpenUnmixFeatureExtractor.feature_name,
+            features_path,
+            ratio=(0.5, 0.25, 0.25)
+        )
+
+        train_dataloader = DataLoader(train_dataset, batch_size=WAVENET_BATCH_SIZE, shuffle=True,
+                                      num_workers=NUM_WORKERS)
+        test_dataloader = DataLoader(test_dataset, batch_size=WAVENET_BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
+        val_dataloader = DataLoader(val_dataset, batch_size=WAVENET_BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
+
+        # model hyper parameters should be modified in config file
+        input_shape = (WAVENET_BATCH_SIZE, WAVEFORM_NUM_CHANNELS, WAVEFORM_SEQUENCE_LENGTH)
+        model = WaveNetTransformerEncoderClassifier(
             experiment_name,
             num_classes=number_of_classes,
             input_shape=input_shape,
