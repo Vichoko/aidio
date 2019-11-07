@@ -381,6 +381,7 @@ class TorchClassificationModel(ClassificationModel, nn.Module):
     def __init__(self, model_type, num_classes, input_shape, model_path,
                  epochs,
                  batch_size,
+                 device_name='cuda:0',
                  **kwargs):
         ClassificationModel.__init__(self,
                                      self.model_name,
@@ -392,7 +393,7 @@ class TorchClassificationModel(ClassificationModel, nn.Module):
                                      batch_size,
                                      **kwargs)
         nn.Module.__init__(self)
-        self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        self.device = torch.device(device_name if torch.cuda.is_available() else "cpu")
         self.best_loss = float('inf')
 
 
@@ -938,6 +939,7 @@ class WaveNetBiLSTMClassifier(TorchClassificationModel):
     def __init__(self, model_type, num_classes, input_shape, model_path=MODELS_DATA_PATH,
                  epochs=WAVENET_EPOCHS,
                  batch_size=WAVENET_BATCH_SIZE,
+                 device_name='cuda:0',
                  **kwargs):
         TorchClassificationModel.__init__(self,
                                           model_type,
@@ -946,6 +948,7 @@ class WaveNetBiLSTMClassifier(TorchClassificationModel):
                                           model_path,
                                           epochs,
                                           batch_size,
+                                          device_name=device_name,
                                           **kwargs)
 
         # first encoder
@@ -1020,11 +1023,15 @@ if __name__ == '__main__':
     parser.add_argument('--experiment', help='Name of the experiment. affects checkpoint names',
                         default='faith_tull_binary2')
 
+    parser.add_argument('--device_name', help='Name of the device. Can be cuda:0, cuda:1, ... or cpu. '
+                                              'If no device is avaiable cpu is used.',
+                        default='cuda:0')
 
     args = parser.parse_args()
     model = args.model
     features_path = pathlib.Path(args.features_path)
     experiment_name = args.experiment
+    device_name = args.device_name
 
     if model == 'ResNetV2':
         train_dm, test_dm, _ = ResnetDataManager.init_n_split(
@@ -1126,7 +1133,8 @@ if __name__ == '__main__':
         model = WaveNetBiLSTMClassifier(
             experiment_name,
             num_classes=number_of_classes,
-            input_shape=input_shape
+            input_shape=input_shape,
+            device_name=device_name
         )
         model = model.load_checkpoint()
         model.train_now(train_dataset, val_dataset)
