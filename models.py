@@ -1029,13 +1029,9 @@ class PositionalEncoder(torch.nn.Module):
     def forward(self, x):
         print('nograd')
         with torch.no_grad():
-            print(' x = x * torch.sqrt(torch.Tensor([self.d_model])).item()')
-            x = x * torch.sqrt(torch.Tensor([self.d_model])).item()
-            print('seq_len = x.size(1)')
+            x = x * math.sqrt(self.d_model)
             seq_len = x.size(1)
-            print('   pe = torch.Tensor(self.pe[:, :seq_len]')
             pe = self.pe[:, :seq_len]
-            print('x = x + pe')
             x = x + pe
             return x
 
