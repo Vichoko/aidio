@@ -1338,6 +1338,13 @@ if __name__ == '__main__':
         help='how many gpus'
     )
 
+    parser.add_argument(
+        '--distributed_backend',
+        type=str,
+        default='dp',
+        help='supports three options dp, ddp, ddp2'
+    )
+
     args = parser.parse_args()
     model = args.model
     features_path = pathlib.Path(args.features_path)
@@ -1475,5 +1482,5 @@ if __name__ == '__main__':
             eval_dataset,
             test_dataset
         )
-        trainer = ptl.Trainer(gpus=hyperparams.gpus)
+        trainer = ptl.Trainer(gpus=hyperparams.gpus, distributed_backend=hyperparams.distributed_backend)
         trainer.fit(model)
