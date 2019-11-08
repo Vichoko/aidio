@@ -1084,17 +1084,24 @@ class WaveNetTransformerClassifier(nn.Module):
         # reduce sample resolution from 160k to 32k
         # output_length = floor((input_length - stride)/kernel_size + 1)
         conv_downsampler_stride = 2
-        self.conv_downsampler = nn.Conv1d(
+        self.conv_downsampler_1 = nn.Conv1d(
             in_channels=WAVENET_END_CHANNELS,
+            out_channels=384,
+            kernel_size=4,
+            stride=conv_downsampler_stride,
+            dilation=3
+        )
+        self.conv_downsampler_2 = nn.Conv1d(
+            in_channels=384,
             out_channels=d_model,
             kernel_size=4,
-            stride=2,
+            stride=conv_downsampler_stride,
             dilation=3
         )
 
         self.positional_encoder = PositionalEncoder(
             d_model,
-            max_seq_len=math.floor(max_raw_sequnece / conv_downsampler_stride)
+            max_seq_len=math.floor(max_raw_sequnece / (conv_downsampler_stride * 2))
         )
 
         encoder_layer = nn.TransformerEncoderLayer(d_model=d_model, nhead=nhead)
@@ -1116,7 +1123,8 @@ class WaveNetTransformerClassifier(nn.Module):
         # print('info: feeding wavenet...')
         x = self.wavenet.forward(x)
         # reduce sequence_length / 10 three times == 16Khz to 10Hz; increase the number of channels
-        x = self.conv_downsampler(x)
+        x = self.conv_downsampler_1(x)
+        x = self.conv_downsampler_2(x)
         # x.shape for convs is n_data, n_channels, n_sequence
         # transformer expected input is n_data, n_sequence, wavenet_channels
         x = x.transpose(1, 2)
