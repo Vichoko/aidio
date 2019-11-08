@@ -1116,9 +1116,7 @@ class WaveNetTransformerClassifier(nn.Module):
         # print('info: feeding wavenet...')
         x = self.wavenet.forward(x)
         # reduce sequence_length / 10 three times == 16Khz to 10Hz; increase the number of channels
-        x = self.conv_downsampler_1(x)
-        x = self.conv_downsampler_2(x)
-        x = self.conv_downsampler_3(x)
+        x = self.conv_downsampler(x)
         # x.shape for convs is n_data, n_channels, n_sequence
         # transformer expected input is n_data, n_sequence, wavenet_channels
         x = x.transpose(1, 2)
