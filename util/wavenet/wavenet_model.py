@@ -1,6 +1,8 @@
 import os
 import os.path
 import time
+import typing
+
 from util.wavenet.wavenet_modules import *
 from util.wavenet.audio_data import *
 
@@ -25,6 +27,15 @@ class WaveNetModel(nn.Module):
         - Output: :math:`()`
         L should be the length of the receptive field
     """
+    def __call__(self, *input, **kwargs) -> typing.Any:
+        """
+        Hack to fix '(input: (Any, ...), kwargs: dict) -> Any' warning in PyCharm auto-complete.
+        :param input:
+        :param kwargs:
+        :return:
+        """
+        return super().__call__(*input, **kwargs)
+
     def __init__(self,
                  layers=10,
                  blocks=4,

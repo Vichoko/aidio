@@ -12,7 +12,7 @@ from sklearn.preprocessing import OneHotEncoder, OrdinalEncoder
 from torch.utils.data.dataset import Dataset
 from torchvision import transforms
 
-from config import FEATURES_DATA_PATH, RESNET_MIN_DIM, ADISAN_BATCH_SIZE, ADISAN_EPOCHS, SR, WAVEFORM_SEQUENCE_LENGTH, \
+from config import FEATURES_DATA_PATH, RESNET_MIN_DIM, ADISAN_BATCH_SIZE, ADISAN_EPOCHS, SR, WAVEFORM_MAX_SEQUENCE_LENGTH, \
     WAVEFORM_NUM_CHANNELS, WAVEFORM_SAMPLE_RATE
 
 
@@ -529,7 +529,7 @@ class WaveformDataset(Dataset):
 
         # random crop over many epochs ensure data augmentation
         transform = transforms.Compose(
-            [cls.RandomCrop(WAVEFORM_SEQUENCE_LENGTH),
+            [cls.RandomCrop(WAVEFORM_MAX_SEQUENCE_LENGTH),
              cls.ToTensor()]
         )
 

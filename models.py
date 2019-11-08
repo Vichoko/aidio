@@ -2,11 +2,14 @@ import argparse
 import math
 import os
 import pathlib
-from collections import defaultdict
+import typing
+from argparse import ArgumentParser
+from collections import defaultdict, OrderedDict
 from functools import reduce
 from math import ceil, floor
 
 import numpy as np
+import pytorch_lightning as ptl
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -15,7 +18,7 @@ from torch.utils.data.dataloader import DataLoader
 
 from config import MODELS_DATA_PATH, RESNET_V2_BATCH_SIZE, RESNET_V2_EPOCHS, RESNET_V2_DEPTH, \
     RESNET_V2_VERSION, SIMPLECONV_BATCH_SIZE, SIMPLECONV_EPOCHS, makedirs, FEATURES_DATA_PATH, WAVEFORM_NUM_CHANNELS, \
-    WAVEFORM_SEQUENCE_LENGTH, S1DCONV_BATCH_SIZE, S1DCONV_EPOCHS, WAVENET_LAYERS, WAVENET_BLOCKS, \
+    WAVEFORM_MAX_SEQUENCE_LENGTH, S1DCONV_BATCH_SIZE, S1DCONV_EPOCHS, WAVENET_LAYERS, WAVENET_BLOCKS, \
     WAVENET_DILATION_CHANNELS, WAVENET_RESIDUAL_CHANNELS, WAVENET_SKIP_CHANNELS, WAVENET_OUTPUT_LENGTH, \
     WAVENET_KERNEL_SIZE, WAVENET_END_CHANNELS, WAVENET_CLASSES, WAVENET_EPOCHS, WAVENET_BATCH_SIZE, LSTM_HIDDEN_SIZE, \
     LSTM_NUM_LAYERS, LSTM_DROPOUT_PROB, WAVENET_POOLING_KERNEL_SIZE, WAVENET_POOLING_STRIDE, NUM_WORKERS, \
@@ -1013,16 +1016,27 @@ class WaveNetBiLSTMClassifier(TorchClassificationModel):
 
 
 class PositionalEncoder(torch.nn.Module):
+    def __call__(self, *input, **kwargs) -> typing.Any:
+        """
+        Hack to fix '(input: (Any, ...), kwargs: dict) -> Any' warning in PyCharm auto-complete.
+        :param input:
+        :param kwargs:
+        :return:
+        """
+        return super().__call__(*input, **kwargs)
+
     def __init__(self, d_model, max_seq_len=160):
         super().__init__()
         self.d_model = d_model
-        pe = torch.zeros(max_seq_len, d_model)
-        for pos in range(max_seq_len):
-            for i in range(0, d_model, 2):
-                pe[pos, i] = \
-                    math.sin(pos / (10000 ** ((2 * i) / d_model)))
-                pe[pos, i + 1] = \
-                    math.cos(pos / (10000 ** ((2 * (i + 1)) / d_model)))
+        # pe = torch.zeros(max_seq_len, d_model)
+        pe = None
+        for i in range(0, d_model, 2):
+            pair = torch.sin(torch.Tensor([pos / (10000 ** ((2 * i) / d_model)) for pos in range(max_seq_len)])).reshape(-1, 1)
+            even = torch.cos(torch.Tensor([pos / (10000 ** ((2 * (i + 1)) / d_model)) for pos in range(max_seq_len)])).reshape(-1, 1)
+            if pe is None:
+                pe = torch.cat([pair, even], dim=1)
+            else:
+                pe = torch.cat([pe, pair, even], dim=1)
         pe = pe.unsqueeze(0)
         self.register_buffer('pe', pe)
 
@@ -1035,44 +1049,19 @@ class PositionalEncoder(torch.nn.Module):
             return x
 
 
-class WaveNetTransformerEncoderClassifier(TorchClassificationModel):
-    model_name = 'wavenet_transformer_classif'
+class WaveNetTransformerClassifier(nn.Module):
 
-    def reset_hyper_parameters(self, model_name, model_type, num_classes, input_shape, initial_epoch,
-                               model_path=MODELS_DATA_PATH,
-                               epochs=WAVENET_EPOCHS,
-                               batch_size=WAVENET_BATCH_SIZE):
+    def __call__(self, *input, **kwargs) -> typing.Any:
         """
-        Override Reset model hyper-parameters as epochs and batch_size.
-        The purpose of this override is to set the default values for each configuration varible.
-        :param model_name:
-        :param model_type:
-        :param num_classes:
-        :param input_shape:
-        :param initial_epoch:
-        :param model_path:
-        :param epochs:
-        :param batch_size:
+        Hack to fix '(input: (Any, ...), kwargs: dict) -> Any' warning in PyCharm auto-complete.
+        :param input:
+        :param kwargs:
         :return:
         """
-        super().reset_hyper_parameters(model_name, model_type, num_classes, input_shape, initial_epoch, model_path,
-                                       epochs, batch_size)
+        return super().__call__(*input, **kwargs)
 
-    def __init__(self, model_type, num_classes, input_shape, model_path=MODELS_DATA_PATH,
-                 epochs=WAVENET_EPOCHS,
-                 batch_size=WAVENET_BATCH_SIZE,
-                 device_name='cuda:0',
-                 **kwargs):
-        TorchClassificationModel.__init__(self,
-                                          model_type,
-                                          num_classes,
-                                          input_shape,
-                                          model_path,
-                                          epochs,
-                                          batch_size,
-                                          device_name=device_name,
-                                          **kwargs)
-
+    def __init__(self, num_classes):
+        super(WaveNetTransformerClassifier, self).__init__()
         # first encoder
         # neural audio embeddings
         # captures local representations through convolutions
@@ -1087,50 +1076,41 @@ class WaveNetTransformerEncoderClassifier(TorchClassificationModel):
             WAVENET_OUTPUT_LENGTH,
             WAVENET_KERNEL_SIZE)
 
+        max_raw_sequnece = WAVEFORM_MAX_SEQUENCE_LENGTH
         d_model = TRANSFORMER_D_MODEL
         nhead = TRANSFORMER_N_HEAD
         num_layers = TRANSFORMER_N_LAYERS
 
         # reduce sample resolution from 160k to 32k
         # output_length = floor((input_length - stride)/kernel_size + 1)
-        self.conv_downsampler_1 = nn.Conv1d(
+        conv_downsampler_stride = 2
+        self.conv_downsampler = nn.Conv1d(
             in_channels=WAVENET_END_CHANNELS,
-            out_channels=128,
-            kernel_size=20,
-            stride=10,
-            dilation=2
-        )
-        self.conv_downsampler_2 = nn.Conv1d(
-            in_channels=128,
-            out_channels=256,
-            kernel_size=20,
-            stride=10,
-            dilation=2
-        )
-        self.conv_downsampler_3 = nn.Conv1d(
-            in_channels=256,
             out_channels=d_model,
-            kernel_size=20,
-            stride=10,
-            dilation=2
+            kernel_size=4,
+            stride=2,
+            dilation=3
         )
 
-        self.positional_encoder = PositionalEncoder(d_model)
+        self.positional_encoder = PositionalEncoder(
+            d_model,
+            max_seq_len=math.floor(max_raw_sequnece / conv_downsampler_stride)
+        )
 
         encoder_layer = nn.TransformerEncoderLayer(d_model=d_model, nhead=nhead)
         self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
 
         self.fc1 = nn.Linear(d_model, 120)  # 6*6 from image dimension
         self.fc2 = nn.Linear(120, 84)
-        self.fc3 = nn.Linear(84, self.num_classes)
+        self.fc3 = nn.Linear(84, num_classes)
 
         self.soft_max = nn.Softmax(dim=1)
 
-        self.to(self.device)
-        self.wavenet.to(self.device)
-        self.positional_encoder.to(self.device)
-        encoder_layer.to(self.device)
-        self.transformer_encoder.to(self.device)
+        # self.to(self.device)
+        # self.wavenet.to(self.device)
+        # self.positional_encoder.to(self.device)
+        # encoder_layer.to(self.device)
+        # self.transformer_encoder.to(self.device)
 
     def forward(self, x):
         # print('info: feeding wavenet...')
@@ -1156,27 +1136,215 @@ class WaveNetTransformerEncoderClassifier(TorchClassificationModel):
         return x
 
 
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Train a model from features from a data folder')
+class WavenetTramsformerTrainer(ptl.LightningModule):
+    """
+    Sample model to show how to define a template
+    """
 
-    parser.add_argument('--model', help='name of the model to be trained (options: ResNetV2, leglaive)',
-                        default='waveNetTransformer')
+    def __init__(self, hparams, num_classes, train_dataset, eval_dataset, test_dataset):
+        super(WavenetTramsformerTrainer, self).__init__()
+        self.hparams = hparams
+        self.loss = torch.nn.CrossEntropyLoss()
+        self.train_dataset = train_dataset
+        self.eval_dataset = eval_dataset
+        self.test_dataset = test_dataset
+        # build model
+        self.model = WaveNetTransformerClassifier(num_classes)
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=hparams.learning_rate)
+
+
+    # ---------------------
+    # TRAINING
+    # ---------------------
+    def forward(self, x):
+        """
+        No special modification required for lightning, define as you normally would
+        :param x:
+        :return:
+        """
+        return self.model(x)
+
+    def training_step(self, batch, batch_idx):
+        """
+        Lightning calls this inside the training loop
+        :param batch:
+        :return:
+        """
+        # forward pass
+        x, y = batch['x'], batch['y']
+        y_pred = self.forward(x)
+
+        # calculate loss
+        loss_val = self.loss(y_pred, y)
+
+        tqdm_dict = {'train_loss': loss_val}
+        output = OrderedDict({
+            'loss': loss_val,
+            'progress_bar': tqdm_dict,
+            'log': tqdm_dict
+        })
+
+        # can also return just a scalar instead of a dict (return loss_val)
+        return output
+
+    def validation_step(self, batch, batch_idx):
+        """
+        Lightning calls this inside the validation loop
+        :param batch:
+        :return:
+        """
+        x, y = batch['x'], batch['y']
+        y_pred = self.forward(x)
+
+        # calculate loss
+        loss_val = self.loss(y_pred, y)
+
+        # acc
+        labels_hat = torch.argmax(y_pred, dim=1)
+        val_acc = torch.sum(y == labels_hat).item() / (len(y) * 1.0)
+        val_acc = torch.tensor(val_acc)
+
+        if self.on_gpu:
+            val_acc = val_acc.cuda(loss_val.device.index)
+
+        output = OrderedDict({
+            'val_loss': loss_val,
+            'val_acc': val_acc,
+        })
+
+        # can also return just a scalar instead of a dict (return loss_val)
+        return output
+
+    def validation_end(self, outputs):
+        """
+        Called at the end of validation to aggregate outputs
+        :param outputs: list of individual outputs of each validation step
+        :return:
+        """
+        # if returned a scalar from validation_step, outputs is a list of tensor scalars
+        # we return just the average in this case (if we want)
+        # return torch.stack(outputs).mean()
+
+        val_loss_mean = 0
+        val_acc_mean = 0
+        for output in outputs:
+            val_loss = output['val_loss']
+
+            # reduce manually when using dp
+            if self.trainer.use_dp or self.trainer.use_ddp2:
+                val_loss = torch.mean(val_loss)
+            val_loss_mean += val_loss
+
+            # reduce manually when using dp
+            val_acc = output['val_acc']
+            if self.trainer.use_dp or self.trainer.use_ddp2:
+                val_acc = torch.mean(val_acc)
+
+            val_acc_mean += val_acc
+
+        val_loss_mean /= len(outputs)
+        val_acc_mean /= len(outputs)
+        tqdm_dict = {'val_loss': val_loss_mean, 'val_acc': val_acc_mean}
+        result = {'progress_bar': tqdm_dict, 'log': tqdm_dict, 'val_loss': val_loss_mean}
+        return result
+
+    # ---------------------
+    # TRAINING SETUP
+    # ---------------------
+    def configure_optimizers(self):
+        """
+        return whatever optimizers we want here
+        :return: list of optimizers
+        """
+        return [self.optimizer]
+
+    # def __dataloader(self, train):
+    #     # init data generators
+    #     transform = transforms.Compose([transforms.ToTensor(),
+    #                                     transforms.Normalize((0.5,), (1.0,))])
+    #     dataset = MNIST(root=self.hparams.data_root, train=train,
+    #                     transform=transform, download=True)
+    #
+    #     # when using multi-node (ddp) we need to add the  datasampler
+    #     train_sampler = None
+    #     batch_size = self.hparams.batch_size
+    #
+    #     if self.use_ddp:
+    #         train_sampler = DistributedSampler(dataset)
+    #
+    #     should_shuffle = train_sampler is None
+    #     loader = DataLoader(
+    #         dataset=dataset,
+    #         batch_size=batch_size,
+    #         shuffle=should_shuffle,
+    #         sampler=train_sampler,
+    #         num_workers=0
+    #     )
+    #
+    #     return loader
+
+    @ptl.data_loader
+    def train_dataloader(self):
+        # logging.info('training data loader called')
+        return DataLoader(self.train_dataset, batch_size=WAVENET_BATCH_SIZE, shuffle=True,
+                          num_workers=NUM_WORKERS)
+
+    @ptl.data_loader
+    def val_dataloader(self):
+        # logging.info('val data loader called')
+        return DataLoader(self.eval_dataset, batch_size=WAVENET_BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
+
+    @ptl.data_loader
+    def test_dataloader(self):
+        # logging.info('test data loader called')
+        return DataLoader(self.test_dataset, batch_size=WAVENET_BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
+
+    @staticmethod
+    def add_model_specific_args(parent_parser, root_dir):  # pragma: no cover
+        """
+        Parameters you define here will be available to your model through self.hparams
+        :param parent_parser:
+        :param root_dir:
+        :return:
+        """
+        parser = ArgumentParser(parents=[parent_parser])
+        parser.add_argument('--learning_rate', default=0.001, type=float)
+        parser.add_argument('--batch_size', default=WAVENET_BATCH_SIZE, type=int)
+        return parser
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(
+        description='Train a model from features from a data folder',
+        add_help=False
+    )
+
+    parser.add_argument(
+        '--model',
+        help='name of the model to be trained (options: ResNetV2, leglaive)',
+        default='waveNetTransformer'
+    )
 
     parser.add_argument('--features_path', help='Path to features folder',
                         default=FEATURES_DATA_PATH)
 
-    parser.add_argument('--experiment', help='Name of the experiment. affects checkpoint names',
-                        default='faith_tull_binary2')
+    parser.add_argument(
+        '--experiment',
+        default='unnamed_experiment',
+        help='Name of the experiment. affects checkpoint names')
 
-    parser.add_argument('--device_name', help='Name of the device. Can be cuda:0, cuda:1, ... or cpu. '
-                                              'If no device is avaiable cpu is used.',
-                        default='cuda:0')
+    parser.add_argument(
+        '--gpus',
+        type=int,
+        default=0,
+        help='how many gpus'
+    )
 
     args = parser.parse_args()
     model = args.model
     features_path = pathlib.Path(args.features_path)
     experiment_name = args.experiment
-    device_name = args.device_name
+    device_name = 'cpu'
 
     print('info: feature_path is {}'.format(features_path))
     print('info: experiment_name is {}'.format(experiment_name))
@@ -1225,7 +1393,7 @@ if __name__ == '__main__':
         y_test = test_dm.Y
         model.evaluate(x_test, y_test)
     elif model == 'Simple1dConvNet':
-        train_dataset, test_dataset, val_dataset = WaveformDataset.init_sets(
+        train_dataset, test_dataset, eval_dataset = WaveformDataset.init_sets(
             SingingVoiceSeparationOpenUnmixFeatureExtractor.feature_name,
             features_path,
             ratio=(0.5, 0.25, 0.25)
@@ -1234,20 +1402,20 @@ if __name__ == '__main__':
         train_dataloader = DataLoader(train_dataset, batch_size=S1DCONV_BATCH_SIZE, shuffle=True,
                                       num_workers=NUM_WORKERS)
         test_dataloader = DataLoader(test_dataset, batch_size=S1DCONV_BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
-        val_dataloader = DataLoader(val_dataset, batch_size=S1DCONV_BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
+        val_dataloader = DataLoader(eval_dataset, batch_size=S1DCONV_BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
 
         # model hyper parameters should be modified in config file
-        input_shape = (S1DCONV_BATCH_SIZE, WAVEFORM_NUM_CHANNELS, WAVEFORM_SEQUENCE_LENGTH)
+        input_shape = (S1DCONV_BATCH_SIZE, WAVEFORM_NUM_CHANNELS, WAVEFORM_MAX_SEQUENCE_LENGTH)
         model = Simple1dConvNet(
             'faith_tull_binary2',
             num_classes=2,
             input_shape=input_shape
         )
         model = model.load_checkpoint()
-        model.train_now(train_dataset, val_dataset)
+        model.train_now(train_dataset, eval_dataset)
         model.evaluate(test_dataset)
     elif model == 'waveNet':
-        train_dataset, test_dataset, val_dataset = WaveformDataset.init_sets(
+        train_dataset, test_dataset, eval_dataset = WaveformDataset.init_sets(
             SingingVoiceSeparationOpenUnmixFeatureExtractor.feature_name,
             features_path,
             ratio=(0.5, 0.25, 0.25)
@@ -1256,20 +1424,20 @@ if __name__ == '__main__':
         train_dataloader = DataLoader(train_dataset, batch_size=S1DCONV_BATCH_SIZE, shuffle=True,
                                       num_workers=NUM_WORKERS)
         test_dataloader = DataLoader(test_dataset, batch_size=S1DCONV_BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
-        val_dataloader = DataLoader(val_dataset, batch_size=S1DCONV_BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
+        val_dataloader = DataLoader(eval_dataset, batch_size=S1DCONV_BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
 
         # model hyper parameters should be modified in config file
-        input_shape = (S1DCONV_BATCH_SIZE, WAVEFORM_NUM_CHANNELS, WAVEFORM_SEQUENCE_LENGTH)
+        input_shape = (S1DCONV_BATCH_SIZE, WAVEFORM_NUM_CHANNELS, WAVEFORM_MAX_SEQUENCE_LENGTH)
         model = WaveNetClassifier(
             'faith_tull_binary2',
             num_classes=2,
             input_shape=input_shape
         )
         model = model.load_checkpoint()
-        model.train_now(train_dataset, val_dataset)
+        model.train_now(train_dataset, eval_dataset)
         model.evaluate(test_dataset)
     elif model == 'waveNetLstm':
-        train_dataset, test_dataset, val_dataset, number_of_classes = WaveformDataset.init_sets(
+        train_dataset, test_dataset, eval_dataset, number_of_classes = WaveformDataset.init_sets(
             SingingVoiceSeparationOpenUnmixFeatureExtractor.feature_name,
             features_path,
             ratio=(0.5, 0.25, 0.25)
@@ -1278,10 +1446,10 @@ if __name__ == '__main__':
         train_dataloader = DataLoader(train_dataset, batch_size=WAVENET_BATCH_SIZE, shuffle=True,
                                       num_workers=NUM_WORKERS)
         test_dataloader = DataLoader(test_dataset, batch_size=WAVENET_BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
-        val_dataloader = DataLoader(val_dataset, batch_size=WAVENET_BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
+        val_dataloader = DataLoader(eval_dataset, batch_size=WAVENET_BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
 
         # model hyper parameters should be modified in config file
-        input_shape = (WAVENET_BATCH_SIZE, WAVEFORM_NUM_CHANNELS, WAVEFORM_SEQUENCE_LENGTH)
+        input_shape = (WAVENET_BATCH_SIZE, WAVEFORM_NUM_CHANNELS, WAVEFORM_MAX_SEQUENCE_LENGTH)
         model = WaveNetBiLSTMClassifier(
             experiment_name,
             num_classes=number_of_classes,
@@ -1289,28 +1457,25 @@ if __name__ == '__main__':
             device_name=device_name
         )
         model = model.load_checkpoint()
-        model.train_now(train_dataset, val_dataset)
+        model.train_now(train_dataset, eval_dataset)
         model.evaluate(test_dataset)
     elif model == 'waveNetTransformer':
-        train_dataset, test_dataset, val_dataset, number_of_classes = WaveformDataset.init_sets(
+        root_dir = os.path.dirname(os.path.realpath(__file__))
+        train_dataset, test_dataset, eval_dataset, number_of_classes = WaveformDataset.init_sets(
             SingingVoiceSeparationOpenUnmixFeatureExtractor.feature_name,
             features_path,
             ratio=(0.5, 0.25, 0.25)
         )
 
-        train_dataloader = DataLoader(train_dataset, batch_size=WAVENET_BATCH_SIZE, shuffle=True,
-                                      num_workers=NUM_WORKERS)
-        test_dataloader = DataLoader(test_dataset, batch_size=WAVENET_BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
-        val_dataloader = DataLoader(val_dataset, batch_size=WAVENET_BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
+        parser = WavenetTramsformerTrainer.add_model_specific_args(parser, root_dir)
+        hyperparams = parser.parse_args()
 
-        # model hyper parameters should be modified in config file
-        input_shape = (WAVENET_BATCH_SIZE, WAVEFORM_NUM_CHANNELS, WAVEFORM_SEQUENCE_LENGTH)
-        model = WaveNetTransformerEncoderClassifier(
-            experiment_name,
-            num_classes=number_of_classes,
-            input_shape=input_shape,
-            device_name=device_name
+        model = WavenetTramsformerTrainer(
+            hyperparams,
+            number_of_classes,
+            train_dataset,
+            eval_dataset,
+            test_dataset
         )
-        model = model.load_checkpoint()
-        model.train_now(train_dataset, val_dataset)
-        model.evaluate(test_dataset)
+        trainer = ptl.Trainer(gpus=hyperparams.gpus)
+        trainer.fit(model)
