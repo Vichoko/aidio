@@ -534,7 +534,7 @@ class TorchClassificationModel(ClassificationModel, nn.Module):
                 matches = (predicted == labels).squeeze()
                 for idx in range(labels.size(0)):
                     label = labels[idx]
-                    metrics[label.item()]['hit'] += matches[idx].item() if matches.size(0) > 1 else matches.item()
+                    metrics[label.item()]['hit'] += matches[idx].item() if len(matches) > 1 else matches.item()
                     metrics[label.item()]['total'] += 1
 
             mean_eval_loss = np.mean(losses)
