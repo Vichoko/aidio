@@ -1027,7 +1027,6 @@ class PositionalEncoder(torch.nn.Module):
         self.register_buffer('pe', pe)
 
     def forward(self, x):
-        print('nograd')
         with torch.no_grad():
             x = x * math.sqrt(self.d_model)
             seq_len = x.size(1)
@@ -1134,7 +1133,7 @@ class WaveNetTransformerEncoderClassifier(TorchClassificationModel):
         self.transformer_encoder.to(self.device)
 
     def forward(self, x):
-        print('info: feeding wavenet...')
+        # print('info: feeding wavenet...')
         x = self.wavenet.forward(x)
         # reduce sequence_length / 10 three times == 16Khz to 10Hz; increase the number of channels
         x = self.conv_downsampler_1(x)
@@ -1143,13 +1142,13 @@ class WaveNetTransformerEncoderClassifier(TorchClassificationModel):
         # x.shape for convs is n_data, n_channels, n_sequence
         # transformer expected input is n_data, n_sequence, wavenet_channels
         x = x.transpose(1, 2)
-        print('info: feeding positional encoder...')
+        # print('info: feeding positional encoder...')
         x = self.positional_encoder(x)
-        print('info: feeding transformer...')
+        # print('info: feeding transformer...')
         x = self.transformer_encoder(x)  # shape  n_data, n_sequence, d_model
         x = x[:, -1, :]  # pick the last vector from the output as the sentence embedding
         # x final shape is n_data, lstm_hidden_size * 2
-        print('info: feeding fully-connected...')
+        # print('info: feeding fully-connected...')
         # simple classifier
         x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))
