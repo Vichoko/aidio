@@ -1034,7 +1034,7 @@ class PositionalEncoder(torch.nn.Module):
             print('seq_len = x.size(1)')
             seq_len = x.size(1)
             print('   pe = torch.Tensor(self.pe[:, :seq_len]')
-            pe = torch.Tensor(self.pe[:, :seq_len])
+            pe = self.pe[:, :seq_len]
             print('x = x + pe')
             x = x + pe
             return x
