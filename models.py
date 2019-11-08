@@ -1128,6 +1128,9 @@ class WaveNetTransformerEncoderClassifier(TorchClassificationModel):
 
         self.to(self.device)
         self.wavenet.to(self.device)
+        self.positional_encoder.to(self.device)
+        encoder_layer.to(self.device)
+        self.transformer_encoder.to(self.device)
 
     def forward(self, x):
         # print('info: feeding wavenet...')
