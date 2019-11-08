@@ -1028,7 +1028,7 @@ class PositionalEncoder(torch.nn.Module):
 
     def forward(self, x):
         with torch.no_grad():
-            x = x * math.sqrt(self.d_model)
+            x = x * torch.sqrt(torch.Tensor([self.d_model])).item()
             seq_len = x.size(1)
             pe = torch.Tensor(self.pe[:, :seq_len])
             x = x + pe
