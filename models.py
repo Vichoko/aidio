@@ -1099,7 +1099,7 @@ class WaveNetTransformerClassifier(nn.Module):
             dilation=3
         )
         self.conv_downsampler_3 = nn.Conv1d(
-            in_channels=384,
+            in_channels=448,
             out_channels=d_model,
             kernel_size=4,
             stride=conv_downsampler_stride,
