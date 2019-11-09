@@ -1031,8 +1031,10 @@ class PositionalEncoder(torch.nn.Module):
         # pe = torch.zeros(max_seq_len, d_model)
         pe = None
         for i in range(0, d_model, 2):
-            pair = torch.sin(torch.Tensor([pos / (10000 ** ((2 * i) / d_model)) for pos in range(max_seq_len)])).reshape(-1, 1)
-            even = torch.cos(torch.Tensor([pos / (10000 ** ((2 * (i + 1)) / d_model)) for pos in range(max_seq_len)])).reshape(-1, 1)
+            pair = torch.sin(
+                torch.Tensor([pos / (10000 ** ((2 * i) / d_model)) for pos in range(max_seq_len)])).reshape(-1, 1)
+            even = torch.cos(
+                torch.Tensor([pos / (10000 ** ((2 * (i + 1)) / d_model)) for pos in range(max_seq_len)])).reshape(-1, 1)
             if pe is None:
                 pe = torch.cat([pair, even], dim=1)
             else:
@@ -1150,13 +1152,13 @@ class WaveNetTransformerClassifier(nn.Module):
         return x
 
 
-class WavenetTramsformerTrainer(ptl.LightningModule):
+class WavenetTramsformerClassifier(ptl.LightningModule):
     """
     Sample model to show how to define a template
     """
 
     def __init__(self, hparams, num_classes, train_dataset, eval_dataset, test_dataset):
-        super(WavenetTramsformerTrainer, self).__init__()
+        super(WavenetTramsformerClassifier, self).__init__()
         self.hparams = hparams
         self.loss = torch.nn.CrossEntropyLoss()
         self.train_dataset = train_dataset
@@ -1165,7 +1167,6 @@ class WavenetTramsformerTrainer(ptl.LightningModule):
         # build model
         self.model = WaveNetTransformerClassifier(num_classes)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=hparams.learning_rate)
-
 
     # ---------------------
     # TRAINING
@@ -1488,17 +1489,17 @@ if __name__ == '__main__':
             ratio=(0.5, 0.25, 0.25)
         )
 
-        parser = WavenetTramsformerTrainer.add_model_specific_args(parser, root_dir)
+        parser = WavenetTramsformerClassifier.add_model_specific_args(parser, root_dir)
         hyperparams = parser.parse_args()
 
-        model = WavenetTramsformerTrainer(
+        model = WavenetTramsformerClassifier(
             hyperparams,
             number_of_classes,
             train_dataset,
             eval_dataset,
             test_dataset
         )
-
+        makedirs(MODELS_DATA_PATH / experiment_name)
         logger = ptl.logging.TestTubeLogger(
             save_dir=MODELS_DATA_PATH / experiment_name,
             version=1  # An existing version with a saved checkpoint
@@ -1506,5 +1507,7 @@ if __name__ == '__main__':
         trainer = ptl.Trainer(
             gpus=hyperparams.gpus,
             distributed_backend=hyperparams.distributed_backend,
+            logger=logger,
+            default_save_path=MODELS_DATA_PATH / experiment_name
         )
         trainer.fit(model)
