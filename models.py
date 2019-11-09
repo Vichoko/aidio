@@ -1083,27 +1083,27 @@ class WaveNetTransformerClassifier(nn.Module):
 
         # reduce sample resolution from 160k to 32k
         # output_length = floor((input_length - stride)/kernel_size + 1)
-        conv_downsampler_stride = 2
+        conv_downsampler_stride = 3
         self.conv_downsampler_1 = nn.Conv1d(
             in_channels=WAVENET_END_CHANNELS,
             out_channels=384,
             kernel_size=4,
             stride=conv_downsampler_stride,
-            dilation=3
+            dilation=2
         )
         self.conv_downsampler_2 = nn.Conv1d(
             in_channels=384,
             out_channels=448,
             kernel_size=4,
             stride=conv_downsampler_stride,
-            dilation=3
+            dilation=2
         )
         self.conv_downsampler_3 = nn.Conv1d(
             in_channels=448,
             out_channels=d_model,
             kernel_size=4,
             stride=conv_downsampler_stride,
-            dilation=3
+            dilation=2
         )
 
         self.positional_encoder = PositionalEncoder(
