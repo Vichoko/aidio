@@ -1498,5 +1498,13 @@ if __name__ == '__main__':
             eval_dataset,
             test_dataset
         )
-        trainer = ptl.Trainer(gpus=hyperparams.gpus, distributed_backend=hyperparams.distributed_backend)
+
+        logger = ptl.logging.TestTubeLogger(
+            save_dir=MODELS_DATA_PATH / experiment_name,
+            version=1  # An existing version with a saved checkpoint
+        )
+        trainer = ptl.Trainer(
+            gpus=hyperparams.gpus,
+            distributed_backend=hyperparams.distributed_backend,
+        )
         trainer.fit(model)
