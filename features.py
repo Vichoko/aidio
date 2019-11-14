@@ -459,7 +459,7 @@ class MelSpectralCoefficientsFeatureExtractor(FeatureExtractor):
             print('prosessing {}'.format(data))
             x = data[0]
             y = data[1]
-            wav, _ = librosa.load(source_path / x, sr=SR)
+            wav, _ = librosa.load(str(source_path / x), sr=SR)
             # Normalize audio signal
             wav = librosa.util.normalize(wav)
             # Get Mel-Spectrogram
@@ -492,7 +492,7 @@ class WindowedMelSpectralCoefficientsFeatureExtractor(FeatureExtractor):
             # params
 
             # get song and split
-            wav, _ = librosa.load(source_path / x, sr=SR)
+            wav, _ = librosa.load(str(source_path / x), sr=SR)
             intervals = librosa.effects.split(
                 # todo: split this extractor in two. One for this split, other for the windows
                 wav,
@@ -568,7 +568,7 @@ class MagPhaseFeatureExtractor(FeatureExtractor):
                 new_labels.append([file_name, y_i])
             except FileNotFoundError or OSError or EOFError:
                 # OSError and EOFError are raised if file are inconsistent
-                audio_src, _ = librosa.load(source_path / x_i, sr=MAGPHASE_SAMPLE_RATE)
+                audio_src, _ = librosa.load(str(source_path / x_i), sr=MAGPHASE_SAMPLE_RATE)
 
                 mix_wav_mag, mix_wav_phase = magphase(
                     stft(
@@ -638,7 +638,7 @@ class SingingVoiceSeparationUnetFeatureExtractor(FeatureExtractor):
                 file_name = FeatureExtractor.get_file_name(x_i, feature_name, ext='wav')
                 try:
                     # try to load if file already exist
-                    librosa.load(out_path / file_name, sr=MAGPHASE_SAMPLE_RATE)
+                    librosa.load(str(out_path / file_name), sr=MAGPHASE_SAMPLE_RATE)
                     print('info: {} loaded from .npy !'.format(file_name))
                     new_labels.append([file_name, y_i])
                 except FileNotFoundError or OSError or EOFError:
@@ -731,7 +731,7 @@ class SingingVoiceSeparationOpenUnmixFeatureExtractor(FeatureExtractor):
                 try:
                     # try to load if file already exist
                     print('info: trying to load {}'.format(out_path / file_name))
-                    librosa.load(out_path / file_name, sr=OUNMIX_SAMPLE_RATE)
+                    librosa.load(str(out_path / file_name), sr=OUNMIX_SAMPLE_RATE)
                     new_labels.append([file_name, y_i])
                 except (FileNotFoundError, OSError, EOFError, audioread.NoBackendError):
                     # OSError and EOFError are raised if file are inconsistent
@@ -775,7 +775,7 @@ class IntensitySplitterFeatureExtractor(FeatureExtractor):
             # params
 
             # get song and split
-            wav, _ = librosa.load(source_path / x, sr=SR)
+            wav, _ = librosa.load(str(source_path / x), sr=SR)
             intervals = librosa.effects.split(
                 wav,
                 top_db=TOP_DB_WINDOWED_MFCC
@@ -835,7 +835,7 @@ class DoubleHPSSFeatureExtractor(FeatureExtractor):
                 new_labels.append([file_name, y_i])
             except FileNotFoundError or OSError or EOFError:
                 # OSError and EOFError are raised if file are inconsistent
-                audio_src, _ = librosa.load(source_path / x_i, sr=SR_HPSS)
+                audio_src, _ = librosa.load(str(source_path / x_i), sr=SR_HPSS)
                 # Normalize audio signal
                 audio_src = librosa.util.normalize(audio_src)
                 # first HPSS
@@ -1049,14 +1049,14 @@ class SVDPonderatedVolumeFeatureExtractor(FeatureExtractor):
             file_name = FeatureExtractor.get_file_name(x_i, feature_name, 'wav')
             try:
                 # try to load if file already exist
-                librosa.load(out_path / file_name, sr=SR)
+                librosa.load(str(out_path / file_name), sr=SR)
                 print('info: {} loaded from .npy !'.format(file_name))
                 new_labels.append([file_name, y_i])
             except FileNotFoundError or OSError or EOFError:
                 # OSError and EOFError are raised if file are inconsistent
                 mean_voice_activation = np.load(source_path / x_i, allow_pickle=True)
-                audio_src, _ = librosa.load(
-                    raw_path / '{}.mp3'.format(x_i.split('.{}'.format(DoubleHPSSFeatureExtractor.feature_name))[0]),
+                audio_src, _ = librosa.load(str(
+                    raw_path / '{}.mp3'.format(x_i.split('.{}'.format(DoubleHPSSFeatureExtractor.feature_name))[0])),
                     sr=SR)  # todo: support other formats
 
                 time = mean_voice_activation[0]

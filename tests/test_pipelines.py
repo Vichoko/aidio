@@ -76,7 +76,7 @@ class TestSingingVoiceDetectionFeaturePipeline(_TestPipelineFeatureExtraction):
                 if 'npy' in filename:
                     x_i = np.load(extractor.out_path / filename, allow_pickle=True)
                 else:
-                    x_i = librosa.load(extractor.out_path / filename, sr=SR)
+                    x_i = librosa.load(str(extractor.out_path / filename), sr=SR)
 
                 # self._test_feature_element(x_i)
             extracted_data = np.asarray(extractor.new_labels)

@@ -483,7 +483,7 @@ class TestVocalSeparationUnetFeatureExtraction(_TestFeatureExtractor):
         feature_filenames = extracted_data[:, 0]
         # feature_labels = extracted_data[:, 1]
         for filename in feature_filenames:
-            x_i, _ = librosa.load(extractor.out_path / filename, sr=MAGPHASE_SAMPLE_RATE)
+            x_i, _ = librosa.load(str(extractor.out_path / filename), sr=MAGPHASE_SAMPLE_RATE)
             self._test_feature_element(x_i)
         self._test_post_processing(extractor)
         self.remove_feature_files(extractor) if clean else None
@@ -512,7 +512,7 @@ class TestVocalSeparationOpenUnmixFeatureExtraction(_TestFeatureExtractor):
         feature_filenames = extracted_data[:, 0]
         # feature_labels = extracted_data[:, 1]
         for filename in feature_filenames:
-            x_i, _ = librosa.load(extractor.out_path / filename, sr=MAGPHASE_SAMPLE_RATE)
+            x_i, _ = librosa.load(str(extractor.out_path / filename), sr=MAGPHASE_SAMPLE_RATE)
             self._test_feature_element(x_i)
         self._test_post_processing(extractor)
         self.remove_feature_files(extractor) if clean else None
