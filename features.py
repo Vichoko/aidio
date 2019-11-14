@@ -302,6 +302,8 @@ class FeatureExtractor:
         except Exception as e:
             print('error: in tranform')
             print(e)
+            self.export_new_labels()
+            raise e
         finally:
             print('info: exporting extraction meta-data')
             self.export_new_labels()
