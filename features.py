@@ -260,6 +260,8 @@ class FeatureExtractor:
         except Exception as e:
             print('error: in tranform')
             print(e)
+            self.export_new_labels()
+            raise e
         finally:
             print('info: exporting extraction meta-data')
             self.export_new_labels()
@@ -424,7 +426,6 @@ class FeatureExtractor:
         print('info: {} transformed and saved!'.format(filename))
         return filename
 
-    @staticmethod
     def skip_already_proccessed_in_label_file(self, data, enable=True):
         """
         Check the existing label file in feature out Path,
@@ -435,7 +436,11 @@ class FeatureExtractor:
         :return:
         """
         label_path = self.get_label_file_path()
-        filenames = set(label_path['filename'])
+        try:
+            df = pd.read_csv(label_path)
+        except FileNotFoundError:
+            return data
+        filenames = set(df['filename'])
         # todo: finish logic
         return data
 

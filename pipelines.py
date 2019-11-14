@@ -5,7 +5,8 @@ from pathlib import Path
 
 from config import FEATURES_DATA_PATH, RAW_DATA_PATH
 from features import DoubleHPSSFeatureExtractor, VoiceActivationFeatureExtractor, MeanSVDFeatureExtractor, \
-    SVDPonderatedVolumeFeatureExtractor, IntensitySplitterFeatureExtractor
+    SVDPonderatedVolumeFeatureExtractor, IntensitySplitterFeatureExtractor, \
+    SingingVoiceSeparationOpenUnmixFeatureExtractor
 
 
 class FeatureExtractionPipeline:
@@ -32,6 +33,7 @@ class SVDPipeline(FeatureExtractionPipeline):
     def __init__(self, feature_path, raw_path):
         super().__init__(feature_path, raw_path)
         self.pipeline = [
+            SingingVoiceSeparationOpenUnmixFeatureExtractor,
             DoubleHPSSFeatureExtractor,
             VoiceActivationFeatureExtractor,
             MeanSVDFeatureExtractor,
