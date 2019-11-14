@@ -1,9 +1,10 @@
-__author__ = ['Francisco Clavero']
-__email__ = ['fcoclavero32@gmail.com']
+__author__ = ['Francisco Clavero', 'Vicente Oyanedel']
+__email__ = ['fcoclavero32@gmail.com', 'vicenteoyanedel@gmail.com']
 __status__ = 'Prototype'
 
 
-""" Abstract class with the boilerplate code needed to define and run an Ignite engine. """
+""" Abstract class with the boilerplate code needed to define and run an Ignite engine. Originaly created by Francisco,
+Modified by Vicente"""
 
 
 import os
@@ -16,23 +17,17 @@ from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from src.datasets import get_dataset
-from src.utils import get_device, get_checkpoint_directory, get_log_directory
-from src.utils.data import dataset_split_successive
-
-
 class AbstractTrainer:
     """
     Abstract class with the boilerplate code needed to define and run an Ignite trainer Engine.
     """
-    def __init__(self, dataset_name, train_validation_split=.8, resume_date=None, batch_size=16, workers=4,
+    def __init__(self, dataset_name, train_dataset, eval_dataset, test_dataset, train_validation_split=.8, resume_date=None, batch_size=16, workers=4,
                  n_gpu=0, epochs=2):
         date = resume_date if resume_date else datetime.now()
-        self.device = get_device(n_gpu)
+        self.device = 'cuda:0' if n_gpu else 'cpu'  # todo: complement this minimalistic logic
         self.model = self.initial_model.to(self.device)
-        self.dataset = get_dataset(dataset_name)
         self.dataset_name = dataset_name
-        self.train_loader, self.val_loader = self._create_data_loaders(train_validation_split, batch_size, workers)
+        self.train_loader, self.val_loader, self.test_loader = self._create_data_loaders(train_validation_split, batch_size, workers)
         self.log_directory = get_log_directory(self.trainer_id, date=date)
         self.checkpoint_directory = get_checkpoint_directory(self.trainer_id, date=date)
         self.evaluator = self._create_evaluator_engine()

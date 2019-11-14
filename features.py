@@ -170,7 +170,7 @@ class FeatureExtractor:
                     self.x[0].split('.')[-1]))
         return input_path_warning_flag, filename_format_warning_flag
 
-    def clean_references(self):
+    def clean_input_references(self):
         """
         Remove elements from x and y that doesnt't have a source (raw) file
         :param x: from self.x; a list of filenames (str)
@@ -187,6 +187,23 @@ class FeatureExtractor:
                 new_y.append(y_i)
         self.x = new_x
         self.y = new_y
+
+    @staticmethod
+    def get_mean_voice_activation(voice_activation):
+        """
+
+        :param voice_activation: Array with shape (n_frames, n_steps)
+        (note: ~200 predictions are made per frame (aka steps); n_steps is variable depending on frame,
+            and some predictions can contain NaNs)
+        :return: Array of shape n_frames. Reduced to just one prediction per frame by mean.
+        """
+        reduction_fun = np.mean
+        # calculate mean for each frame predictions (~218 per frame)
+        mean_voice_activation = np.asarray(
+            [reduction_fun(elem) for elem in voice_activation])
+        mean_voice_activation = np.nan_to_num(
+            mean_voice_activation)  # remove NaNs product of mean of empty frame
+        return mean_voice_activation
 
     @staticmethod
     def process_element(feature_name, new_labels, out_path, source_path, raw_path, **kwargs):
@@ -223,9 +240,9 @@ class FeatureExtractor:
         :param kwargs:
         :return:
         """
-        self.clean_references()
+        self.clean_input_references()
         data = np.asarray([self.x, self.y]).swapaxes(0, 1)
-
+        data = self.skip_already_proccessed_in_label_file(data)
         # define per-item callable to be processed
         process_element = self.process_element(
             feature_name=self.feature_name,
@@ -254,8 +271,9 @@ class FeatureExtractor:
         :param kwargs:
         :return:
         """
-        self.clean_references()
+        self.clean_input_references()
         data = np.asarray([self.x, self.y]).swapaxes(0, 1)
+        data = self.skip_already_proccessed_in_label_file(data)
         print('info: starting sequential transform on data {}'.format(data))
         print('from {} to {}'.format(self.source_path, self.out_path))
         # define per-item callable to be processed
@@ -406,6 +424,21 @@ class FeatureExtractor:
         print('info: {} transformed and saved!'.format(filename))
         return filename
 
+    @staticmethod
+    def skip_already_proccessed_in_label_file(self, data, enable=True):
+        """
+        Check the existing label file in feature out Path,
+        remove those filenames from data and
+        add the existing labels
+        :param self: FeatureExtractor object.
+        :param data: list of filename, label
+        :return:
+        """
+        label_path = self.get_label_file_path()
+        filenames = set(label_path['filename'])
+        # todo: finish logic
+        return data
+
 
 class MelSpectralCoefficientsFeatureExtractor(FeatureExtractor):
     feature_name = 'spec'
@@ -490,277 +523,6 @@ class WindowedMelSpectralCoefficientsFeatureExtractor(FeatureExtractor):
     #     if parallel:
     #         raise Exception('error: {} cannot be ran in paralel'.format(self.feature_name))
     #     return super().transform(parallel, **kwargs)
-
-
-# Singing Voice Detection Pipeline
-class DoubleHPSSFeatureExtractor(FeatureExtractor):
-    feature_name = '2hpss'
-
-    @staticmethod
-    def process_element(feature_name, new_labels, out_path, source_path, **kwargs):
-        """
-        Wrapper for actual function __process_elements(data)
-        :param feature_name:
-        :param new_labels:
-        :param out_path:
-        :param source_path:
-        :param fun:
-        :param model_name:
-        :param kwargs:
-        :return:
-        """
-
-        def __process_element(data):
-            """
-            Compute double stage HPSS for the given audio file
-            extracted from https://github.com/kyungyunlee/ismir2018-revisiting-svd/blob/master/leglaive_lstm/audio_processor.py
-            :param x: filename (str)
-            :param y: label (str)
-            :return: mel_D2_total : concatenated melspectrogram of percussive, harmonic components of double stage HPSS. Shape=(2 * n_bins, total_frames) ex. (80, 2004)
-            """
-            print('processing {}'.format(data))
-            x_i = data[0]
-            y_i = data[1]
-
-            file_name = FeatureExtractor.get_file_name(x_i, feature_name)
-            try:
-                # try to load if file already exist
-                np.load(out_path / file_name, allow_pickle=True)
-                print('info: {} loaded from .npy !'.format(file_name))
-                new_labels.append([file_name, y_i])
-            except FileNotFoundError or OSError or EOFError:
-                # OSError and EOFError are raised if file are inconsistent
-                audio_src, _ = librosa.load(source_path / x_i, sr=SR_HPSS)
-                # Normalize audio signal
-                audio_src = librosa.util.normalize(audio_src)
-                # first HPSS
-                D_harmonic, D_percussive = ono_hpss(audio_src, N_FFT_HPSS_1, N_HOP_HPSS_1)
-                # second HPSS
-                D2_harmonic, D2_percussive = ono_hpss(D_percussive, N_FFT_HPSS_2, N_HOP_HPSS_2)
-
-                # compute melgram
-                mel_harmonic = log_melgram(D2_harmonic, SR_HPSS, N_FFT_HPSS_2, N_HOP_HPSS_2, N_MELS_HPSS)
-                mel_percussive = log_melgram(D2_percussive, SR_HPSS, N_FFT_HPSS_2, N_HOP_HPSS_2, N_MELS_HPSS)
-                # concat
-                mel_total = np.vstack((mel_harmonic, mel_percussive))
-
-                # this is kind-of standard
-                FeatureExtractor.save_feature(mel_total, feature_name, out_path, x_i, y_i, new_labels)
-
-        return __process_element
-
-
-class VoiceActivationFeatureExtractor(FeatureExtractor):
-    feature_name = 'voice_activation'
-    dependency_feature_name = DoubleHPSSFeatureExtractor.feature_name
-
-    @staticmethod
-    def frame_level_predict(y_pred, number_of_mel_samples):
-        """
-        Predict Voice Activity Regions at a Frame Level for a given song.
-        For each frame of the MFCC a Voice Detection Probability is predicted, then the output have shape: (n_frames, 1)
-
-        :param model_name: name of the trained model
-        :param filename:  path to the music file to be predicted
-        :param cache: flag to optimize heavy operations with caching in disk
-        :param plot: flag to plot MFCCs and SVD in an aligned plot if GUI available.
-        :return: (Time, Predictions): SVD probabilities at frame level with time markings
-        """
-        # transform raw predictions to frame level
-        aligned_y_pred = [[] for _ in range(number_of_mel_samples)]
-        for first_frame_idx, window_prediction in enumerate(y_pred):
-            # for each prediction
-            for offset, frame_prediction in enumerate(window_prediction):
-                # accumulate overlapped predictions in a list
-                aligned_y_pred[first_frame_idx + offset].append(frame_prediction[0])
-
-        # frame_level_y_pred = []
-        # for _, predictions in enumerate(aligned_y_pred[:-1]):
-        #     # -1 because last element is empty
-        #     # reduce the overlapped predictions to a single value
-        #     frame_level_y_pred.append(min(predictions))
-
-        time = frames_to_time(range(number_of_mel_samples), sr=SR_HPSS, n_fft=N_FFT_HPSS_2,
-                              hop_length=N_HOP_HPSS_2)
-
-        print('info: done')
-        return time, aligned_y_pred
-
-    @staticmethod
-    def post_process(input, number_of_mel_samples):
-        """
-        Export in a time-dependant domain instead of sample-domain; as sample rate change between methods.
-        :param input:
-        :return:
-        """
-        return np.asarray(VoiceActivationFeatureExtractor.frame_level_predict(input, number_of_mel_samples))
-
-    @staticmethod
-    def process_elements(feature_name, new_labels, out_path, source_path, fun=None,
-                         model_name=VOICE_DETECTION_MODEL_NAME,
-                         **kwargs):
-        """
-        Wrapper for actual function __process_elements(data)
-        :param feature_name:
-        :param new_labels:
-        :param out_path:
-        :param source_path:
-        :param fun:
-        :param model_name:
-        :param kwargs:
-        :return:
-        """
-
-        def __process_elements(data):
-            """
-            :param data: shape (#_songs, 2) the axis 1 corresponds to the filename/label pair
-            :return:
-            """
-            x = data[:, 0]
-            y = data[:, 1]
-            print('loaded metadata in {}'.format(data))
-
-            from keras.models import load_model
-            from keras import backend
-
-            if len(backend.tensorflow_backend._get_available_gpus()) > 0:
-                # set gpu number
-                os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-
-            # load mode
-            loaded_model = load_model(str(MODELS_DATA_PATH / 'leglaive' / 'rnn_{}.h5'.format(model_name)))
-            print("loaded model")
-            print(loaded_model.summary())
-
-            mean_std = np.load(MODELS_DATA_PATH / 'leglaive' / 'train_mean_std_{}.npy'.format(model_name))
-            mean = mean_std[0]
-            std = mean_std[1]
-
-            for idx, x_i in enumerate(x):
-                # this is kind-of standard
-                y_i = y[idx]
-                file_name = FeatureExtractor.get_file_name(x_i, feature_name)
-                try:
-                    # try to load if file already exist
-                    np.load(out_path / file_name, allow_pickle=True)
-                    print('info: {} loaded from .npy !'.format(file_name))
-                    new_labels.append([file_name, y_i])
-                except FileNotFoundError or OSError or EOFError:
-                    # OSError and EOFError are raised if file are inconsistent
-                    # final_shape: (#_hops, #_mel_filters, #_window)
-                    print('info: loading hpss data for {}'.format(x_i))
-                    hpss = np.load(source_path / x_i)  # _data, #_coefs, #_samples)
-                    print('info: formatting data')
-                    try:
-                        padding = RNN_INPUT_SIZE_VOICE_ACTIVATION - hpss.shape[1]
-                        if padding > 0:
-                            # if hpss is shorter that RNN input shape, then add padding on axis=1
-                            hpss = np.pad(hpss, ((0, 0), (0, padding)), mode='constant')
-                        number_of_mel_samples = hpss.shape[1]
-                        # at least should have 1 window
-                        number_of_steps = max(number_of_mel_samples - RNN_INPUT_SIZE_VOICE_ACTIVATION, 1)
-                        total_x = np.array([hpss[:, i: i + RNN_INPUT_SIZE_VOICE_ACTIVATION]
-                                            for i in range(0, number_of_steps, 1)])
-                        # final_shape: (#_hops, #_mel_filters, #_window)
-
-                        total_x_norm = (total_x - mean) / std
-                        total_x_norm = np.swapaxes(total_x_norm, 1, 2)
-                        # final_shape: (#_hops, #_window, #_mel_filters)
-
-                        x_test = total_x_norm
-                        print('info: predicting')
-                        y_pred = loaded_model.predict(x_test, verbose=1)  # Shape=(total_frames,)
-                        time, aligned_y_pred = VoiceActivationFeatureExtractor.post_process(y_pred,
-                                                                                            number_of_mel_samples)
-                        print('info: predicted!')
-                        result_array = np.asarray([time, aligned_y_pred])
-                        FeatureExtractor.save_feature(result_array, feature_name, out_path, x_i, y_i, new_labels)
-                    except MemoryError as e:
-                        print('error: memory error while proccessing {}. Ignoring...'.format(x_i))
-                        print(e)
-
-        return __process_elements
-
-    def transform(self, parallel=False, **kwargs):
-        if parallel:
-            raise Exception('error: {} cannot be ran in paralel'.format(self.feature_name))
-        return super().transform(parallel, **kwargs)
-
-
-class MeanSVDFeatureExtractor(FeatureExtractor):
-    feature_name = 'mean_svd'
-    dependency_feature_name = VoiceActivationFeatureExtractor.feature_name
-
-    @staticmethod
-    def process_element(feature_name, new_labels, out_path, source_path, **kwargs):
-        def __process_element(data):
-            """
-            Flatten overlapped prediction by Leglaive SVD prediction by calculating mean for every frame.
-            """
-            print('prosessing {}'.format(data))
-            x_i = data[0]
-            y_i = data[1]
-
-            file_name = FeatureExtractor.get_file_name(x_i, feature_name)
-            try:
-                # try to load if file already exist
-                np.load(out_path / file_name, allow_pickle=True)
-                print('info: {} loaded from .npy !'.format(file_name))
-                new_labels.append([file_name, y_i])
-            except FileNotFoundError or OSError or EOFError:
-                # OSError and EOFError are raised if file are inconsistent
-                voice_activation = np.load(source_path / x_i, allow_pickle=True)
-                mean_voice_activation = np.asarray([np.mean(elem) for elem in voice_activation[
-                    1]])  # calculate mean for each frame predictions (~218 per frame)
-                mean_voice_activation = np.nan_to_num(
-                    mean_voice_activation)  # remove NaNs product of mean of empty frame
-                # this is kind-of standard
-                FeatureExtractor.save_feature([voice_activation[0], mean_voice_activation], feature_name, out_path, x_i,
-                                              y_i, new_labels)
-
-        return __process_element
-
-
-class SVDPonderatedVolumeFeatureExtractor(FeatureExtractor):
-    feature_name = 'svd_ponderated_volume'
-    dependency_feature_name = MeanSVDFeatureExtractor.feature_name
-
-    @staticmethod
-    def process_element(feature_name, new_labels, out_path, source_path, raw_path, **kwargs):
-        def __process_element(data):
-            """
-
-            """
-            print('prosessing {}'.format(data))
-            x_i = data[0]
-            y_i = data[1]
-
-            file_name = FeatureExtractor.get_file_name(x_i, feature_name, 'wav')
-            try:
-                # try to load if file already exist
-                librosa.load(out_path / file_name, sr=SR)
-                print('info: {} loaded from .npy !'.format(file_name))
-                new_labels.append([file_name, y_i])
-            except FileNotFoundError or OSError or EOFError:
-                # OSError and EOFError are raised if file are inconsistent
-                mean_voice_activation = np.load(source_path / x_i, allow_pickle=True)
-                audio_src, _ = librosa.load(
-                    raw_path / '{}.mp3'.format(x_i.split('.{}'.format(DoubleHPSSFeatureExtractor.feature_name))[0]),
-                    sr=SR)  # todo: support other formats
-
-                time = mean_voice_activation[0]
-                voice_activation_prob = mean_voice_activation[1]
-
-                last_sample = 0
-                for idx, time_tick in enumerate(time):
-                    voice_prob = voice_activation_prob[idx]
-                    init_sample = last_sample
-                    last_sample = int(time_tick * SR)
-                    audio_src[init_sample:last_sample] *= voice_prob
-                # this is kind-of standard
-                FeatureExtractor.save_audio(audio_src, feature_name, out_path, x_i, y_i, new_labels)
-
-        return __process_element
 
 
 # Vocal Separation Pipeline
@@ -1025,6 +787,285 @@ class IntensitySplitterFeatureExtractor(FeatureExtractor):
                     wav[interval[0]:interval[1]], SR,
                     feature_name,
                     out_path, x, y, new_labels, mp3_filename=filename)
+
+        return __process_element
+
+
+# Singing Voice Detection Pipeline
+class DoubleHPSSFeatureExtractor(FeatureExtractor):
+    feature_name = '2hpss'
+    dependency_feature_name = SingingVoiceSeparationOpenUnmixFeatureExtractor.feature_name
+
+    @staticmethod
+    def process_element(feature_name, new_labels, out_path, source_path, **kwargs):
+        """
+        Wrapper for actual function __process_elements(data)
+        :param feature_name:
+        :param new_labels:
+        :param out_path:
+        :param source_path:
+        :param fun:
+        :param model_name:
+        :param kwargs:
+        :return:
+        """
+
+        def __process_element(data):
+            """
+            Compute double stage HPSS for the given audio file
+            extracted from https://github.com/kyungyunlee/ismir2018-revisiting-svd/blob/master/leglaive_lstm/audio_processor.py
+            :param x: filename (str)
+            :param y: label (str)
+            :return: mel_D2_total : concatenated melspectrogram of percussive, harmonic components of double stage HPSS. Shape=(2 * n_bins, total_frames) ex. (80, 2004)
+            """
+            print('processing {}'.format(data))
+            x_i = data[0]
+            y_i = data[1]
+
+            file_name = FeatureExtractor.get_file_name(x_i, feature_name)
+            try:
+                # try to load if file already exist
+                np.load(out_path / file_name, allow_pickle=True)
+                print('info: {} loaded from .npy !'.format(file_name))
+                new_labels.append([file_name, y_i])
+            except FileNotFoundError or OSError or EOFError:
+                # OSError and EOFError are raised if file are inconsistent
+                audio_src, _ = librosa.load(source_path / x_i, sr=SR_HPSS)
+                # Normalize audio signal
+                audio_src = librosa.util.normalize(audio_src)
+                # first HPSS
+                D_harmonic, D_percussive = ono_hpss(audio_src, N_FFT_HPSS_1, N_HOP_HPSS_1)
+                # second HPSS
+                D2_harmonic, D2_percussive = ono_hpss(D_percussive, N_FFT_HPSS_2, N_HOP_HPSS_2)
+
+                # compute melgram
+                mel_harmonic = log_melgram(D2_harmonic, SR_HPSS, N_FFT_HPSS_2, N_HOP_HPSS_2, N_MELS_HPSS)
+                mel_percussive = log_melgram(D2_percussive, SR_HPSS, N_FFT_HPSS_2, N_HOP_HPSS_2, N_MELS_HPSS)
+                # concat
+                mel_total = np.vstack((mel_harmonic, mel_percussive))
+
+                # this is kind-of standard
+                FeatureExtractor.save_feature(mel_total, feature_name, out_path, x_i, y_i, new_labels)
+
+        return __process_element
+
+
+class VoiceActivationFeatureExtractor(FeatureExtractor):
+    feature_name = 'voice_activation'
+    dependency_feature_name = DoubleHPSSFeatureExtractor.feature_name
+
+    @staticmethod
+    def frame_level_predict(y_pred, number_of_mel_samples):
+        """
+        Predict Voice Activity Regions at a Frame Level for a given song.
+        For each frame of the MFCC a Voice Detection Probability is predicted, then the output have shape: (n_frames, 1)
+
+        :param model_name: name of the trained model
+        :param filename:  path to the music file to be predicted
+        :param cache: flag to optimize heavy operations with caching in disk
+        :param plot: flag to plot MFCCs and SVD in an aligned plot if GUI available.
+        :return: (Time, Predictions): SVD probabilities at frame level with time markings
+        """
+        # transform raw predictions to frame level
+        aligned_y_pred = [[] for _ in range(number_of_mel_samples)]
+        for first_frame_idx, window_prediction in enumerate(y_pred):
+            # for each prediction
+            for offset, frame_prediction in enumerate(window_prediction):
+                # accumulate overlapped predictions in a list
+                aligned_y_pred[first_frame_idx + offset].append(frame_prediction[0])
+
+        # frame_level_y_pred = []
+        # for _, predictions in enumerate(aligned_y_pred[:-1]):
+        #     # -1 because last element is empty
+        #     # reduce the overlapped predictions to a single value
+        #     frame_level_y_pred.append(min(predictions))
+
+        time = frames_to_time(range(number_of_mel_samples), sr=SR_HPSS, n_fft=N_FFT_HPSS_2,
+                              hop_length=N_HOP_HPSS_2)
+
+        print('info: done')
+        return time, aligned_y_pred
+
+    @staticmethod
+    def post_process(y, number_of_mel_samples):
+        """
+        Export in a time-dependant domain instead of sample-domain; as sample rate change between methods.
+        :param y: prediction of the net
+        :return: Processed data with shape n_samples
+        """
+        # align input in a fixed (n_samples, n_prediction) shape, filling with NaNs if neccesary.
+        aligned_y = np.asarray(VoiceActivationFeatureExtractor.frame_level_predict(y, number_of_mel_samples))
+        # reduce n_samples, n_prediction to n_samples by mean
+        reduced_y = FeatureExtractor.get_mean_voice_activation(aligned_y)
+        y = reduced_y
+        return y
+
+    @staticmethod
+    def process_elements(feature_name, new_labels, out_path, source_path, fun=None,
+                         model_name=VOICE_DETECTION_MODEL_NAME,
+                         **kwargs):
+        """
+        Wrapper for actual function __process_elements(data)
+        :param feature_name:
+        :param new_labels:
+        :param out_path:
+        :param source_path:
+        :param fun:
+        :param model_name:
+        :param kwargs:
+        :return:
+        """
+
+        def __process_elements(data):
+            """
+            :param data: shape (#_songs, 2) the axis 1 corresponds to the filename/label pair
+            :return:
+            """
+            x = data[:, 0]
+            y = data[:, 1]
+            print('loaded metadata in {}'.format(data))
+
+            from keras.models import load_model
+            from keras import backend
+
+            if len(backend.tensorflow_backend._get_available_gpus()) > 0:
+                # set gpu number
+                os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+
+            # load mode
+            loaded_model = load_model(str(MODELS_DATA_PATH / 'leglaive' / 'rnn_{}.h5'.format(model_name)))
+            print("loaded model")
+            print(loaded_model.summary())
+
+            mean_std = np.load(MODELS_DATA_PATH / 'leglaive' / 'train_mean_std_{}.npy'.format(model_name))
+            mean = mean_std[0]
+            std = mean_std[1]
+
+            for idx, x_i in enumerate(x):
+                # this is kind-of standard
+                y_i = y[idx]
+                file_name = FeatureExtractor.get_file_name(x_i, feature_name)
+                try:
+                    # try to load if file already exist
+                    np.load(out_path / file_name, allow_pickle=True)
+                    print('info: {} loaded from .npy !'.format(file_name))
+                    new_labels.append([file_name, y_i])
+                except FileNotFoundError or OSError or EOFError:
+                    # OSError and EOFError are raised if file are inconsistent
+                    # final_shape: (#_hops, #_mel_filters, #_window)
+                    print('info: loading hpss data for {}'.format(x_i))
+                    hpss = np.load(source_path / x_i)  # _data, #_coefs, #_samples)
+                    print('info: formatting data')
+                    try:
+                        padding = RNN_INPUT_SIZE_VOICE_ACTIVATION - hpss.shape[1]
+                        if padding > 0:
+                            # if hpss is shorter that RNN input shape, then add padding on axis=1
+                            hpss = np.pad(hpss, ((0, 0), (0, padding)), mode='constant')
+                        number_of_mel_samples = hpss.shape[1]
+                        # at least should have 1 window
+                        number_of_steps = max(number_of_mel_samples - RNN_INPUT_SIZE_VOICE_ACTIVATION, 1)
+                        total_x = np.array([hpss[:, i: i + RNN_INPUT_SIZE_VOICE_ACTIVATION]
+                                            for i in range(0, number_of_steps, 1)])
+                        # final_shape: (#_hops, #_mel_filters, #_window)
+
+                        total_x_norm = (total_x - mean) / std
+                        total_x_norm = np.swapaxes(total_x_norm, 1, 2)
+                        # final_shape: (#_hops, #_window, #_mel_filters)
+
+                        x_test = total_x_norm
+                        print('info: predicting')
+                        y_pred = loaded_model.predict(x_test, verbose=1)  # Shape=(total_frames,)
+                        time, aligned_y_pred = VoiceActivationFeatureExtractor.post_process(y_pred,
+                                                                                            number_of_mel_samples)
+                        print('info: predicted!')
+
+                        result_array = np.asarray([time, aligned_y_pred])
+
+                        print('info: reducing dimensionality')
+
+                        FeatureExtractor.save_feature(result_array, feature_name, out_path, x_i, y_i, new_labels)
+                    except MemoryError as e:
+                        print('error: memory error while proccessing {}. Ignoring...'.format(x_i))
+                        print(e)
+
+        return __process_elements
+
+    def transform(self, parallel=False, **kwargs):
+        if parallel:
+            raise Exception('error: {} cannot be ran in paralel'.format(self.feature_name))
+        return super().transform(parallel, **kwargs)
+
+
+class MeanSVDFeatureExtractor(FeatureExtractor):
+    feature_name = 'mean_svd'
+    dependency_feature_name = VoiceActivationFeatureExtractor.feature_name
+
+    @staticmethod
+    def process_element(feature_name, new_labels, out_path, source_path, **kwargs):
+        def __process_element(data):
+            """
+            Flatten overlapped prediction by Leglaive SVD prediction by calculating mean for every frame.
+            """
+            print('prosessing {}'.format(data))
+            x_i = data[0]
+            y_i = data[1]
+
+            file_name = FeatureExtractor.get_file_name(x_i, feature_name)
+            try:
+                # try to load if file already exist
+                np.load(out_path / file_name, allow_pickle=True)
+                print('info: {} loaded from .npy !'.format(file_name))
+                new_labels.append([file_name, y_i])
+            except FileNotFoundError or OSError or EOFError:
+                # OSError and EOFError are raised if file are inconsistent
+                voice_activation = np.load(source_path / x_i, allow_pickle=True)
+                mean_voice_activation = FeatureExtractor.get_mean_voice_activation(voice_activation[0])
+                # this is kind-of standard
+                FeatureExtractor.save_feature([voice_activation[0], mean_voice_activation], feature_name, out_path, x_i,
+                                              y_i, new_labels)
+
+        return __process_element
+
+
+class SVDPonderatedVolumeFeatureExtractor(FeatureExtractor):
+    feature_name = 'svd_ponderated_volume'
+    dependency_feature_name = MeanSVDFeatureExtractor.feature_name
+
+    @staticmethod
+    def process_element(feature_name, new_labels, out_path, source_path, raw_path, **kwargs):
+        def __process_element(data):
+            """
+
+            """
+            print('prosessing {}'.format(data))
+            x_i = data[0]
+            y_i = data[1]
+
+            file_name = FeatureExtractor.get_file_name(x_i, feature_name, 'wav')
+            try:
+                # try to load if file already exist
+                librosa.load(out_path / file_name, sr=SR)
+                print('info: {} loaded from .npy !'.format(file_name))
+                new_labels.append([file_name, y_i])
+            except FileNotFoundError or OSError or EOFError:
+                # OSError and EOFError are raised if file are inconsistent
+                mean_voice_activation = np.load(source_path / x_i, allow_pickle=True)
+                audio_src, _ = librosa.load(
+                    raw_path / '{}.mp3'.format(x_i.split('.{}'.format(DoubleHPSSFeatureExtractor.feature_name))[0]),
+                    sr=SR)  # todo: support other formats
+
+                time = mean_voice_activation[0]
+                voice_activation_prob = mean_voice_activation[1]
+
+                last_sample = 0
+                for idx, time_tick in enumerate(time):
+                    voice_prob = voice_activation_prob[idx]
+                    init_sample = last_sample
+                    last_sample = int(time_tick * SR)
+                    audio_src[init_sample:last_sample] *= voice_prob
+                # this is kind-of standard
+                FeatureExtractor.save_audio(audio_src, feature_name, out_path, x_i, y_i, new_labels)
+
         return __process_element
 
 

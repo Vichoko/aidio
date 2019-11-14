@@ -87,7 +87,7 @@ class TestFeatureExtractorInterface(unittest.TestCase):
         self.assertEqual(len(initial_filenames), len(extractor.x))
         self.assertEqual(len(initial_labels), len(extractor.y))
         # clean dangling references (missing files)
-        extractor.clean_references()
+        extractor.clean_input_references()
         # check that missing one was removed
         self.assertGreater(len(initial_filenames), len(extractor.x))
         self.assertGreater(len(initial_labels), len(extractor.y))
