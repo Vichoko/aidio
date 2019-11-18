@@ -901,11 +901,11 @@ class VoiceActivationFeatureExtractor(FeatureExtractor):
         :return: Processed data with shape n_samples
         """
         # align input in a fixed (n_samples, n_prediction) shape, filling with NaNs if neccesary.
-        aligned_y = np.asarray(VoiceActivationFeatureExtractor.frame_level_predict(y, number_of_mel_samples))
+        time, aligned_y = np.asarray(VoiceActivationFeatureExtractor.frame_level_predict(y, number_of_mel_samples))
         # reduce n_samples, n_prediction to n_samples by mean
         reduced_y = FeatureExtractor.get_mean_voice_activation(aligned_y)
         y = reduced_y
-        return y
+        return time, y
 
     @staticmethod
     def process_elements(feature_name, new_labels, out_path, source_path, fun=None,
