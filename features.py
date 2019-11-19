@@ -406,7 +406,14 @@ class FeatureExtractor:
         import soundfile as sf
 
         def _save_mp3(source_path, out_path):
-            cmd = 'lame --preset insane \"{}\" \"{}\"'.format(source_path, out_path)
+            # cmd = 'lame --preset insane \"{}\" \"{}\"'.format(source_path, out_path)
+            cmd = [
+                'lame',
+                '--preset',
+                'insane',
+                '\"{}\"'.format(source_path),
+                '\"{}\"'.format(out_path)
+            ]
             errno = subprocess.call(cmd)
             if errno:
                 print('{} encoding failed with code'.format(source_path), end=' ')
