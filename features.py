@@ -1102,6 +1102,11 @@ class VoiceActivationSplitFeatureExtractor(FeatureExtractor):
 
         return __process_element
 
+    def transform(self, parallel=False, **kwargs):
+        if parallel:
+            raise Exception('error: {} cannot be ran in paralel'.format(self.feature_name))
+        return super().transform(parallel, **kwargs)
+
 
 class MeanSVDFeatureExtractor(FeatureExtractor):
     """
