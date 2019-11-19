@@ -1070,15 +1070,16 @@ class VoiceActivationSplitFeatureExtractor(FeatureExtractor):
             # exported
             activation_sr = 1.0 / (time[1] - time[0])
             time_threshold = activation_sr * 3
-            rec = True
+            rec = None
             rec_intervals = []
             start_idx = 0
             current_pivot = 0
             for activation, num_samples in contiguous_counter:
                 if not num_samples:
                     continue
-                current_pivot += num_samples
                 activation = bool(activation)
+                if rec is None:
+                    rec = activation
                 if activation != rec and num_samples > time_threshold:
                     # if activation changes and the number of samples is big enough,
                     # switch record mode. If record mode stops, then the interval is saved
@@ -1091,6 +1092,7 @@ class VoiceActivationSplitFeatureExtractor(FeatureExtractor):
                     else:
                         # if it wasn't recording, start new recording interval
                         start_idx = current_pivot
+                    current_pivot += num_samples
                     rec = not rec
             # get song and split
             wav, sr = librosa.load(str(source_path / x))
