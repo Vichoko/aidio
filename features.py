@@ -406,7 +406,6 @@ class FeatureExtractor:
         import soundfile as sf
 
         def _save_mp3(source_path, out_path):
-            # cmd = 'lame --preset insane \"{}\" \"{}\"'.format(source_path, out_path)
             cmd = [
                 'lame',
                 '--preset',
@@ -1074,19 +1073,21 @@ class VoiceActivationSplitFeatureExtractor(FeatureExtractor):
             rec = True
             rec_intervals = []
             start_idx = 0
-            current_idx = 0
+            current_pivot = 0
             for activation, num_samples in contiguous_counter:
-                current_idx += num_samples
+                if not num_samples:
+                    continue
+                current_pivot += num_samples
                 activation = bool(activation)
                 if activation != rec and num_samples > time_threshold:
                     # if activation changes and the number of samples is big enough,
                     # switch record mode. If record mode stops, then the interval is saved
                     if rec:
                         # if it was recording, stop recording the interval
-                        rec_intervals.append((time[start_idx], time[current_idx]))
+                        rec_intervals.append((time[start_idx], time[current_pivot - 1]))
                     else:
                         # if it wasn't recording, start new recording interval
-                        start_idx = current_idx
+                        start_idx = current_pivot
                     rec = not rec
             # get song and split
             wav, sr = librosa.load(str(source_path / x))
@@ -1203,7 +1204,7 @@ AVAILABLE_FEATURES = {
     SingingVoiceSeparationUnetFeatureExtractor.feature_name: SingingVoiceSeparationUnetFeatureExtractor,
     SingingVoiceSeparationOpenUnmixFeatureExtractor.feature_name: SingingVoiceSeparationOpenUnmixFeatureExtractor,
     VoiceActivationSplitFeatureExtractor.feature_name: VoiceActivationSplitFeatureExtractor
-  }
+}
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Extract features from a data folder to another')
