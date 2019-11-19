@@ -1032,7 +1032,10 @@ class VoiceActivationSplitFeatureExtractor(FeatureExtractor):
             )
             voice_activation_path = feature_path / VoiceActivationFeatureExtractor.feature_name
 
-            time, voice_prob = np.load(voice_activation_path / voice_activation_file_name)
+            time, voice_prob = np.load(
+                voice_activation_path / voice_activation_file_name,
+                allow_pickle=True
+            )
             threshold = 0.5
             binary_mask = np.empty_like(voice_prob)
             binary_mask[voice_prob > threshold] = 1
