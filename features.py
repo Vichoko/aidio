@@ -410,8 +410,8 @@ class FeatureExtractor:
                 'lame',
                 '--preset',
                 'insane',
-                '\"{}\"'.format(source_path),
-                '\"{}\"'.format(out_path)
+                str(source_path),
+                str(out_path)
             ]
             errno = subprocess.call(cmd)
             if errno:
@@ -1084,7 +1084,10 @@ class VoiceActivationSplitFeatureExtractor(FeatureExtractor):
                     # switch record mode. If record mode stops, then the interval is saved
                     if rec:
                         # if it was recording, stop recording the interval
-                        rec_intervals.append((time[start_idx], time[current_pivot - 1]))
+                        rec_intervals.append((
+                            time[start_idx],
+                            time[current_pivot - 1]
+                        ))
                     else:
                         # if it wasn't recording, start new recording interval
                         start_idx = current_pivot
