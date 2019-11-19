@@ -250,6 +250,7 @@ class FeatureExtractor:
             out_path=self.out_path,
             source_path=self.source_path,
             raw_path=self.raw_path,
+            features_path=self.feature_path,
             **kwargs)
         try:
             with concurrent.futures.ThreadPoolExecutor(max_workers=NUM_WORKERS) as executor:
@@ -285,6 +286,7 @@ class FeatureExtractor:
             out_path=self.out_path,
             source_path=self.source_path,
             raw_path=self.raw_path,
+            features_path=self.feature_path,
             **kwargs)
         # define collection callable to process whole data
         process_elements = self.process_elements(
@@ -293,6 +295,8 @@ class FeatureExtractor:
             out_path=self.out_path,
             source_path=self.source_path,
             raw_path=self.raw_path,
+            features_path=self.feature_path,
+
             fun=process_element, **kwargs)
         try:
             process_elements(data)
@@ -1003,7 +1007,103 @@ class VoiceActivationFeatureExtractor(FeatureExtractor):
         return super().transform(parallel, **kwargs)
 
 
+class VoiceActivationSplitFeatureExtractor(FeatureExtractor):
+    feature_name = 'voice_activation_split'
+    dependency_feature_name = SingingVoiceSeparationOpenUnmixFeatureExtractor.feature_name
+
+    @staticmethod
+    def process_element(feature_name, new_labels, out_path, source_path, **kwargs):
+        def __process_element(data):
+            """
+            :param x: filename (str)
+            :param y: label (str)
+            :return:
+            """
+            print('prosessing {}'.format(data))
+            x = data[0]
+            y = data[1]
+
+            # params
+            feature_path = kwargs.get('features_path')
+            voice_activation_file_name = x.replace(
+                'mp3',
+                '{}.{}.npy'.format(DoubleHPSSFeatureExtractor.feature_name,
+                                   VoiceActivationFeatureExtractor.feature_name)
+            )
+            voice_activation_path = feature_path / VoiceActivationFeatureExtractor.feature_name
+
+            time, voice_prob = np.load(voice_activation_path / voice_activation_file_name)
+            threshold = 0.5
+            binary_mask = np.empty_like(voice_prob)
+            binary_mask[voice_prob > threshold] = 1
+            binary_mask[voice_prob <= threshold] = 0
+
+            """
+            Logic to split audios by voice probability:
+            catch intervals of high activations with short interruptions, ignore
+            sections of contiguous 0 probabilities.
+            """
+
+            contiguous_counter = []
+            past_activation = 0
+            count = 0
+            for activation in binary_mask:
+                if activation == past_activation:
+                    count += 1
+                else:
+                    contiguous_counter.append((past_activation, count))
+                    past_activation = activation
+                    count = 1
+            contiguous_counter.append((past_activation, count))
+            # contiguous_cointer count the sequential repetitions of 1 and 0s
+
+            # heuristically create intervals by detecting silences and sound regions big enough to be
+            # exported
+            activation_sr = 1.0 / (time[1] - time[0])
+            time_threshold = activation_sr * 3
+            rec = True
+            rec_intervals = []
+            start_idx = 0
+            current_idx = 0
+            for activation, num_samples in contiguous_counter:
+                current_idx += num_samples
+                activation = bool(activation)
+                if activation != rec and num_samples > time_threshold:
+                    # if activation changes and the number of samples is big enough,
+                    # switch record mode. If record mode stops, then the interval is saved
+                    if rec:
+                        # if it was recording, stop recording the interval
+                        rec_intervals.append((time[start_idx], time[current_idx]))
+                    else:
+                        # if it wasn't recording, start new recording interval
+                        start_idx = current_idx
+                    rec = not rec
+            # get song and split
+            wav, sr = librosa.load(str(source_path / x))
+            # export intervals as new songs (mp3)
+            for interval_idx, interval in enumerate(rec_intervals):
+                first_sample, last_sample = librosa.core.time_to_samples(
+                    np.asarray(interval),
+                    sr
+                )
+                filename = FeatureExtractor.get_file_name(
+                    x,
+                    feature_name,
+                    ext='{}.mp3'.format(interval_idx)
+                )
+                FeatureExtractor.save_mp3(
+                    wav[first_sample:last_sample], sr,
+                    feature_name,
+                    out_path, x, y, new_labels, mp3_filename=filename
+                )
+
+        return __process_element
+
+
 class MeanSVDFeatureExtractor(FeatureExtractor):
+    """
+    Deprecated because Voice Activation do mean pooling by default.
+    """
     feature_name = 'mean_svd'
     dependency_feature_name = VoiceActivationFeatureExtractor.feature_name
 
