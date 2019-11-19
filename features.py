@@ -1176,16 +1176,19 @@ class SVDPonderatedVolumeFeatureExtractor(FeatureExtractor):
         return __process_element
 
 
-AVAILABLE_FEATURES = {MelSpectralCoefficientsFeatureExtractor.feature_name: MelSpectralCoefficientsFeatureExtractor,
-                      WindowedMelSpectralCoefficientsFeatureExtractor.feature_name: WindowedMelSpectralCoefficientsFeatureExtractor,
-                      DoubleHPSSFeatureExtractor.feature_name: DoubleHPSSFeatureExtractor,
-                      VoiceActivationFeatureExtractor.feature_name: VoiceActivationFeatureExtractor,
-                      MeanSVDFeatureExtractor.feature_name: MeanSVDFeatureExtractor,
-                      SVDPonderatedVolumeFeatureExtractor.feature_name: SVDPonderatedVolumeFeatureExtractor,
-                      IntensitySplitterFeatureExtractor.feature_name: IntensitySplitterFeatureExtractor,
-                      MagPhaseFeatureExtractor.feature_name: MagPhaseFeatureExtractor,
-                      SingingVoiceSeparationUnetFeatureExtractor.feature_name: SingingVoiceSeparationUnetFeatureExtractor,
-                      SingingVoiceSeparationOpenUnmixFeatureExtractor.feature_name: SingingVoiceSeparationOpenUnmixFeatureExtractor}
+AVAILABLE_FEATURES = {
+    MelSpectralCoefficientsFeatureExtractor.feature_name: MelSpectralCoefficientsFeatureExtractor,
+    WindowedMelSpectralCoefficientsFeatureExtractor.feature_name: WindowedMelSpectralCoefficientsFeatureExtractor,
+    DoubleHPSSFeatureExtractor.feature_name: DoubleHPSSFeatureExtractor,
+    VoiceActivationFeatureExtractor.feature_name: VoiceActivationFeatureExtractor,
+    MeanSVDFeatureExtractor.feature_name: MeanSVDFeatureExtractor,
+    SVDPonderatedVolumeFeatureExtractor.feature_name: SVDPonderatedVolumeFeatureExtractor,
+    IntensitySplitterFeatureExtractor.feature_name: IntensitySplitterFeatureExtractor,
+    MagPhaseFeatureExtractor.feature_name: MagPhaseFeatureExtractor,
+    SingingVoiceSeparationUnetFeatureExtractor.feature_name: SingingVoiceSeparationUnetFeatureExtractor,
+    SingingVoiceSeparationOpenUnmixFeatureExtractor.feature_name: SingingVoiceSeparationOpenUnmixFeatureExtractor,
+    VoiceActivationSplitFeatureExtractor.feature_name: VoiceActivationSplitFeatureExtractor
+  }
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Extract features from a data folder to another')
