@@ -323,6 +323,106 @@ def separate_music_file(
     return estimates
 
 
+def separate_wav(
+        audio,
+        rate,
+        device,
+        targets=OUNMIX_TARGETS,
+        model=OUNMIX_MODEL,
+        residual_model=OUNMIX_RESIDUAL_MODEL,
+        alpha=OUNMIX_ALPHA,
+        niter=OUNMIX_NITER,
+        softmask=OUNMIX_SOFTMAX,
+        sample_rate=OUNMIX_SAMPLE_RATE
+
+):
+    """
+
+    :param input_file:
+    :param device:
+    :param targets:
+    :param model:
+    :param residual_model:
+    :param alpha:
+    :param niter:
+    :param softmask:
+    :return: `dict` [`str`, `np.ndarray`]
+        dictionary of all restimates as performed by the separation model.
+
+
+
+    Performing the separation on audio input
+
+    Parameters
+    ----------
+    audio: np.ndarray [shape=(nb_samples, nb_channels, nb_timesteps)]
+        mixture audio
+
+    targets: list of str
+        a list of the separation targets.
+        Note that for each target a separate model is expected
+        to be loaded.
+
+    model_name: str
+        name of torchhub model or path to model folder, defaults to `umxhq`
+
+    niter: int
+         Number of EM steps for refining initial estimates in a
+         post-processing stage, defaults to 1.
+
+    softmask: boolean
+        if activated, then the initial estimates for the sources will
+        be obtained through a ratio mask of the mixture STFT, and not
+        by using the default behavior of reconstructing waveforms
+        by using the mixture phase, defaults to False
+
+    alpha: float
+        changes the exponent to use for building ratio masks, defaults to 1.0
+
+    residual_model: boolean
+        computes a residual target, for custom separation scenarios
+        when not all targets are available, defaults to False
+
+    device: str
+        set torch device. Defaults to `cpu`.
+
+    Returns
+    -------
+    estimates:
+    """
+    # handling an input audio path
+    if len(audio.shape) == 1:
+        audio = audio.reshape(1, -1)
+    audio = np.swapaxes(audio, 0, 1)
+
+    if audio.shape[1] > 2:
+        warnings.warn(
+            'Channel count > 2! '
+            'Only the first two channels will be processed!')
+        audio = audio[:, :2]
+
+    if rate != sample_rate:
+        # resample to model samplerate if needed
+        audio = resampy.resample(audio, rate, sample_rate, axis=0)
+
+    if audio.shape[1] == 1:
+        # if we have mono, let's duplicate it
+        # as the input of OpenUnmix is always stereo
+        audio = np.repeat(audio, 2, axis=1)
+
+    estimates = separate(
+        audio,
+        targets=targets,
+        model_name=model,
+        niter=niter,
+        alpha=alpha,
+        softmask=softmask,
+        residual_model=residual_model,
+        device=device
+    )
+    return estimates
+
+
 if __name__ == '__main__':
     # Training settings
     parser = argparse.ArgumentParser(

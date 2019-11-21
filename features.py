@@ -7,7 +7,7 @@ import subprocess
 
 import audioread
 
-from util.open_unmix.test import separate_music_file
+from util.open_unmix.test import separate_music_file, separate_wav
 
 os.environ['FOR_DISABLE_CONSOLE_CTRL_HANDLER'] = '1'
 import pathlib
@@ -307,6 +307,7 @@ class FeatureExtractor:
             print('error: in tranform')
             print(e)
             self.export_new_labels()
+            print('exception type {}'.format())
             raise e
         finally:
             print('info: exporting extraction meta-data')
@@ -399,7 +400,7 @@ class FeatureExtractor:
         :param ndarray:
         :param feature_name:
         :param out_path:
-        :param x:
+        :param x: can be None if mp3_filename is not None
         :param mp3_filename:
         :return:
         """
@@ -423,7 +424,8 @@ class FeatureExtractor:
             return 0
 
         # this is kind-of standard
-        mp3_filename = mp3_filename or FeatureExtractor.get_file_name(x, feature_name, 'mp3')
+        if mp3_filename is None:
+            mp3_filename = FeatureExtractor.get_file_name(x, feature_name, 'mp3')
         wav_filename = mp3_filename.replace('mp3', 'wav')
         sf.write(str(out_path / wav_filename), ndarray, sr)  # write wav file
         errno = _save_mp3(out_path / wav_filename,
@@ -734,8 +736,10 @@ class SingingVoiceSeparationOpenUnmixFeatureExtractor(FeatureExtractor):
             no_cuda = True  # no cabe en mi gpu :c
             use_cuda = not no_cuda and torch.cuda.is_available()
             device = torch.device("cuda" if use_cuda else "cpu")
+            sr = OUNMIX_SAMPLE_RATE
 
             for idx, x_i in enumerate(x):
+                # for each filename in data
                 # this is kind-of standard
                 y_i = y[idx]
                 ext = 'mp3'
@@ -743,24 +747,73 @@ class SingingVoiceSeparationOpenUnmixFeatureExtractor(FeatureExtractor):
                 try:
                     # try to load if file already exist
                     print('info: trying to load {}'.format(out_path / file_name))
-                    librosa.load(str(out_path / file_name), sr=OUNMIX_SAMPLE_RATE)
+                    librosa.load(str(out_path / file_name), sr=sr)
                     new_labels.append([file_name, y_i])
                 except (FileNotFoundError, OSError, EOFError, audioread.NoBackendError):
                     # OSError and EOFError are raised if file are inconsistent
                     # final_shape: (#_hops, #_mel_filters, #_window)
                     print('info: processing {}'.format(x_i))
-                    try:
-                        estimates = separate_music_file(source_path / x_i, device)
-                        vocal_wav = estimates['vocals']
-                        FeatureExtractor.save_mp3(
-                            vocal_wav, OUNMIX_SAMPLE_RATE,
-                            feature_name,
-                            out_path, x_i, y_i, new_labels, mp3_filename=file_name)
-                    except MemoryError as e:
-                        print('error: memory error while proccessing {}. Ignoring...'.format(x_i))
-                        print(e)
+                    audio, rate = librosa.core.load(source_path / x_i, mono=False, sr=sr)
+                    SingingVoiceSeparationOpenUnmixFeatureExtractor.process_x_i(
+                        device,
+                        file_name,
+                        x_i,  # as filename is specified manually is just useful for logs
+                        y_i,
+                        source_path,
+                        out_path,
+                        new_labels,
+                        sr,
+                        audio,
+                        rate
+                    )
 
         return __process_elements
+
+    @staticmethod
+    def process_x_i(device, mp3_file_name, x_i, y_i, source_path, out_path, new_labels, sr, audio, rate):
+        """
+
+        :param device:
+        :param mp3_file_name:
+        :param x_i: source filename, just useful for logs
+        :param y_i: label
+        :param source_path:
+        :param out_path:
+        :param new_labels:
+        :param sr: expected rate
+        :param audio: audio wav
+        :param rate: audio sample rate
+        :return:
+        """
+        try:
+            estimates = separate_wav(audio, rate, device)
+            vocal_wav = estimates['vocals']
+            FeatureExtractor.save_mp3(
+                vocal_wav, sr,
+                feature_name,
+                out_path,
+                None,
+                y_i,
+                new_labels,
+                mp3_filename=mp3_file_name
+            )
+        except RuntimeError as e:
+            if 'not enough memory' in e.args[0]:
+                print(e)
+            else:
+                raise e
+        except MemoryError as e:
+            print(e)
+        except Exception as e:
+            raise e
+        finally:
+            # this block should be reached only in case of MemoryError or RuntimeError triggered by not enough ram
+            print('error: memory error while proccessing {}. Splitting and retrying...'.format(x_i))
+            # split & retry logic
+            first_filename = mp3_file_name.replace('mp3', '0.mp3')
+            second_filename = mp3_file_name.replace('mp3', '1.mp3')
+            SingingVoiceSeparationOpenUnmixFeatureExtractor.process_x_i(device, first_filename, None, y_i, source_path, out_path, new_labels, sr, audio[:len(audio) // 2], rate)
+            SingingVoiceSeparationOpenUnmixFeatureExtractor.process_x_i(device, second_filename, None, y_i, source_path, out_path, new_labels, sr, audio[len(audio) // 2:], rate)
 
     def transform(self, parallel=False, **kwargs):
         if parallel:
