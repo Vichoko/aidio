@@ -133,6 +133,7 @@ def separate(
     """
     # convert numpy audio to torch
     audio_torch = torch.tensor(audio.T[None, ...]).float().to(device)
+    print('debug: separating audio tensor with shape {}'.format(audio_torch.size()))
 
     source_names = []
     V = []
