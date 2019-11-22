@@ -2,6 +2,8 @@ import argparse
 import concurrent.futures
 import os
 
+import sys
+
 os.environ['FOR_DISABLE_CONSOLE_CTRL_HANDLER'] = '1'
 import subprocess
 
@@ -786,7 +788,7 @@ class SingingVoiceSeparationOpenUnmixFeatureExtractor(FeatureExtractor):
         :return:
         """
         try:
-            print('info: separating wav with {}'.format(len(audio)))
+            print('info: separating wav with {}'.format(audio.shape))
             estimates = separate_wav(audio, rate, device)
             vocal_wav = estimates['vocals']
             FeatureExtractor.save_mp3(
@@ -1028,6 +1030,8 @@ class VoiceActivationFeatureExtractor(FeatureExtractor):
                     hpss = np.load(source_path / x_i)  # _data, #_coefs, #_samples)
                     print('info: formatting data')
                     try:
+                        print("debug: hpss shape is {}".format(hpss.shape))
+                        print('debug: size of hpss is {}'.format(sys.getsizeof(hpss)))
                         padding = RNN_INPUT_SIZE_VOICE_ACTIVATION - hpss.shape[1]
                         if padding > 0:
                             # if hpss is shorter that RNN input shape, then add padding on axis=1
