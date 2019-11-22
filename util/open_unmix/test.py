@@ -137,14 +137,15 @@ def separate(
 
     source_names = []
     V = []
-
+    torch.cuda.empty_cache()
     for j, target in enumerate(tqdm.tqdm(targets)):
-        unmix_target = load_model(
-            target=target,
-            model_name=model_name,
-            device=device
-        )
-        Vj = unmix_target(audio_torch).cpu().detach().numpy()
+        with torch.no_grad():
+            unmix_target = load_model(
+                target=target,
+                model_name=model_name,
+                device=device
+            )
+            Vj = unmix_target(audio_torch).cpu().detach().numpy()
         if softmask:
             # only exponentiate the model if we use softmask
             Vj = Vj ** alpha
