@@ -786,6 +786,7 @@ class SingingVoiceSeparationOpenUnmixFeatureExtractor(FeatureExtractor):
         :return:
         """
         try:
+            print('info: separating wav with {}'.format(len(audio)))
             estimates = separate_wav(audio, rate, device)
             vocal_wav = estimates['vocals']
             FeatureExtractor.save_mp3(
