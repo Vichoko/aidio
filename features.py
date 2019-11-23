@@ -9,7 +9,7 @@ import subprocess
 
 import audioread
 
-from util.open_unmix.test import separate_music_file, separate_wav
+from util.open_unmix.test import OpenUnmixManager
 
 os.environ['FOR_DISABLE_CONSOLE_CTRL_HANDLER'] = '1'
 import pathlib
@@ -740,6 +740,7 @@ class SingingVoiceSeparationOpenUnmixFeatureExtractor(FeatureExtractor):
             device = torch.device("cuda" if use_cuda else "cpu")
             sr = OUNMIX_SAMPLE_RATE
 
+            model_manager = OpenUnmixManager()
             for idx, x_i in enumerate(x):
                 # for each filename in data
                 # this is kind-of standard
@@ -766,13 +767,14 @@ class SingingVoiceSeparationOpenUnmixFeatureExtractor(FeatureExtractor):
                         new_labels,
                         sr,
                         audio,
-                        rate
+                        rate,
+                        model_manager
                     )
 
         return __process_elements
 
     @staticmethod
-    def process_x_i(device, mp3_file_name, x_i, y_i, source_path, out_path, new_labels, sr, audio, rate):
+    def process_x_i(device, mp3_file_name, x_i, y_i, source_path, out_path, new_labels, sr, audio, rate, model_manager):
         """
 
         :param device:
@@ -789,7 +791,7 @@ class SingingVoiceSeparationOpenUnmixFeatureExtractor(FeatureExtractor):
         """
         try:
             print('info: separating wav with {}'.format(audio.shape))
-            estimates = separate_wav(audio, rate, device)
+            estimates = model_manager.separate_wav(audio, rate, device)
             vocal_wav = estimates['vocals']
             FeatureExtractor.save_mp3(
                 vocal_wav, sr,
