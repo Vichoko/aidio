@@ -817,8 +817,8 @@ class SingingVoiceSeparationOpenUnmixFeatureExtractor(FeatureExtractor):
             # split & retry logic
             first_filename = mp3_file_name.replace('mp3', '0.mp3')
             second_filename = mp3_file_name.replace('mp3', '1.mp3')
-            SingingVoiceSeparationOpenUnmixFeatureExtractor.process_x_i(device, first_filename, None, y_i, source_path, out_path, new_labels, sr, audio[:, :(audio.shape[1] // 2)], rate)
-            SingingVoiceSeparationOpenUnmixFeatureExtractor.process_x_i(device, second_filename, None, y_i, source_path, out_path, new_labels, sr, audio[:, (audio.shape[1] // 2):], rate)
+            SingingVoiceSeparationOpenUnmixFeatureExtractor.process_x_i(device, first_filename, None, y_i, source_path, out_path, new_labels, sr, audio[:, :(audio.shape[1] // 2)], rate, model_manager)
+            SingingVoiceSeparationOpenUnmixFeatureExtractor.process_x_i(device, second_filename, None, y_i, source_path, out_path, new_labels, sr, audio[:, (audio.shape[1] // 2):], rate, model_manager)
 
     def transform(self, parallel=False, **kwargs):
         if parallel:
