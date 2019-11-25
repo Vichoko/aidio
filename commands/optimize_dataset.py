@@ -13,11 +13,8 @@ import librosa
 import numpy as np
 import pandas as pd
 
-if 'commands' in os.getcwd():
-    os.chdir("..")
-
-from config import RAW_DATA_PATH, AVAIL_MEDIA_TYPES
-from features import FeatureExtractor
+from .config import RAW_DATA_PATH, AVAIL_MEDIA_TYPES
+from .features import FeatureExtractor
 
 size_limit = 20 * 1000000  # in bytes
 
