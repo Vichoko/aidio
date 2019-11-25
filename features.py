@@ -407,10 +407,10 @@ class FeatureExtractor:
     def save_mp3(ndarray, sr, feature_name, out_path, x, y, new_labels, mp3_filename=None):
         """
         Save any numpy object in Feature File System.
-        :param ndarray:
-        :param feature_name:
+        :param ndarray: 2-axis array with samples and channels [samples, channels]
+        :param feature_name: unused if mp3 filname is specified
         :param out_path:
-        :param x: can be None if mp3_filename is not None
+        :param x: can be None if mp3_filename is not None; unused if mp3 filname is specified
         :param mp3_filename:
         :return:
         """
@@ -446,7 +446,8 @@ class FeatureExtractor:
         else:
             # non-error clause, then it was successfully exported to mp3
             filename = mp3_filename
-        new_labels.append([filename, y])
+        if new_labels is not None:
+            new_labels.append([filename, y])
         print('info: {} transformed and saved!'.format(filename))
         return filename
 
@@ -758,7 +759,7 @@ class SingingVoiceSeparationOpenUnmixFeatureExtractor(FeatureExtractor):
                 try:
                     # try to load if file already exist
                     print('info: trying to load {}'.format(out_path / file_name))
-                    if existing_labels and file_name in existing_labels.values:
+                    if existing_labels and file_name in existing_labels.values:  # todo: maybe can do values over the filename series
                         new_labels.append([file_name, y_i])
                         continue
                     librosa.load(str(out_path / file_name), sr=sr)
