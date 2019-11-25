@@ -44,8 +44,8 @@ if __name__ == '__main__':
         print('info: calling module {}'.format(module))
         cmd = ['python',
                module,
-               '--features_path', features_path,
-               '--raw_path', raw_path,
-               '--feature', feature_name
+               '--features_path', str(features_path),
+               '--raw_path', str(raw_path),
+               '--feature', str(feature_name)
                ]
         errno = subprocess.call(cmd)
