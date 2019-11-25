@@ -17,7 +17,8 @@ from config import RAW_DATA_PATH, AVAIL_MEDIA_TYPES
 from features import FeatureExtractor
 
 size_limit = 20 * 1000000  # in bytes
-
+if 'commands' in os.getcwd():
+    os.chdir("..")
 
 def split_song(original_file_name, folder_path, sz_limit):
     """
