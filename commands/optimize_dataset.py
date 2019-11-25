@@ -9,14 +9,20 @@ import os
 from pathlib import Path
 from shutil import copyfile
 
+import sys,inspect
+current_dir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
+parent_dir = os.path.dirname(current_dir)
+sys.path.insert(0, parent_dir)
+
 import librosa
 import numpy as np
 import pandas as pd
 
-from ..config import RAW_DATA_PATH, AVAIL_MEDIA_TYPES
-from ..features import FeatureExtractor
+from config import RAW_DATA_PATH, AVAIL_MEDIA_TYPES
+from features import FeatureExtractor
 
 size_limit = 20 * 1000000  # in bytes
+
 
 def split_song(original_file_name, folder_path, sz_limit):
     """
@@ -50,7 +56,8 @@ def split_song(original_file_name, folder_path, sz_limit):
     for part_idx in range(parts):
         wav_part = wav[:, part_idx * part_size: (part_idx + 1) * part_size]
         n_file_name = original_file_name.replace(ext, '{}.{}'.format(part_idx, ext))
-        n_file_name = FeatureExtractor.save_mp3(wav_part.swapaxes(0, 1), sr, None, folder_path, None, None, None, n_file_name)
+        n_file_name = FeatureExtractor.save_mp3(wav_part.swapaxes(0, 1), sr, None, folder_path, None, None, None,
+                                                n_file_name)
         file_names.append(n_file_name)
 
     return file_names
@@ -63,7 +70,6 @@ if __name__ == '__main__':
     raw_path = Path(args.raw_path)
 
     df = pd.read_csv(raw_path / 'labels.csv')
-
 
     new_filenames = []
     new_labels = []
