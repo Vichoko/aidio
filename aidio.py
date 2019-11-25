@@ -39,7 +39,7 @@ if __name__ == '__main__':
         raise NotImplementedError
 
     # call as subprocess for failure managing
-    errno = False
+    errno = -666
     while errno != 0:
         print('info: calling module {}'.format(module))
         cmd = ['python',
