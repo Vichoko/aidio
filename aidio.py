@@ -49,3 +49,4 @@ if __name__ == '__main__':
                '--feature', str(feature_name)
                ]
         errno = subprocess.call(cmd)
+        print('debug: cmd call ended with errno = {}'.format(errno))

@@ -49,6 +49,12 @@ class FeatureExtractor:
         self.trigger_dependency_extraction_if_needed()
         print('info: extractor initialized with following data {}'.format(self.x))
 
+        try:
+            self.existing_labels = pd.read_csv(self.get_label_file_path())
+            print('info: found existing label file in {}'.format(self.get_label_file_path()))
+        except FileNotFoundError:
+            self.existing_labels = None
+
     def trigger_dependency_extraction_if_needed(self):
         if self.dependency_feature_name:
             dependency_extractor = AVAILABLE_FEATURES[self.dependency_feature_name]
@@ -253,6 +259,7 @@ class FeatureExtractor:
             source_path=self.source_path,
             raw_path=self.raw_path,
             features_path=self.feature_path,
+            existing_labels=self.existing_labels,
             **kwargs)
         try:
             with concurrent.futures.ThreadPoolExecutor(max_workers=NUM_WORKERS) as executor:
@@ -289,6 +296,7 @@ class FeatureExtractor:
             source_path=self.source_path,
             raw_path=self.raw_path,
             features_path=self.feature_path,
+            existing_labels=self.existing_labels,
             **kwargs)
         # define collection callable to process whole data
         process_elements = self.process_elements(
@@ -298,7 +306,7 @@ class FeatureExtractor:
             source_path=self.source_path,
             raw_path=self.raw_path,
             features_path=self.feature_path,
-
+            existing_labels=self.existing_labels,
             fun=process_element, **kwargs)
         try:
             process_elements(data)
@@ -711,7 +719,7 @@ class SingingVoiceSeparationOpenUnmixFeatureExtractor(FeatureExtractor):
 
     @staticmethod
     def process_elements(feature_name, new_labels, out_path, source_path, fun=None,
-                         model_name=VOICE_DETECTION_MODEL_NAME,
+                         model_name=VOICE_DETECTION_MODEL_NAME, existing_labels=None,
                          **kwargs):
         """
         Wrapper for actual function __process_elements(data)
@@ -750,6 +758,9 @@ class SingingVoiceSeparationOpenUnmixFeatureExtractor(FeatureExtractor):
                 try:
                     # try to load if file already exist
                     print('info: trying to load {}'.format(out_path / file_name))
+                    if existing_labels and file_name in existing_labels.values:
+                        new_labels.append([file_name, y_i])
+                        continue
                     librosa.load(str(out_path / file_name), sr=sr)
                     new_labels.append([file_name, y_i])
                 except (FileNotFoundError, OSError, EOFError, audioread.NoBackendError):
