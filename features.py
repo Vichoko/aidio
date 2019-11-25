@@ -759,7 +759,7 @@ class SingingVoiceSeparationOpenUnmixFeatureExtractor(FeatureExtractor):
                 try:
                     # try to load if file already exist
                     print('info: trying to load {}'.format(out_path / file_name))
-                    if existing_labels and file_name in existing_labels.values:  # todo: maybe can do values over the filename series
+                    if existing_labels is not None and file_name in existing_labels['filename'].values:
                         new_labels.append([file_name, y_i])
                         continue
                     librosa.load(str(out_path / file_name), sr=sr)
