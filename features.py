@@ -801,46 +801,46 @@ class SingingVoiceSeparationOpenUnmixFeatureExtractor(FeatureExtractor):
         :param rate: audio sample rate
         :return:
         """
-        try:
-            print('info: separating wav with {}'.format(audio.shape))
-            estimates = model_manager.separate_wav(audio, rate, device)
-            vocal_wav = estimates['vocals']
-            FeatureExtractor.save_mp3(
-                vocal_wav, sr,
-                feature_name,
-                out_path,
-                None,
-                y_i,
-                new_labels,
-                mp3_filename=mp3_file_name
+        # try:
+        print('info: separating wav with {}'.format(audio.shape))
+        estimates = model_manager.separate_wav(audio, rate, device)
+        vocal_wav = estimates['vocals']
+        FeatureExtractor.save_mp3(
+            vocal_wav, sr,
+            feature_name,
+            out_path,
+            None,
+            y_i,
+            new_labels,
+            mp3_filename=mp3_file_name
             )
-        except RuntimeError as e:
-            if 'not enough memory' in e.args[0]:
-                print(e)
-            else:
-                raise e
-        except MemoryError as e:
-            print(e)
-        except Exception as e:
-            raise e
-        finally:
-            # this block should be reached only in case of MemoryError or RuntimeError triggered by not enough ram
-            print('error: memory error while proccessing {}. Splitting and retrying...'.format(x_i))
-            # split & retry logic
-            first_filename = mp3_file_name.replace('mp3', '0.mp3')
-            second_filename = mp3_file_name.replace('mp3', '1.mp3')
-            if audio.shape[1] > 2:
-                SingingVoiceSeparationOpenUnmixFeatureExtractor.process_x_i(device, first_filename, None, y_i,
-                                                                            source_path, out_path, new_labels, sr,
-                                                                            audio[:, :(audio.shape[1] // 2)], rate,
-                                                                            model_manager)
-                SingingVoiceSeparationOpenUnmixFeatureExtractor.process_x_i(device, second_filename, None, y_i,
-                                                                            source_path, out_path, new_labels, sr,
-                                                                            audio[:, (audio.shape[1] // 2):], rate,
-                                                                            model_manager)
-            else:
-                print('warning: split and retry reached recursive limit. skipping...')
-                return
+        # except RuntimeError as e:
+        #     if 'not enough memory' in e.args[0]:
+        #         print(e)
+        #     else:
+        #         raise e
+        # except MemoryError as e:
+        #     print(e)
+        # except Exception as e:
+        #     raise e
+        # finally:
+        #     # this block should be reached only in case of MemoryError or RuntimeError triggered by not enough ram
+        #     print('error: memory error while proccessing {}. Splitting and retrying...'.format(x_i))
+        #     # split & retry logic
+        #     first_filename = mp3_file_name.replace('mp3', '0.mp3')
+        #     second_filename = mp3_file_name.replace('mp3', '1.mp3')
+        #     if audio.shape[1] > 2:
+        #         SingingVoiceSeparationOpenUnmixFeatureExtractor.process_x_i(device, first_filename, None, y_i,
+        #                                                                     source_path, out_path, new_labels, sr,
+        #                                                                     audio[:, :(audio.shape[1] // 2)], rate,
+        #                                                                     model_manager)
+        #         SingingVoiceSeparationOpenUnmixFeatureExtractor.process_x_i(device, second_filename, None, y_i,
+        #                                                                     source_path, out_path, new_labels, sr,
+        #                                                                     audio[:, (audio.shape[1] // 2):], rate,
+        #                                                                     model_manager)
+        #     else:
+        #         print('warning: split and retry reached recursive limit. skipping...')
+        #         return
 
     def transform(self, parallel=False, **kwargs):
         if parallel:
