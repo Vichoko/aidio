@@ -21,7 +21,7 @@ import pandas as pd
 from config import RAW_DATA_PATH, AVAIL_MEDIA_TYPES
 from features import FeatureExtractor
 
-size_limit = 15900000  # in bytes
+size_limit = 10000000  # in bytes
 
 
 def split_song(original_file_name, folder_path, sz_limit):
