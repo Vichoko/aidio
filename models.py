@@ -17,7 +17,6 @@ from config import MODELS_DATA_PATH, RESNET_V2_BATCH_SIZE, RESNET_V2_EPOCHS, RES
     WAVEFORM_MAX_SEQUENCE_LENGTH, S1DCONV_BATCH_SIZE, WAVENET_BATCH_SIZE, NUM_WORKERS
 from features import WindowedMelSpectralCoefficientsFeatureExtractor, SingingVoiceSeparationOpenUnmixFeatureExtractor
 from loaders import ResnetDataManager, TorchVisionDataManager, WaveformDataset
-from torch_models import Simple1dConvNet, WaveNetClassifier, WaveNetBiLSTMClassifier, L_WavenetTransformerClassifier
 
 
 class ClassificationModel:
@@ -662,101 +661,3 @@ if __name__ == '__main__':
         x_test = test_dm.X
         y_test = test_dm.Y
         model.evaluate(x_test, y_test)
-    elif model == 'Simple1dConvNet':
-        train_dataset, test_dataset, eval_dataset = WaveformDataset.init_sets(
-            SingingVoiceSeparationOpenUnmixFeatureExtractor.feature_name,
-            features_path,
-            ratio=(0.5, 0.25, 0.25)
-        )
-
-        train_dataloader = DataLoader(train_dataset, batch_size=S1DCONV_BATCH_SIZE, shuffle=True,
-                                      num_workers=NUM_WORKERS)
-        test_dataloader = DataLoader(test_dataset, batch_size=S1DCONV_BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
-        val_dataloader = DataLoader(eval_dataset, batch_size=S1DCONV_BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
-
-        # model hyper parameters should be modified in config file
-        input_shape = (S1DCONV_BATCH_SIZE, WAVEFORM_NUM_CHANNELS, WAVEFORM_MAX_SEQUENCE_LENGTH)
-        model = Simple1dConvNet(
-            'faith_tull_binary2',
-            num_classes=2,
-            input_shape=input_shape
-        )
-        model = model.load_checkpoint()
-        model.train_now(train_dataset, eval_dataset)
-        model.evaluate(test_dataset)
-    elif model == 'waveNet':
-        train_dataset, test_dataset, eval_dataset = WaveformDataset.init_sets(
-            SingingVoiceSeparationOpenUnmixFeatureExtractor.feature_name,
-            features_path,
-            ratio=(0.5, 0.25, 0.25)
-        )
-
-        train_dataloader = DataLoader(train_dataset, batch_size=S1DCONV_BATCH_SIZE, shuffle=True,
-                                      num_workers=NUM_WORKERS)
-        test_dataloader = DataLoader(test_dataset, batch_size=S1DCONV_BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
-        val_dataloader = DataLoader(eval_dataset, batch_size=S1DCONV_BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
-
-        # model hyper parameters should be modified in config file
-        input_shape = (S1DCONV_BATCH_SIZE, WAVEFORM_NUM_CHANNELS, WAVEFORM_MAX_SEQUENCE_LENGTH)
-        model = WaveNetClassifier(
-            'faith_tull_binary2',
-            num_classes=2,
-            input_shape=input_shape
-        )
-        model = model.load_checkpoint()
-        model.train_now(train_dataset, eval_dataset)
-        model.evaluate(test_dataset)
-    elif model == 'waveNetLstm':
-        train_dataset, test_dataset, eval_dataset, number_of_classes = WaveformDataset.init_sets(
-            SingingVoiceSeparationOpenUnmixFeatureExtractor.feature_name,
-            features_path,
-            ratio=(0.5, 0.25, 0.25)
-        )
-
-        train_dataloader = DataLoader(train_dataset, batch_size=WAVENET_BATCH_SIZE, shuffle=True,
-                                      num_workers=NUM_WORKERS)
-        test_dataloader = DataLoader(test_dataset, batch_size=WAVENET_BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
-        val_dataloader = DataLoader(eval_dataset, batch_size=WAVENET_BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
-
-        # model hyper parameters should be modified in config file
-        input_shape = (WAVENET_BATCH_SIZE, WAVEFORM_NUM_CHANNELS, WAVEFORM_MAX_SEQUENCE_LENGTH)
-        model = WaveNetBiLSTMClassifier(
-            experiment_name,
-            num_classes=number_of_classes,
-            input_shape=input_shape,
-            device_name=device_name
-        )
-        model = model.load_checkpoint()
-        model.train_now(train_dataset, eval_dataset)
-        model.evaluate(test_dataset)
-    elif model == 'waveNetTransformer':
-        root_dir = os.path.dirname(os.path.realpath(__file__))
-        train_dataset, test_dataset, eval_dataset, number_of_classes = WaveformDataset.init_sets(
-            SingingVoiceSeparationOpenUnmixFeatureExtractor.feature_name,
-            features_path,
-            ratio=(0.5, 0.25, 0.25)
-        )
-
-        parser = L_WavenetTransformerClassifier.add_model_specific_args(parser, root_dir)
-        hyperparams = parser.parse_args()
-
-        model = L_WavenetTransformerClassifier(
-            hyperparams,
-            number_of_classes,
-            train_dataset,
-            eval_dataset,
-            test_dataset
-        )
-        makedirs(MODELS_DATA_PATH / experiment_name)
-        logger = ptl.logging.TestTubeLogger(
-            save_dir=MODELS_DATA_PATH / experiment_name,
-            version=1  # An existing version with a saved checkpoint
-        )
-        trainer = ptl.Trainer(
-            gpus=hyperparams.gpus,
-            distributed_backend=hyperparams.distributed_backend,
-            logger=logger,
-            default_save_path=MODELS_DATA_PATH / experiment_name,
-            early_stop_callback=None
-        )
-        trainer.fit(model)

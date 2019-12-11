@@ -1,21 +1,19 @@
 import os
 from math import ceil
 
-# import torch
 import librosa
 import numpy as np
 import pandas as pd
 import torch
-import torchvision
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import OneHotEncoder, OrdinalEncoder
+from torch.utils.data.dataloader import DataLoader
 from torch.utils.data.dataset import Dataset
+from torch.utils.data.sampler import Sampler
 from torchvision import transforms
 
 from config import FEATURES_DATA_PATH, RESNET_MIN_DIM, ADISAN_BATCH_SIZE, ADISAN_EPOCHS, WAVEFORM_MAX_SEQUENCE_LENGTH, \
     WAVEFORM_NUM_CHANNELS, WAVEFORM_SAMPLE_RATE
-
-
 # def get_shuffle_split(self, n_splits=2, test_size=0.5, train_size=0.5):
 #     """
 #     Return a generator to get a shuffle split of the data.
@@ -28,6 +26,10 @@ from config import FEATURES_DATA_PATH, RESNET_MIN_DIM, ADISAN_BATCH_SIZE, ADISAN
 #     kf = ShuffleSplit(n_splits=n_splits, test_size=test_size, train_size=train_size)
 #     for train_index, test_index in kf.split(self.X):
 #         yield self.X[train_index], self.Y[train_index], self.X[test_index], self.Y[test_index]
+from features import MelSpectralCoefficientsFeatureExtractor
+
+
+# import torch
 
 
 class DataManager:
@@ -610,8 +612,6 @@ class CepstrumDataset(Dataset):
     """
 
     input_shape = WAVEFORM_MAX_SEQUENCE_LENGTH
-    num_channels = WAVEFORM_NUM_CHANNELS
-    sample_rate = WAVEFORM_SAMPLE_RATE
 
     def __init__(self, filenames, labels, data_path, transform=None, label_encoder=None) -> None:
         self.filenames = np.asarray(filenames)
@@ -660,9 +660,10 @@ class CepstrumDataset(Dataset):
         filenames_test, labels_test = filenames_test[:test_dev_pivot], labels_test[:test_dev_pivot]
 
         # random crop over many epochs ensure data augmentation
-        transform = transforms.Compose(
-            [torchvision.transforms.RandomCrop(cls.input_shape),
-             cls.ToTensor()]
+        transform = transforms.Compose([
+            # [torchvision.transforms.RandomCrop(cls.input_shape),
+            #  ]  # with numpy
+            cls.ToTensor()]  # with torch
         )
 
         # instance 3 datasets
@@ -677,6 +678,7 @@ class CepstrumDataset(Dataset):
     class ToTensor:
         def __call__(self, sample):
             feature_tensor, label = sample['x'], sample['y']
+            feature_tensor = feature_tensor.reshape(1, feature_tensor.shape[0], -1)
             return {'x': torch.from_numpy(feature_tensor), 'y': torch.from_numpy(np.asarray(label))}
 
     # class RandomCrop:
@@ -705,25 +707,12 @@ class CepstrumDataset(Dataset):
 
     def __getitem__(self, index: int):
         label = self.labels[index]
-        wav, sr = librosa.load(
+        data = np.load(
             str(self.data_path / self.filenames[index]),
-            sr=self.sample_rate,
-            mono=True if self.num_channels == 1 else self.num_channels
+            allow_pickle=True
         )
 
-        # wav shape is (n_samples) or (n_channels, n_samples)
-        # torch 1d image is n_channels, n_samples
-        if len(wav.shape) == 1:
-            wav = wav.reshape(1, -1)
-        elif len(wav.shape) == 2:
-            if wav.shape[0] > 2:
-                print("warning: wav channel size is uncommon {}; expected is 2 (stereo) or 1 (mono) ".format(
-                    wav.shape[0]))
-        else:
-            print('error: wav shape is {}, expected N_channels x N_samples'.format(wav.shape))
-        # unify wav shape to (n_channels, n_samples)
-
-        sample = {'x': wav, 'y': label}
+        sample = {'x': data, 'y': label}
 
         if self.transform:
             sample = self.transform(sample)
@@ -755,3 +744,79 @@ class CepstrumDataset(Dataset):
         labels = np.array(labels.reshape(labels.shape[:-1]),
                           dtype=np.int64)  # drop last axis and cast to int64 aka long
         return labels
+
+
+class ClassSampler(Sampler):
+    def __init__(self, number_of_classes, labels, batch_size=None):
+        super().__init__(None)
+        self.number_of_classes = number_of_classes
+        self.labels = np.asarray(labels)
+        self.batch_size = batch_size
+
+        if len(self.labels.shape) > 1:
+            raise RuntimeError('labels should be a flattened array. Detected {}.'.format(len(self.labels.shape)))
+
+        if number_of_classes < 1:
+            raise RuntimeError('number of classes is < 1, this doesnt make sense')
+
+    def __len__(self) -> int:
+        """
+        One batch per class.
+        :return:
+        """
+        return self.number_of_classes
+
+    def __iter__(self):
+        """
+        Iterate over possible classes, yielding the indices of the samples of that class.
+        :yield: a list of indexes
+        """
+        for label in range(self.number_of_classes):
+            relevant_indexes = (self.labels != label).nonzero()[0]
+
+            if self.batch_size is None:
+                yield relevant_indexes.tolist()
+            else:
+                # random sample without replacement
+                yield np.random.choice(relevant_indexes, self.batch_size, replace=False)
+
+    @staticmethod
+    def collate_fn(batch):
+        """
+        :param batch: samples of the same class
+        :return: tuple of data Tensor, label Tensor
+        """
+        label = batch[0]['y']  # as each batch is the same class
+        out_mfcc = None
+        for batch_element in batch:
+            if out_mfcc is None:
+                out_mfcc = batch_element['x']
+            else:
+                out_mfcc = np.concatenate((out_mfcc, batch_element['x']), axis=1)
+
+        out_labels = np.zeros(out_mfcc.shape[1:]) + label
+        return out_mfcc, out_labels
+
+
+def mfcc_test():
+    train_dataset, test_dataset, eval_dataset, number_of_classes = CepstrumDataset.init_sets(
+        MelSpectralCoefficientsFeatureExtractor.feature_name,
+        FEATURES_DATA_PATH,
+        ratio=(0.5, 0.25, 0.25)
+    )
+
+    train_dataloader = DataLoader(train_dataset, num_workers=4,
+                                  batch_sampler=ClassSampler(number_of_classes, train_dataset.labels),
+                                  collate_fn=ClassSampler.collate_fn)
+    test_dataloader = DataLoader(test_dataset, num_workers=0,
+                                 batch_sampler=ClassSampler(number_of_classes, test_dataset.labels))
+    val_dataloader = DataLoader(eval_dataset, num_workers=0,
+                                batch_sampler=ClassSampler(number_of_classes, eval_dataset.labels))
+
+    for b in train_dataloader:
+        print(b)
+    print('end')
+
+
+if __name__ == '__main__':
+    mfcc_test()
