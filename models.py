@@ -1,26 +1,29 @@
 import argparse
 import os
+import pathlib
 from collections import defaultdict
 from functools import reduce
 from math import ceil
 
 import numpy as np
+import pytorch_lightning as ptl
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from keras.engine.saving import load_model
 from torch.utils.data.dataloader import DataLoader
 
 from config import MODELS_DATA_PATH, RESNET_V2_BATCH_SIZE, RESNET_V2_EPOCHS, RESNET_V2_DEPTH, \
-    RESNET_V2_VERSION, SIMPLECONV_BATCH_SIZE, SIMPLECONV_EPOCHS
-from features import WindowedMelSpectralCoefficientsFeatureExtractor
-from loaders import ResnetDataManager, TorchVisionDataManager
+    RESNET_V2_VERSION, SIMPLECONV_BATCH_SIZE, SIMPLECONV_EPOCHS, makedirs, FEATURES_DATA_PATH, WAVEFORM_NUM_CHANNELS, \
+    WAVEFORM_MAX_SEQUENCE_LENGTH, S1DCONV_BATCH_SIZE, WAVENET_BATCH_SIZE, NUM_WORKERS
+from features import WindowedMelSpectralCoefficientsFeatureExtractor, SingingVoiceSeparationOpenUnmixFeatureExtractor
+from loaders import ResnetDataManager, TorchVisionDataManager, WaveformDataset
 
 
 class ClassificationModel:
 
     def __init__(self, model_name, model_type, num_classes, input_shape, model_path, epochs,
                  batch_size,
+                 initial_epoch=0,
                  **kwargs):
         """
 
@@ -40,10 +43,20 @@ class ClassificationModel:
         self.num_classes = num_classes
         self.input_shape = input_shape
         self.epochs = epochs
-        model_filename = '%s_%s_model.{epoch:03d}.h5' % (self.model_name, self.model_type)
-        self.model_checkpoint_path = model_path / model_filename
+        model_filename = '%s_model.{epoch:03d}.h5' % self.model_name
+        self.model_path = model_path / self.model_type
+        makedirs(self.model_path)
+        self.model_checkpoint_path = self.model_path / model_filename
         self.batch_size = batch_size
-        self.initial_epoch = 0
+        self.initial_epoch = initial_epoch
+
+    def reset_hyper_parameters(self, model_name, model_type, num_classes, input_shape, initial_epoch,
+                               model_path,
+                               epochs,
+                               batch_size):
+        ClassificationModel.__init__(self, model_name, model_type, num_classes, input_shape, model_path, epochs,
+                                     batch_size,
+                                     initial_epoch)
 
     @property
     def checkpoint_files(self):
@@ -66,23 +79,29 @@ class ClassificationModel:
     def remove_checkpoint(self):
         [os.remove(path) for path in self.checkpoint_files[0]]
 
-
-class TorchClassificationModel(nn.Module):
-
-    def __init__(self, model_name, model_type, num_classes, input_shape, model_path, epochs,
-                 batch_size,
-                 **kwargs):
-        super().__init__()
-        self.model_name = model_name
-        self.model_type = model_type
-
-        self.num_classes = num_classes
-        self.input_shape = input_shape
-        self.epochs = epochs
-        model_filename = '%s_%s_model.{epoch:03d}.h5' % (self.model_name, self.model_type)
-        self.model_checkpoint_path = model_path / model_filename
-        self.batch_size = batch_size
-        self.initial_epoch = 0
+    def load_checkpoint(self):
+        """
+        Load model object from last checkpoint if exist.
+        :return:
+        """
+        # check for existing checkpoints
+        chkp_files, chkp_epoch = self.checkpoint_files
+        assert len(chkp_files) == len(chkp_epoch)
+        if len(chkp_files) != 0:
+            # load from checkpoint
+            max_idx = int(np.argmax(chkp_epoch))
+            model = torch.load(str(chkp_files[max_idx]))
+            print('info: loading model from checkpoint {}'.format(chkp_files[max_idx]))
+            initial_epoch = int(chkp_epoch[max_idx])
+            model.reset_hyper_parameters(
+                model.model_name,
+                model.model_type,
+                model.num_classes,
+                model.input_shape,
+                initial_epoch
+            )
+            return model
+        return self
 
 
 class ResNetV2(ClassificationModel):
@@ -118,6 +137,7 @@ class ResNetV2(ClassificationModel):
         :return: Model, Callbacks for model operations
         """
         import keras
+        from keras.engine.saving import load_model
         from keras.layers import Dense, Conv2D, BatchNormalization, Activation, AveragePooling2D, Input, Flatten
         from keras.regularizers import l2
         from keras.optimizers import Adam
@@ -348,8 +368,8 @@ class ResNetV2(ClassificationModel):
         return self.model.predict(x)
 
 
-class SimpleConvNet(ClassificationModel, nn.Module):
-    model_name = 'simpleConvNet'
+class Simple2dConvNet(ClassificationModel, nn.Module):
+    model_name = 'simple_2d_conv_net'
 
     def __init__(self, model_name, model_type, num_classes, input_shape, model_path=MODELS_DATA_PATH,
                  epochs=SIMPLECONV_EPOCHS,
@@ -394,8 +414,8 @@ class SimpleConvNet(ClassificationModel, nn.Module):
         self.fc3 = nn.Linear(84, self.num_classes)
 
         # auxiliary state variables
-        self.best_loss = float('inf')
         self.early_stop_flag = False
+        self.best_loss = float('inf')
 
     def forward(self, x):
         # Max pooling over a (2, 2) window
@@ -556,13 +576,48 @@ class SimpleConvNet(ClassificationModel, nn.Module):
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Train a model from features from a data folder')
+    parser = argparse.ArgumentParser(
+        description='Train a model from features from a data folder',
+        add_help=False
+    )
 
-    parser.add_argument('--model', help='name of the model to be trained (options: ResNetV2, leglaive)',
-                        default='SimpleConvNet')
+    parser.add_argument(
+        '--model',
+        help='name of the model to be trained (options: ResNetV2, leglaive)',
+        default='waveNetTransformer'
+    )
+
+    parser.add_argument('--features_path', help='Path to features folder',
+                        default=FEATURES_DATA_PATH)
+
+    parser.add_argument(
+        '--experiment',
+        default='unnamed_experiment',
+        help='Name of the experiment. affects checkpoint names')
+
+    parser.add_argument(
+        '--gpus',
+        type=int,
+        default=0,
+        help='how many gpus'
+    )
+
+    parser.add_argument(
+        '--distributed_backend',
+        type=str,
+        default='dp',
+        help='supports three options dp, ddp, ddp2'
+    )
 
     args = parser.parse_args()
     model = args.model
+    features_path = pathlib.Path(args.features_path)
+    experiment_name = args.experiment
+    device_name = 'cpu'
+
+    print('info: feature_path is {}'.format(features_path))
+    print('info: experiment_name is {}'.format(experiment_name))
+    print('info: device_name is {}'.format(device_name))
 
     if model == 'ResNetV2':
         train_dm, test_dm, _ = ResnetDataManager.init_n_split(
@@ -593,18 +648,10 @@ if __name__ == '__main__':
         x_val = val_dm.X
         y_val = val_dm.Y
 
-        model = SimpleConvNet('faith_tull_binary_sid', num_classes=len(set([label_id for label_id in y_train])),
-                              input_shape=x_train.shape, model_type='simpleconv')
+        model = Simple2dConvNet('faith_tull_binary_sid', num_classes=len(set([label_id for label_id in y_train])),
+                                input_shape=x_train.shape, model_type='simpleconv')
 
-        # check for existing checkpoints
-        chkp_files, chkp_epoch = model.checkpoint_files
-        assert len(chkp_files) == len(chkp_epoch)
-        if len(chkp_files) != 0:
-            # load from checkpoint
-            max_idx = int(np.argmax(chkp_epoch))
-            model = torch.load(str(chkp_files[max_idx]))
-            model.initial_epoch = int(chkp_epoch[max_idx])
-            print('info: loading model from checkpoint {}'.format(chkp_files[max_idx]))
+        model = model.load_checkpoint()
         # train
         model.train_now(x_train, y_train, x_val, y_val)
 

@@ -1,8 +1,10 @@
 import os
 import os.path
 import time
+import typing
+
 from util.wavenet.wavenet_modules import *
-from util.audio_data import *
+from util.wavenet.audio_data import *
 
 
 class WaveNetModel(nn.Module):
@@ -25,6 +27,15 @@ class WaveNetModel(nn.Module):
         - Output: :math:`()`
         L should be the length of the receptive field
     """
+    def __call__(self, *input, **kwargs) -> typing.Any:
+        """
+        Hack to fix '(input: (Any, ...), kwargs: dict) -> Any' warning in PyCharm auto-complete.
+        :param input:
+        :param kwargs:
+        :return:
+        """
+        return super().__call__(*input, **kwargs)
+
     def __init__(self,
                  layers=10,
                  blocks=4,
@@ -48,6 +59,7 @@ class WaveNetModel(nn.Module):
         self.classes = classes
         self.kernel_size = kernel_size
         self.dtype = dtype
+        self.end_channels = end_channels
 
         # build model
         receptive_field = 1
@@ -109,14 +121,9 @@ class WaveNetModel(nn.Module):
                 new_dilation *= 2
 
         self.end_conv_1 = nn.Conv1d(in_channels=skip_channels,
-                                  out_channels=end_channels,
+                                  out_channels=self.end_channels,
                                   kernel_size=1,
                                   bias=True)
-
-        self.end_conv_2 = nn.Conv1d(in_channels=end_channels,
-                                    out_channels=classes,
-                                    kernel_size=1,
-                                    bias=True)
 
         # self.output_length = 2 ** (layers - 1)
         self.output_length = output_length
@@ -165,9 +172,7 @@ class WaveNetModel(nn.Module):
             x = x + residual[:, :, (self.kernel_size - 1):]
 
         x = F.relu(skip)
-        x = F.relu(self.end_conv_1(x))
-        x = self.end_conv_2(x)
-
+        x = self.end_conv_1(x)
         return x
 
     def wavenet_dilate(self, input, dilation, init_dilation, i):
@@ -187,12 +192,14 @@ class WaveNetModel(nn.Module):
         x = self.wavenet(input,
                          dilation_func=self.wavenet_dilate)
 
-        # reshape output
-        [n, c, l] = x.size()
-        l = self.output_length
-        x = x[:, :, -l:]
-        x = x.transpose(1, 2).contiguous()
-        x = x.view(n * l, c)
+        # x = self.last_pooling(x)
+
+        # # reshape output
+        # [n, c, l] = x.size()
+        # l = self.output_length
+        # x = x[:, :, -l:]
+        # x = x.transpose(1, 2).contiguous()
+        # x = x.view(n * l, c)
         return x
 
     def generate(self,

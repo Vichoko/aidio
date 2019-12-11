@@ -1,6 +1,5 @@
 import argparse
 import io
-import json
 import warnings
 from contextlib import redirect_stderr
 from pathlib import Path
@@ -10,7 +9,6 @@ import norbert
 import numpy as np
 import resampy
 import scipy.signal
-import soundfile as sf
 import torch
 import tqdm
 
@@ -26,7 +24,8 @@ def load_model(target, model_name='umxhq', device='cpu'):
     (as used on torchub)
     """
     from features import SingingVoiceSeparationOpenUnmixFeatureExtractor
-    model_path = Path(MODELS_DATA_PATH / SingingVoiceSeparationOpenUnmixFeatureExtractor.feature_name / model_name).expanduser()
+    model_path = Path(
+        MODELS_DATA_PATH / SingingVoiceSeparationOpenUnmixFeatureExtractor.feature_name / model_name).expanduser()
     if not model_path.exists():
         # model path does not exist, use hubconf model
         try:
@@ -84,102 +83,6 @@ def istft(X, rate=44100, n_fft=4096, n_hopsize=1024):
     return audio
 
 
-def separate(
-        audio,
-        targets,
-        model_name='umxhq',
-        niter=1, softmask=False, alpha=1.0,
-        residual_model=False, device='cpu'
-):
-    """
-    Performing the separation on audio input
-
-    Parameters
-    ----------
-    audio: np.ndarray [shape=(nb_samples, nb_channels, nb_timesteps)]
-        mixture audio
-
-    targets: list of str
-        a list of the separation targets.
-        Note that for each target a separate model is expected
-        to be loaded.
-
-    model_name: str
-        name of torchhub model or path to model folder, defaults to `umxhq`
-
-    niter: int
-         Number of EM steps for refining initial estimates in a
-         post-processing stage, defaults to 1.
-
-    softmask: boolean
-        if activated, then the initial estimates for the sources will
-        be obtained through a ratio mask of the mixture STFT, and not
-        by using the default behavior of reconstructing waveforms
-        by using the mixture phase, defaults to False
-
-    alpha: float
-        changes the exponent to use for building ratio masks, defaults to 1.0
-
-    residual_model: boolean
-        computes a residual target, for custom separation scenarios
-        when not all targets are available, defaults to False
-
-    device: str
-        set torch device. Defaults to `cpu`.
-
-    Returns
-    -------
-    estimates: `dict` [`str`, `np.ndarray`]
-        dictionary of all restimates as performed by the separation model.
-
-    """
-    # convert numpy audio to torch
-    audio_torch = torch.tensor(audio.T[None, ...]).float().to(device)
-
-    source_names = []
-    V = []
-
-    for j, target in enumerate(tqdm.tqdm(targets)):
-        unmix_target = load_model(
-            target=target,
-            model_name=model_name,
-            device=device
-        )
-        Vj = unmix_target(audio_torch).cpu().detach().numpy()
-        if softmask:
-            # only exponentiate the model if we use softmask
-            Vj = Vj ** alpha
-        # output is nb_frames, nb_samples, nb_channels, nb_bins
-        V.append(Vj[:, 0, ...])  # remove sample dim
-        source_names += [target]
-
-    V = np.transpose(np.array(V), (1, 3, 2, 0))
-
-    X = unmix_target.stft(audio_torch).detach().cpu().numpy()
-    # convert to complex numpy type
-    X = X[..., 0] + X[..., 1] * 1j
-    X = X[0].transpose(2, 1, 0)
-
-    if residual_model or len(targets) == 1:
-        V = norbert.residual_model(V, X, alpha if softmask else 1)
-        source_names += (['residual'] if len(targets) > 1
-                         else ['accompaniment'])
-
-    Y = norbert.wiener(V, X.astype(np.complex128), niter,
-                       use_softmask=softmask)
-
-    estimates = {}
-    for j, name in enumerate(source_names):
-        audio_hat = istft(
-            Y[..., j].T,
-            n_fft=unmix_target.stft.n_fft,
-            n_hopsize=unmix_target.stft.n_hop
-        )
-        estimates[name] = audio_hat.T
-
-    return estimates
-
-
 def inference_args(parser, remaining_args):
     inf_parser = argparse.ArgumentParser(
         description=__doc__,
@@ -225,104 +128,310 @@ def inference_args(parser, remaining_args):
     return inf_parser.parse_args()
 
 
-def separate_music_file(
-        input_file,
-        device,
-        targets=OUNMIX_TARGETS,
-        model=OUNMIX_MODEL,
-        residual_model=OUNMIX_RESIDUAL_MODEL,
-        alpha=OUNMIX_ALPHA,
-        niter=OUNMIX_NITER,
-        softmask=OUNMIX_SOFTMAX,
-        sample_rate=OUNMIX_SAMPLE_RATE
+class OpenUnmixManager:
+    def __init__(self):
+        self.models = {}
 
-):
-    """
+    def separate(self,
+                 audio,
+                 targets,
+                 model_name='umxhq',
+                 niter=1, softmask=False, alpha=1.0,
+                 residual_model=False, device='cpu'
+                 ):
+        """
+        Performing the separation on audio input
 
-    :param input_file:
-    :param device:
-    :param targets:
-    :param model:
-    :param residual_model:
-    :param alpha:
-    :param niter:
-    :param softmask:
-    :return: `dict` [`str`, `np.ndarray`]
-        dictionary of all restimates as performed by the separation model.
+        Parameters
+        ----------
+        audio: np.ndarray [shape=(nb_samples, nb_channels, nb_timesteps)]
+            mixture audio
+
+        targets: list of str
+            a list of the separation targets.
+            Note that for each target a separate model is expected
+            to be loaded.
+
+        model_name: str
+            name of torchhub model or path to model folder, defaults to `umxhq`
+
+        niter: int
+             Number of EM steps for refining initial estimates in a
+             post-processing stage, defaults to 1.
+
+        softmask: boolean
+            if activated, then the initial estimates for the sources will
+            be obtained through a ratio mask of the mixture STFT, and not
+            by using the default behavior of reconstructing waveforms
+            by using the mixture phase, defaults to False
+
+        alpha: float
+            changes the exponent to use for building ratio masks, defaults to 1.0
+
+        residual_model: boolean
+            computes a residual target, for custom separation scenarios
+            when not all targets are available, defaults to False
+
+        device: str
+            set torch device. Defaults to `cpu`.
+
+        Returns
+        -------
+        estimates: `dict` [`str`, `np.ndarray`]
+            dictionary of all restimates as performed by the separation model.
+
+        """
+        # convert numpy audio to torch
+        torch.cuda.empty_cache()
+        with torch.no_grad():
+            audio_torch = torch.tensor(audio.T[None, ...]).float().to(device)
+            print('debug: separating audio tensor with shape {}'.format(audio_torch.size()))
+
+            source_names = []
+            V = []
+            for j, target in enumerate(tqdm.tqdm(targets)):
+
+                try:
+                    unmix_target = self.models[target]
+                except KeyError:
+                    unmix_target = load_model(
+                        target=target,
+                        model_name=model_name,
+                        device=device
+                    )
+                    self.models[target] = unmix_target
+
+                Vj = unmix_target(audio_torch).cpu().detach().numpy()
+                if softmask:
+                    # only exponentiate the model if we use softmask
+                    Vj = Vj ** alpha
+                # output is nb_frames, nb_samples, nb_channels, nb_bins
+                V.append(Vj[:, 0, ...])  # remove sample dim
+                source_names += [target]
+
+            V = np.transpose(np.array(V), (1, 3, 2, 0))
+
+            X = unmix_target.stft(audio_torch).detach().cpu().numpy()
+            # convert to complex numpy type
+            X = X[..., 0] + X[..., 1] * 1j
+            X = X[0].transpose(2, 1, 0)
+
+            if residual_model or len(targets) == 1:
+                V = norbert.residual_model(V, X, alpha if softmask else 1)
+                source_names += (['residual'] if len(targets) > 1
+                                 else ['accompaniment'])
+
+            Y = norbert.wiener(V, X.astype(np.complex128), niter,
+                               use_softmask=softmask)
+
+            estimates = {}
+            for j, name in enumerate(source_names):
+                audio_hat = istft(
+                    Y[..., j].T,
+                    n_fft=unmix_target.stft.n_fft,
+                    n_hopsize=unmix_target.stft.n_hop
+                )
+                estimates[name] = audio_hat.T
+
+            return estimates
+
+    def separate_music_file(self,
+                            input_file,
+                            device,
+                            targets=OUNMIX_TARGETS,
+                            model=OUNMIX_MODEL,
+                            residual_model=OUNMIX_RESIDUAL_MODEL,
+                            alpha=OUNMIX_ALPHA,
+                            niter=OUNMIX_NITER,
+                            softmask=OUNMIX_SOFTMAX,
+                            sample_rate=OUNMIX_SAMPLE_RATE
+
+                            ):
+        """
+
+        :param input_file:
+        :param device:
+        :param targets:
+        :param model:
+        :param residual_model:
+        :param alpha:
+        :param niter:
+        :param softmask:
+        :return: `dict` [`str`, `np.ndarray`]
+            dictionary of all restimates as performed by the separation model.
 
 
 
-    Performing the separation on audio input
+        Performing the separation on audio input
 
-    Parameters
-    ----------
-    audio: np.ndarray [shape=(nb_samples, nb_channels, nb_timesteps)]
-        mixture audio
+        Parameters
+        ----------
+        audio: np.ndarray [shape=(nb_samples, nb_channels, nb_timesteps)]
+            mixture audio
 
-    targets: list of str
-        a list of the separation targets.
-        Note that for each target a separate model is expected
-        to be loaded.
+        targets: list of str
+            a list of the separation targets.
+            Note that for each target a separate model is expected
+            to be loaded.
 
-    model_name: str
-        name of torchhub model or path to model folder, defaults to `umxhq`
+        model_name: str
+            name of torchhub model or path to model folder, defaults to `umxhq`
 
-    niter: int
-         Number of EM steps for refining initial estimates in a
-         post-processing stage, defaults to 1.
+        niter: int
+             Number of EM steps for refining initial estimates in a
+             post-processing stage, defaults to 1.
 
-    softmask: boolean
-        if activated, then the initial estimates for the sources will
-        be obtained through a ratio mask of the mixture STFT, and not
-        by using the default behavior of reconstructing waveforms
-        by using the mixture phase, defaults to False
+        softmask: boolean
+            if activated, then the initial estimates for the sources will
+            be obtained through a ratio mask of the mixture STFT, and not
+            by using the default behavior of reconstructing waveforms
+            by using the mixture phase, defaults to False
 
-    alpha: float
-        changes the exponent to use for building ratio masks, defaults to 1.0
+        alpha: float
+            changes the exponent to use for building ratio masks, defaults to 1.0
 
-    residual_model: boolean
-        computes a residual target, for custom separation scenarios
-        when not all targets are available, defaults to False
+        residual_model: boolean
+            computes a residual target, for custom separation scenarios
+            when not all targets are available, defaults to False
 
-    device: str
-        set torch device. Defaults to `cpu`.
+        device: str
+            set torch device. Defaults to `cpu`.
 
-    Returns
-    -------
-    estimates:
-    """
-    # handling an input audio path
-    audio, rate = librosa.core.load(input_file, mono=False, sr=sample_rate)
-    if len(audio.shape) == 1:
-        audio = audio.reshape(1, -1)
-    audio = np.swapaxes(audio, 0, 1)
+        Returns
+        -------
+        estimates:
+        """
+        # handling an input audio path
+        audio, rate = librosa.core.load(input_file, mono=False, sr=sample_rate)
+        if len(audio.shape) == 1:
+            audio = audio.reshape(1, -1)
+        audio = np.swapaxes(audio, 0, 1)
 
-    if audio.shape[1] > 2:
-        warnings.warn(
-            'Channel count > 2! '
-            'Only the first two channels will be processed!')
-        audio = audio[:, :2]
+        if audio.shape[1] > 2:
+            warnings.warn(
+                'Channel count > 2! '
+                'Only the first two channels will be processed!')
+            audio = audio[:, :2]
 
-    if rate != sample_rate:
-        # resample to model samplerate if needed
-        audio = resampy.resample(audio, rate, sample_rate, axis=0)
+        if rate != sample_rate:
+            # resample to model samplerate if needed
+            audio = resampy.resample(audio, rate, sample_rate, axis=0)
 
-    if audio.shape[1] == 1:
-        # if we have mono, let's duplicate it
-        # as the input of OpenUnmix is always stereo
-        audio = np.repeat(audio, 2, axis=1)
+        if audio.shape[1] == 1:
+            # if we have mono, let's duplicate it
+            # as the input of OpenUnmix is always stereo
+            audio = np.repeat(audio, 2, axis=1)
 
-    estimates = separate(
-        audio,
-        targets=targets,
-        model_name=model,
-        niter=niter,
-        alpha=alpha,
-        softmask=softmask,
-        residual_model=residual_model,
-        device=device
-    )
-    return estimates
+        estimates = self.separate(
+            audio,
+            targets=targets,
+            model_name=model,
+            niter=niter,
+            alpha=alpha,
+            softmask=softmask,
+            residual_model=residual_model,
+            device=device
+        )
+        return estimates
+
+    def separate_wav(self,
+                     audio,
+                     rate,
+                     device,
+                     targets=OUNMIX_TARGETS,
+                     model=OUNMIX_MODEL,
+                     residual_model=OUNMIX_RESIDUAL_MODEL,
+                     alpha=OUNMIX_ALPHA,
+                     niter=OUNMIX_NITER,
+                     softmask=OUNMIX_SOFTMAX,
+                     sample_rate=OUNMIX_SAMPLE_RATE
+
+                     ):
+        """
+
+        :param input_file:
+        :param device:
+        :param targets:
+        :param model:
+        :param residual_model:
+        :param alpha:
+        :param niter:
+        :param softmask:
+        :return: `dict` [`str`, `np.ndarray`]
+            dictionary of all restimates as performed by the separation model.
+
+
+
+        Performing the separation on audio input
+
+        Parameters
+        ----------
+        audio: np.ndarray [shape=(nb_samples, nb_channels, nb_timesteps)]
+            mixture audio
+
+        targets: list of str
+            a list of the separation targets.
+            Note that for each target a separate model is expected
+            to be loaded.
+
+        model_name: str
+            name of torchhub model or path to model folder, defaults to `umxhq`
+
+        niter: int
+             Number of EM steps for refining initial estimates in a
+             post-processing stage, defaults to 1.
+
+        softmask: boolean
+            if activated, then the initial estimates for the sources will
+            be obtained through a ratio mask of the mixture STFT, and not
+            by using the default behavior of reconstructing waveforms
+            by using the mixture phase, defaults to False
+
+        alpha: float
+            changes the exponent to use for building ratio masks, defaults to 1.0
+
+        residual_model: boolean
+            computes a residual target, for custom separation scenarios
+            when not all targets are available, defaults to False
+
+        device: str
+            set torch device. Defaults to `cpu`.
+
+        Returns
+        -------
+        estimates:
+        """
+        # handling an input audio path
+        if len(audio.shape) == 1:
+            audio = audio.reshape(1, -1)
+        audio = np.swapaxes(audio, 0, 1)
+
+        if audio.shape[1] > 2:
+            warnings.warn(
+                'Channel count > 2! '
+                'Only the first two channels will be processed!')
+            audio = audio[:, :2]
+
+        if rate != sample_rate:
+            # resample to model samplerate if needed
+            audio = resampy.resample(audio, rate, sample_rate, axis=0)
+
+        if audio.shape[1] == 1:
+            # if we have mono, let's duplicate it
+            # as the input of OpenUnmix is always stereo
+            audio = np.repeat(audio, 2, axis=1)
+
+        estimates = self.separate(
+            audio,
+            targets=targets,
+            model_name=model,
+            niter=niter,
+            alpha=alpha,
+            softmask=softmask,
+            residual_model=residual_model,
+            device=device
+        )
+        return estimates
 
 
 if __name__ == '__main__':
@@ -394,7 +503,8 @@ if __name__ == '__main__':
             # as the input of OpenUnmix is always stereo
             audio = np.repeat(audio, 2, axis=1)
 
-        estimates = separate(
+        manager = OpenUnmixManager()
+        estimates = manager.separate(
             audio,
             targets=args.targets,
             model_name=args.model,
@@ -414,10 +524,10 @@ if __name__ == '__main__':
             outdir = Path(args.outdir)
         outdir.mkdir(exist_ok=True, parents=True)
 
-        # write out estimates
-        for target, estimate in estimates.items():
-            sf.write(
-                outdir / Path(target).with_suffix('.wav'),
-                estimate,
-                args.samplerate
-            )
+        # # write out estimates
+        # for target, estimate in estimates.items():
+        #     sf.write(
+        #         outdir / Path(target).with_suffix('.wav'),
+        #         estimate,
+        #         args.samplerate
+        #     )
