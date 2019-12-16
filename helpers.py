@@ -8,7 +8,7 @@ import pytorch_lightning as ptl
 from config import makedirs, FEATURES_DATA_PATH, MODELS_DATA_PATH
 from features import MelSpectralCoefficientsFeatureExtractor, SingingVoiceSeparationOpenUnmixFeatureExtractor
 from loaders import CepstrumDataset, WaveformDataset
-from trainers import L_ResNext50, L_WavenetTransformerClassifier
+from trainers import L_ResNext50, L_WavenetTransformerClassifier, L_WavenetLSTMClassifier
 
 
 class AbstractHelper:
@@ -100,7 +100,7 @@ class WavenetTransformerHelper:
 
 
 class WavenetLSTMHelper:
-    model_name = 'wavenet_transformer'
+    model_name = 'wavenet_lstm'
 
     def __init__(self, experiment_name, parser, features_path, models_path, ):
         self.features_path = features_path
@@ -113,10 +113,10 @@ class WavenetLSTMHelper:
             ratio=(0.5, 0.25, 0.25)
         )
 
-        parser = L_WavenetTransformerClassifier.add_model_specific_args(parser, None)
+        parser = L_WavenetLSTMClassifier.add_model_specific_args(parser, None)
         hyperparams = parser.parse_args()
 
-        self.model = L_WavenetTransformerClassifier(
+        self.model = L_WavenetLSTMClassifier(
             hyperparams,
             number_of_classes,
             train_dataset,
@@ -141,9 +141,44 @@ class WavenetLSTMHelper:
         self.trainer.fit(self.model)
 
 
+class GMMClassifierHelper:
+    """
+    Provide train and evaluation methods.
+    Connect datasets and loaders with models.
+    """
+
+    def __init__(self, num_classes, train_dataset, eval_dataset, test_dataset):
+        # model
+        self.model = GMMClassifier(num_classes=num_classes)
+        # data sets
+        self.train_ds = train_dataset
+        self.test_ds = test_dataset
+        self.eval_ds = eval_dataset
+        # data loaders
+        self.train_dl = DataLoader(
+            self.train_ds,
+            num_workers=NUM_WORKERS,
+            batch_sampler=ClassSampler(num_classes, self.train_ds.labels),
+            collate_fn=ClassSampler.collate_fn
+        )
+        self.test_dl = DataLoader(
+            self.test_ds,
+            num_workers=NUM_WORKERS,
+            batch_sampler=ClassSampler(num_classes, self.test_ds.labels),
+            collate_fn=ClassSampler.collate_fn
+        )
+        self.eval_dl = DataLoader(
+            self.eval_ds,
+            num_workers=NUM_WORKERS,
+            batch_sampler=ClassSampler(num_classes, self.eval_ds.labels),
+            collate_fn=ClassSampler.collate_fn
+        )
+
+
 helpers = {
     ResNext50Helper.model_name: ResNext50Helper,
     WavenetTransformerHelper.model_name: WavenetTransformerHelper,
+    WavenetLSTMHelper.model_name: WavenetLSTMHelper
 
 }
 
@@ -155,7 +190,7 @@ if __name__ == '__main__':
     parser.add_argument(
         '--model',
         help='Model name. (Ej. resnext50, gmm, transformer)',
-        default=WavenetTransformerHelper.model_name,
+        default=WavenetLSTMHelper.model_name,
         # required=True
     )
     parser.add_argument(

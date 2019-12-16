@@ -1,13 +1,11 @@
 import argparse
 import math
-import os
 import pathlib
 import typing
 from collections import defaultdict
 from math import ceil, floor
 
 import numpy as np
-import pytorch_lightning as ptl
 import torch
 import tqdm
 from sklearn.mixture import GaussianMixture
@@ -19,7 +17,7 @@ from config import MODELS_DATA_PATH, S1DCONV_EPOCHS, S1DCONV_BATCH_SIZE, WAVENET
     WAVENET_LAYERS, WAVENET_BLOCKS, WAVENET_DILATION_CHANNELS, WAVENET_RESIDUAL_CHANNELS, WAVENET_SKIP_CHANNELS, \
     WAVENET_END_CHANNELS, WAVENET_CLASSES, WAVENET_OUTPUT_LENGTH, WAVENET_KERNEL_SIZE, WAVENET_POOLING_KERNEL_SIZE, \
     WAVENET_POOLING_STRIDE, LSTM_HIDDEN_SIZE, LSTM_NUM_LAYERS, LSTM_DROPOUT_PROB, WAVEFORM_MAX_SEQUENCE_LENGTH, \
-    TRANSFORMER_D_MODEL, TRANSFORMER_N_HEAD, TRANSFORMER_N_LAYERS, NUM_WORKERS, WAVEFORM_NUM_CHANNELS, makedirs, \
+    TRANSFORMER_D_MODEL, TRANSFORMER_N_HEAD, TRANSFORMER_N_LAYERS, NUM_WORKERS, WAVEFORM_NUM_CHANNELS, \
     FEATURES_DATA_PATH
 from features import SingingVoiceSeparationOpenUnmixFeatureExtractor
 from loaders import WaveformDataset
@@ -594,6 +592,73 @@ class WaveNetTransformerClassifier(nn.Module):
         return x
 
 
+class WaveNetLSTMClassifier(nn.Module):
+
+    def __call__(self, *input, **kwargs) -> typing.Any:
+        """
+        Hack to fix '(input: (Any, ...), kwargs: dict) -> Any' warning in PyCharm auto-complete.
+        :param input:
+        :param kwargs:
+        :return:
+        """
+        return super().__call__(*input, **kwargs)
+
+    def __init__(self, num_classes):
+        super(WaveNetLSTMClassifier, self).__init__()
+        # first encoder
+        # neural audio embeddings
+        # captures local representations through convolutions
+        self.wavenet = WaveNetModel(
+            WAVENET_LAYERS,
+            WAVENET_BLOCKS,
+            WAVENET_DILATION_CHANNELS,
+            WAVENET_RESIDUAL_CHANNELS,
+            WAVENET_SKIP_CHANNELS,
+            WAVENET_END_CHANNELS,
+            WAVENET_CLASSES,
+            WAVENET_OUTPUT_LENGTH,
+            WAVENET_KERNEL_SIZE)
+
+        # reduce sample resolution from 160k to 32k
+        # output_length = floor((input_length - stride)/kernel_size + 1)
+        self.avg_pooling = nn.AvgPool1d(
+            kernel_size=WAVENET_POOLING_KERNEL_SIZE,
+            stride=WAVENET_POOLING_STRIDE
+        )
+
+        self.enc_lstm = nn.LSTM(
+            self.wavenet.end_channels,
+            LSTM_HIDDEN_SIZE, LSTM_NUM_LAYERS,
+            bidirectional=True,
+            dropout=LSTM_DROPOUT_PROB)
+
+        # for now output length is fixed to 159968
+
+        self.fc1 = nn.Linear(LSTM_HIDDEN_SIZE * 2, 120)  # 6*6 from image dimension
+        self.fc2 = nn.Linear(120, 84)
+        self.fc3 = nn.Linear(84, num_classes)
+
+    def forward(self, x):
+        # print('info: feeding wavenet...')
+        x = self.wavenet.forward(x)
+        # reduce sequence_length / 5
+        x = self.avg_pooling(x)
+        # x.shape is n_data, n_channels, n_sequence
+        # rnn expected input is n_sequence, n_data, wavenet_channels
+        x = x.transpose(0, 2).transpose(1, 2)
+        # print('info: feeding lstm...')
+        self.enc_lstm.flatten_parameters()
+        x, _ = self.enc_lstm(x)  # shape n_sequence, n_data, lstm_hidden_size * 2
+        x, _ = x.max(0)  # max pooling over the sequence dim; drop sequence axis
+        # x final shape is n_data, lstm_hidden_size * 2
+        # print('info: feeding fully-connected...')
+        # simple classifier
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
+        x = self.fc3(x)
+        return x
+
+
 class GMMClassifier(nn.Module):
 
     def __call__(self, *input, **kwargs) -> typing.Any:
@@ -753,4 +818,3 @@ if __name__ == '__main__':
         model = model.load_checkpoint()
         model.train_now(train_dataset, eval_dataset)
         model.evaluate(test_dataset)
-
