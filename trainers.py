@@ -1,4 +1,4 @@
-import argparse
+from argparse import ArgumentParser
 from argparse import ArgumentParser
 from collections import OrderedDict
 
@@ -8,9 +8,8 @@ from torch.nn import Conv2d
 from torch.utils.data import DataLoader
 from torchvision.models import resnext50_32x4d
 
-from config import WAVENET_BATCH_SIZE, NUM_WORKERS, FEATURES_DATA_PATH, makedirs, MODELS_DATA_PATH, RESNET_V2_BATCH_SIZE
-from features import MelSpectralCoefficientsFeatureExtractor
-from loaders import ClassSampler, WaveformDataset, CepstrumDataset
+from config import WAVENET_BATCH_SIZE, NUM_WORKERS, RESNET_V2_BATCH_SIZE
+from loaders import ClassSampler
 from torch_models import WaveNetTransformerClassifier, GMMClassifier
 
 
@@ -367,6 +366,13 @@ class L_WavenetTransformerClassifier(ptl.LightningModule):
         parser = ArgumentParser(parents=[parent_parser])
         parser.add_argument('--learning_rate', default=0.001, type=float)
         parser.add_argument('--batch_size', default=WAVENET_BATCH_SIZE, type=int)
+        parser.add_argument('--gpus', default=0, type=int)
+        parser.add_argument(
+            '--distributed_backend',
+            type=str,
+            default='dp',
+            help='supports three options dp, ddp, ddp2'
+        )
         return parser
 
 
@@ -579,9 +585,9 @@ class L_ResNext50(ptl.LightningModule):
         :return:
         """
         parser = ArgumentParser(parents=[parent_parser])
-        parser.add_argument('--gpus', default=0, type=int)
         parser.add_argument('--learning_rate', default=0.001, type=float)
         parser.add_argument('--batch_size', default=RESNET_V2_BATCH_SIZE, type=int)
+        parser.add_argument('--gpus', default=0, type=int)
         parser.add_argument(
             '--distributed_backend',
             type=str,
@@ -589,101 +595,3 @@ class L_ResNext50(ptl.LightningModule):
             help='supports three options dp, ddp, ddp2'
         )
         return parser
-
-import os
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser(
-        description='Train a model from features from a data folder',
-        add_help=False
-    )
-    features_path = FEATURES_DATA_PATH
-    models_path = MODELS_DATA_PATH
-    experiment_name = 'resnext_50_first'
-    root_dir = os.path.dirname(os.path.realpath(__file__))
-    train_dataset, test_dataset, eval_dataset, number_of_classes = CepstrumDataset.init_sets(
-        MelSpectralCoefficientsFeatureExtractor.feature_name,
-        features_path,
-        ratio=(0.5, 0.25, 0.25)
-    )
-
-    parser = L_ResNext50.add_model_specific_args(parser, root_dir)
-    hyperparams = parser.parse_args()
-
-    model = L_ResNext50(
-        hyperparams,
-        number_of_classes,
-        train_dataset,
-        eval_dataset,
-        test_dataset
-    )
-    makedirs(models_path / experiment_name)
-    logger = ptl.logging.TestTubeLogger(
-        save_dir=models_path / experiment_name,
-        version=1  # An existing version with a saved checkpoint
-    )
-    trainer = ptl.Trainer(
-        gpus=hyperparams.gpus,
-        distributed_backend=hyperparams.distributed_backend,
-        logger=logger,
-        default_save_path=models_path / experiment_name,
-        early_stop_callback=None
-    )
-    trainer.fit(model)
-
-    #
-    #
-    # elif model == 'waveNetLstm':
-    #     train_dataset, test_dataset, eval_dataset, number_of_classes = WaveformDataset.init_sets(
-    #         SingingVoiceSeparationOpenUnmixFeatureExtractor.feature_name,
-    #         features_path,
-    #         ratio=(0.5, 0.25, 0.25)
-    #     )
-    #
-    #     train_dataloader = DataLoader(train_dataset, batch_size=WAVENET_BATCH_SIZE, shuffle=True,
-    #                                   num_workers=NUM_WORKERS)
-    #     test_dataloader = DataLoader(test_dataset, batch_size=WAVENET_BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
-    #     val_dataloader = DataLoader(eval_dataset, batch_size=WAVENET_BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
-    #
-    #     # model hyper parameters should be modified in config file
-    #     input_shape = (WAVENET_BATCH_SIZE, WAVEFORM_NUM_CHANNELS, WAVEFORM_MAX_SEQUENCE_LENGTH)
-    #     model = WaveNetBiLSTMClassifier(
-    #         experiment_name,
-    #         num_classes=number_of_classes,
-    #         input_shape=input_shape,
-    #         device_name=device_name
-    #     )
-    #     model = model.load_checkpoint()
-    #     model.train_now(train_dataset, eval_dataset)
-    #     model.evaluate(test_dataset)
-    # elif model == 'waveNetTransformer':
-    #     root_dir = os.path.dirname(os.path.realpath(__file__))
-    #     train_dataset, test_dataset, eval_dataset, number_of_classes = WaveformDataset.init_sets(
-    #         SingingVoiceSeparationOpenUnmixFeatureExtractor.feature_name,
-    #         features_path,
-    #         ratio=(0.5, 0.25, 0.25)
-    #     )
-    #
-    #     parser = WavenetTramsformerClassifier.add_model_specific_args(parser, root_dir)
-    #     hyperparams = parser.parse_args()
-    #
-    #     model = WavenetTramsformerClassifier(
-    #         hyperparams,
-    #         number_of_classes,
-    #         train_dataset,
-    #         eval_dataset,
-    #         test_dataset
-    #     )
-    #     makedirs(MODELS_DATA_PATH / experiment_name)
-    #     logger = ptl.logging.TestTubeLogger(
-    #         save_dir=MODELS_DATA_PATH / experiment_name,
-    #         version=1  # An existing version with a saved checkpoint
-    #     )
-    #     trainer = ptl.Trainer(
-    #         gpus=hyperparams.gpus,
-    #         distributed_backend=hyperparams.distributed_backend,
-    #         logger=logger,
-    #         default_save_path=MODELS_DATA_PATH / experiment_name,
-    #         early_stop_callback=None
-    #     )
-    #     trainer.fit(model)
-
