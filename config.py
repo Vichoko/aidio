@@ -81,6 +81,11 @@ OUNMIX_MODEL = 'umxhq'
 #########################################
 ####    MODELS
 #########################################
+# gmm
+
+GMM_COMPONENT_NUMBER = 64
+GMM_FRAME_LIMIT = 1000
+
 
 #  ResNetV2
 RESNET_V2_VERSION = 2

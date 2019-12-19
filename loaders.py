@@ -679,7 +679,8 @@ class CepstrumDataset(Dataset):
         def __call__(self, sample):
             feature_tensor, label = sample['x'], sample['y']
             feature_tensor = feature_tensor.reshape(1, feature_tensor.shape[0], -1)
-            return {'x': torch.from_numpy(feature_tensor), 'y': torch.from_numpy(np.asarray(label))}
+            return {'x': torch.from_numpy(feature_tensor),
+                    'y': torch.from_numpy(np.asarray(label)).type('torch.LongTensor')}
 
     # class RandomCrop:
     #     """Crop randomly the image in a sample.
@@ -783,6 +784,12 @@ class ClassSampler(Sampler):
     @staticmethod
     def collate_fn(batch):
         """
+        It receives a batch of track mfcc coeffcieints.
+        It supposes  all the received frames are relevant (so make preprocesses before)
+        All the song frames are join in a single dimension as they belong to the same class.
+
+        The batching logic is by classes so every track is from the same class.
+
         :param batch: samples of the same class
         :return: tuple of data Tensor, label Tensor
         """
@@ -792,10 +799,11 @@ class ClassSampler(Sampler):
             if out_mfcc is None:
                 out_mfcc = batch_element['x']
             else:
-                out_mfcc = np.concatenate((out_mfcc, batch_element['x']), axis=1)
-
-        out_labels = np.zeros(out_mfcc.shape[1:]) + label
-        return out_mfcc, out_labels
+                out_mfcc = torch.cat((out_mfcc, batch_element['x']), 2)
+        out_mfcc = out_mfcc.squeeze()  # the first dimension (track) is dropped as all frames are concatenated (1, 128, n_frames)
+        # final size is (128, n_total_frames)
+        out_mfcc = out_mfcc.permute(1, 0)  # to (n_frames, n_features) standard format
+        return {'x': out_mfcc, 'y': label}
 
 
 def mfcc_test():

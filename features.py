@@ -813,7 +813,7 @@ class SingingVoiceSeparationOpenUnmixFeatureExtractor(FeatureExtractor):
             y_i,
             new_labels,
             mp3_filename=mp3_file_name
-            )
+        )
         # except RuntimeError as e:
         #     if 'not enough memory' in e.args[0]:
         #         print(e)
@@ -1026,8 +1026,9 @@ class VoiceActivationFeatureExtractor(FeatureExtractor):
             from keras import backend
 
             if len(backend.tensorflow_backend._get_available_gpus()) > 0:
+                print(backend.tensorflow_backend._get_available_gpus())
                 # set gpu number
-                os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+                os.environ["CUDA_VISIBLE_DEVICES"] = str(len(backend.tensorflow_backend._get_available_gpus()))  # "0"
 
             # load mode
             loaded_model = load_model(str(MODELS_DATA_PATH / 'leglaive' / 'rnn_{}.h5'.format(model_name)))
