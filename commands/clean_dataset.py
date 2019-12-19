@@ -24,9 +24,12 @@ if __name__ == '__main__':
     parser.add_argument('--src_path', help='Source path where audio data files are stored', default=Path('..') / RAW_DATA_PATH)
     parser.add_argument('--dest_path', help='Source path where audio data files are stored', default=Path('..') / RAW_DATA_PATH / 'skipped')
     parser.add_argument('--label_file', help='file name of label file', default='labels.csv')
+    parser.add_argument('--ext', help='name of a valid extension to be cleansed', default=None)
     args = parser.parse_args()
     src_path = Path(args.src_path)
     dest_path = Path(args.dest_path)
+    _ext = args.ext
+    
     makedirs(dest_path)
     label_filename = args.label_file
 
@@ -41,7 +44,9 @@ if __name__ == '__main__':
 
     for filename in dif_filenames:
         ext = filename.split('.')[-1]
-        if ext not in AVAIL_MEDIA_TYPES:
+        if _ext and ext == _ext:
+            pass
+        elif ext not in AVAIL_MEDIA_TYPES:
             print('info: skipping {}. Extension not recognized.')
             continue
 
