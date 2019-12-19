@@ -1,16 +1,14 @@
 import argparse
 import math
-import os
 import pathlib
 import typing
-from argparse import ArgumentParser
-from collections import defaultdict, OrderedDict
+from collections import defaultdict
 from math import ceil, floor
 
 import numpy as np
-import pytorch_lightning as ptl
 import torch
 import tqdm
+from sklearn.mixture import GaussianMixture
 from torch import nn as nn
 from torch.nn import functional as F
 from torch.utils.data import DataLoader
@@ -19,7 +17,7 @@ from config import MODELS_DATA_PATH, S1DCONV_EPOCHS, S1DCONV_BATCH_SIZE, WAVENET
     WAVENET_LAYERS, WAVENET_BLOCKS, WAVENET_DILATION_CHANNELS, WAVENET_RESIDUAL_CHANNELS, WAVENET_SKIP_CHANNELS, \
     WAVENET_END_CHANNELS, WAVENET_CLASSES, WAVENET_OUTPUT_LENGTH, WAVENET_KERNEL_SIZE, WAVENET_POOLING_KERNEL_SIZE, \
     WAVENET_POOLING_STRIDE, LSTM_HIDDEN_SIZE, LSTM_NUM_LAYERS, LSTM_DROPOUT_PROB, WAVEFORM_MAX_SEQUENCE_LENGTH, \
-    TRANSFORMER_D_MODEL, TRANSFORMER_N_HEAD, TRANSFORMER_N_LAYERS, NUM_WORKERS, WAVEFORM_NUM_CHANNELS, makedirs, \
+    TRANSFORMER_D_MODEL, TRANSFORMER_N_HEAD, TRANSFORMER_N_LAYERS, NUM_WORKERS, WAVEFORM_NUM_CHANNELS, \
     FEATURES_DATA_PATH
 from features import SingingVoiceSeparationOpenUnmixFeatureExtractor
 from loaders import WaveformDataset
@@ -593,180 +591,73 @@ class WaveNetTransformerClassifier(nn.Module):
         x = self.fc3(x)
         return x
 
-class L_WavenetTransformerClassifier(ptl.LightningModule):
-    """
-    Sample model to show how to define a template
-    """
 
-    def __init__(self, hparams, num_classes, train_dataset, eval_dataset, test_dataset):
-        super(L_WavenetTransformerClassifier, self).__init__()
-        self.hparams = hparams
-        self.loss = torch.nn.CrossEntropyLoss()
-        self.train_dataset = train_dataset
-        self.eval_dataset = eval_dataset
-        self.test_dataset = test_dataset
-        # build model
-        self.model = WaveNetTransformerClassifier(num_classes)
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=hparams.learning_rate)
+class WaveNetLSTMClassifier(nn.Module):
 
-    # ---------------------
-    # TRAINING
-    # ---------------------
+    def __call__(self, *input, **kwargs) -> typing.Any:
+        """
+        Hack to fix '(input: (Any, ...), kwargs: dict) -> Any' warning in PyCharm auto-complete.
+        :param input:
+        :param kwargs:
+        :return:
+        """
+        return super().__call__(*input, **kwargs)
+
+    def __init__(self, num_classes):
+        super(WaveNetLSTMClassifier, self).__init__()
+        # first encoder
+        # neural audio embeddings
+        # captures local representations through convolutions
+        self.wavenet = WaveNetModel(
+            WAVENET_LAYERS,
+            WAVENET_BLOCKS,
+            WAVENET_DILATION_CHANNELS,
+            WAVENET_RESIDUAL_CHANNELS,
+            WAVENET_SKIP_CHANNELS,
+            WAVENET_END_CHANNELS,
+            WAVENET_CLASSES,
+            WAVENET_OUTPUT_LENGTH,
+            WAVENET_KERNEL_SIZE)
+
+        # reduce sample resolution from 160k to 32k
+        # output_length = floor((input_length - stride)/kernel_size + 1)
+        self.avg_pooling = nn.AvgPool1d(
+            kernel_size=WAVENET_POOLING_KERNEL_SIZE,
+            stride=WAVENET_POOLING_STRIDE
+        )
+
+        self.enc_lstm = nn.LSTM(
+            self.wavenet.end_channels,
+            LSTM_HIDDEN_SIZE, LSTM_NUM_LAYERS,
+            bidirectional=True,
+            dropout=LSTM_DROPOUT_PROB)
+
+        # for now output length is fixed to 159968
+
+        self.fc1 = nn.Linear(LSTM_HIDDEN_SIZE * 2, 120)  # 6*6 from image dimension
+        self.fc2 = nn.Linear(120, 84)
+        self.fc3 = nn.Linear(84, num_classes)
+
     def forward(self, x):
-        """
-        No special modification required for lightning, define as you normally would
-        :param x:
-        :return:
-        """
-        return self.model(x)
+        # print('info: feeding wavenet...')
+        x = self.wavenet.forward(x)
+        # reduce sequence_length / 5
+        x = self.avg_pooling(x)
+        # x.shape is n_data, n_channels, n_sequence
+        # rnn expected input is n_sequence, n_data, wavenet_channels
+        x = x.transpose(0, 2).transpose(1, 2)
+        # print('info: feeding lstm...')
+        self.enc_lstm.flatten_parameters()
+        x, _ = self.enc_lstm(x)  # shape n_sequence, n_data, lstm_hidden_size * 2
+        x, _ = x.max(0)  # max pooling over the sequence dim; drop sequence axis
+        # x final shape is n_data, lstm_hidden_size * 2
+        # print('info: feeding fully-connected...')
+        # simple classifier
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
+        x = self.fc3(x)
+        return x
 
-    def training_step(self, batch, batch_idx):
-        """
-        Lightning calls this inside the training loop
-        :param batch:
-        :return:
-        """
-        # forward pass
-        x, y = batch['x'], batch['y']
-        y_pred = self.forward(x)
-
-        # calculate loss
-        loss_val = self.loss(y_pred, y)
-
-        tqdm_dict = {'train_loss': loss_val}
-        output = OrderedDict({
-            'loss': loss_val,
-            'progress_bar': tqdm_dict,
-            'log': tqdm_dict
-        })
-
-        # can also return just a scalar instead of a dict (return loss_val)
-        return output
-
-    def validation_step(self, batch, batch_idx):
-        """
-        Lightning calls this inside the validation loop
-        :param batch:
-        :return:
-        """
-        x, y = batch['x'], batch['y']
-        y_pred = self.forward(x)
-
-        # calculate loss
-        loss_val = self.loss(y_pred, y)
-
-        # acc
-        labels_hat = torch.argmax(y_pred, dim=1)
-        val_acc = torch.sum(y == labels_hat).item() / (len(y) * 1.0)
-        val_acc = torch.tensor(val_acc)
-
-        if self.on_gpu:
-            val_acc = val_acc.cuda(loss_val.device.index)
-
-        output = OrderedDict({
-            'val_loss': loss_val,
-            'val_acc': val_acc,
-        })
-
-        # can also return just a scalar instead of a dict (return loss_val)
-        return output
-
-    def validation_end(self, outputs):
-        """
-        Called at the end of validation to aggregate outputs
-        :param outputs: list of individual outputs of each validation step
-        :return:
-        """
-        # if returned a scalar from validation_step, outputs is a list of tensor scalars
-        # we return just the average in this case (if we want)
-        # return torch.stack(outputs).mean()
-
-        val_loss_mean = 0
-        val_acc_mean = 0
-        for output in outputs:
-            val_loss = output['val_loss']
-
-            # reduce manually when using dp
-            if self.trainer.use_dp or self.trainer.use_ddp2:
-                val_loss = torch.mean(val_loss)
-            val_loss_mean += val_loss
-
-            # reduce manually when using dp
-            val_acc = output['val_acc']
-            if self.trainer.use_dp or self.trainer.use_ddp2:
-                val_acc = torch.mean(val_acc)
-
-            val_acc_mean += val_acc
-
-        val_loss_mean /= len(outputs)
-        val_acc_mean /= len(outputs)
-        tqdm_dict = {'val_loss': val_loss_mean, 'val_acc': val_acc_mean}
-        result = {'progress_bar': tqdm_dict, 'log': tqdm_dict, 'val_loss': val_loss_mean}
-        return result
-
-    # ---------------------
-    # TRAINING SETUP
-    # ---------------------
-    def configure_optimizers(self):
-        """
-        return whatever optimizers we want here
-        :return: list of optimizers
-        """
-        return [self.optimizer]
-
-    # def __dataloader(self, train):
-    #     # init data generators
-    #     transform = transforms.Compose([transforms.ToTensor(),
-    #                                     transforms.Normalize((0.5,), (1.0,))])
-    #     dataset = MNIST(root=self.hparams.data_root, train=train,
-    #                     transform=transform, download=True)
-    #
-    #     # when using multi-node (ddp) we need to add the  datasampler
-    #     train_sampler = None
-    #     batch_size = self.hparams.batch_size
-    #
-    #     if self.use_ddp:
-    #         train_sampler = DistributedSampler(dataset)
-    #
-    #     should_shuffle = train_sampler is None
-    #     loader = DataLoader(
-    #         dataset=dataset,
-    #         batch_size=batch_size,
-    #         shuffle=should_shuffle,
-    #         sampler=train_sampler,
-    #         num_workers=0
-    #     )
-    #
-    #     return loader
-
-    @ptl.data_loader
-    def train_dataloader(self):
-        # logging.info('training data loader called')
-        return DataLoader(self.train_dataset, batch_size=WAVENET_BATCH_SIZE, shuffle=True,
-                          num_workers=NUM_WORKERS)
-
-    @ptl.data_loader
-    def val_dataloader(self):
-        # logging.info('val data loader called')
-        return DataLoader(self.eval_dataset, batch_size=WAVENET_BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
-
-    @ptl.data_loader
-    def test_dataloader(self):
-        # logging.info('test data loader called')
-        return DataLoader(self.test_dataset, batch_size=WAVENET_BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
-
-    @staticmethod
-    def add_model_specific_args(parent_parser, root_dir):  # pragma: no cover
-        """
-        Parameters you define here will be available to your model through self.hparams
-        :param parent_parser:
-        :param root_dir:
-        :return:
-        """
-        parser = ArgumentParser(parents=[parent_parser])
-        parser.add_argument('--learning_rate', default=0.001, type=float)
-        parser.add_argument('--batch_size', default=WAVENET_BATCH_SIZE, type=int)
-        return parser
 
 class GMMClassifier(nn.Module):
 
@@ -781,15 +672,11 @@ class GMMClassifier(nn.Module):
 
     def __init__(self, num_classes):
         super(GMMClassifier, self).__init__()
-        # first encoder
-        # neural audio embeddings
-        # captures local representations through convolutions
-        n_features = None  # todo: fill this
-
+        n_features = 128
         self.gmm_list = []
         for _ in num_classes:
             # one gmm per singer as stated in Tsai; Fujihara; Mesaros et. al works on SID
-            self.gmm_list.append(GaussianMixture(n_components=64, n_features=n_features))
+            self.gmm_list.append(GaussianMixture(n_components=64))
 
     def forward_score(self, x):
         """
@@ -842,187 +729,6 @@ class GMMClassifier(nn.Module):
         x = x.argmax(dim=1)  # shape is (sample, )
         # sum the scores over the
         return x
-
-
-class L_GMMClassifier(ptl.LightningModule):
-    """
-    Sample model to show how to define a template
-    """
-
-    def __init__(self, hparams, num_classes, train_dataset, eval_dataset, test_dataset):
-        super(L_GMMClassifier, self).__init__()
-        self.hparams = hparams
-        # self.loss = torch.nn.CrossEntropyLoss()
-        self.train_dataset = train_dataset
-        self.eval_dataset = eval_dataset
-        self.test_dataset = test_dataset
-        # build model
-        self.model = GMMClassifier(num_classes)
-        # self.optimizer = torch.optim.Adam(self.model.parameters(), lr=hparams.learning_rate)
-
-    # ---------------------
-    # TRAINING
-    # ---------------------
-    def forward(self, x):
-        """
-        No special modification required for lightning, define as you normally would
-        :param x:
-        :return:
-        """
-        return self.model(x)
-
-    def training_step(self, batch, batch_idx):
-        """
-        Lightning calls this inside the training loop
-        :param batch:
-        :return:
-        """
-        # forward pass
-        x, y = batch['x'], batch['y']
-
-        for gmm_idx, gmm in enumerate(self.model.gmm_list):
-            gmm.fit()
-
-
-        y_pred = self.forward(x)
-
-        # calculate loss
-        loss_val = self.loss(y_pred, y)
-
-        tqdm_dict = {'train_loss': loss_val}
-        output = OrderedDict({
-            'loss': loss_val,
-            'progress_bar': tqdm_dict,
-            'log': tqdm_dict
-        })
-
-        # can also return just a scalar instead of a dict (return loss_val)
-        return output
-
-    def validation_step(self, batch, batch_idx):
-        """
-        Lightning calls this inside the validation loop
-        :param batch:
-        :return:
-        """
-        x, y = batch['x'], batch['y']
-        y_pred = self.forward(x)
-
-        # calculate loss
-        loss_val = self.loss(y_pred, y)
-
-        # acc
-        labels_hat = torch.argmax(y_pred, dim=1)
-        val_acc = torch.sum(y == labels_hat).item() / (len(y) * 1.0)
-        val_acc = torch.tensor(val_acc)
-
-        if self.on_gpu:
-            val_acc = val_acc.cuda(loss_val.device.index)
-
-        output = OrderedDict({
-            'val_loss': loss_val,
-            'val_acc': val_acc,
-        })
-
-        # can also return just a scalar instead of a dict (return loss_val)
-        return output
-
-    def validation_end(self, outputs):
-        """
-        Called at the end of validation to aggregate outputs
-        :param outputs: list of individual outputs of each validation step
-        :return:
-        """
-        # if returned a scalar from validation_step, outputs is a list of tensor scalars
-        # we return just the average in this case (if we want)
-        # return torch.stack(outputs).mean()
-
-        val_loss_mean = 0
-        val_acc_mean = 0
-        for output in outputs:
-            val_loss = output['val_loss']
-
-            # reduce manually when using dp
-            if self.trainer.use_dp or self.trainer.use_ddp2:
-                val_loss = torch.mean(val_loss)
-            val_loss_mean += val_loss
-
-            # reduce manually when using dp
-            val_acc = output['val_acc']
-            if self.trainer.use_dp or self.trainer.use_ddp2:
-                val_acc = torch.mean(val_acc)
-
-            val_acc_mean += val_acc
-
-        val_loss_mean /= len(outputs)
-        val_acc_mean /= len(outputs)
-        tqdm_dict = {'val_loss': val_loss_mean, 'val_acc': val_acc_mean}
-        result = {'progress_bar': tqdm_dict, 'log': tqdm_dict, 'val_loss': val_loss_mean}
-        return result
-
-    # ---------------------
-    # TRAINING SETUP
-    # ---------------------
-    def configure_optimizers(self):
-        """
-        return whatever optimizers we want here
-        :return: list of optimizers
-        """
-        return [self.optimizer]
-
-    # def __dataloader(self, train):
-    #     # init data generators
-    #     transform = transforms.Compose([transforms.ToTensor(),
-    #                                     transforms.Normalize((0.5,), (1.0,))])
-    #     dataset = MNIST(root=self.hparams.data_root, train=train,
-    #                     transform=transform, download=True)
-    #
-    #     # when using multi-node (ddp) we need to add the  datasampler
-    #     train_sampler = None
-    #     batch_size = self.hparams.batch_size
-    #
-    #     if self.use_ddp:
-    #         train_sampler = DistributedSampler(dataset)
-    #
-    #     should_shuffle = train_sampler is None
-    #     loader = DataLoader(
-    #         dataset=dataset,
-    #         batch_size=batch_size,
-    #         shuffle=should_shuffle,
-    #         sampler=train_sampler,
-    #         num_workers=0
-    #     )
-    #
-    #     return loader
-
-    @ptl.data_loader
-    def train_dataloader(self):
-        # logging.info('training data loader called')
-        return DataLoader(self.train_dataset, batch_size=WAVENET_BATCH_SIZE, shuffle=True,
-                          num_workers=NUM_WORKERS)
-
-    @ptl.data_loader
-    def val_dataloader(self):
-        # logging.info('val data loader called')
-        return DataLoader(self.eval_dataset, batch_size=WAVENET_BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
-
-    @ptl.data_loader
-    def test_dataloader(self):
-        # logging.info('test data loader called')
-        return DataLoader(self.test_dataset, batch_size=WAVENET_BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
-
-    @staticmethod
-    def add_model_specific_args(parent_parser, root_dir):  # pragma: no cover
-        """
-        Parameters you define here will be available to your model through self.hparams
-        :param parent_parser:
-        :param root_dir:
-        :return:
-        """
-        parser = ArgumentParser(parents=[parent_parser])
-        parser.add_argument('--learning_rate', default=0.001, type=float)
-        parser.add_argument('--batch_size', default=WAVENET_BATCH_SIZE, type=int)
-        return parser
 
 
 features_data_path = FEATURES_DATA_PATH
@@ -1112,57 +818,3 @@ if __name__ == '__main__':
         model = model.load_checkpoint()
         model.train_now(train_dataset, eval_dataset)
         model.evaluate(test_dataset)
-    elif model == 'waveNetLstm':
-        train_dataset, test_dataset, eval_dataset, number_of_classes = WaveformDataset.init_sets(
-            SingingVoiceSeparationOpenUnmixFeatureExtractor.feature_name,
-            features_path,
-            ratio=(0.5, 0.25, 0.25)
-        )
-
-        train_dataloader = DataLoader(train_dataset, batch_size=WAVENET_BATCH_SIZE, shuffle=True,
-                                      num_workers=NUM_WORKERS)
-        test_dataloader = DataLoader(test_dataset, batch_size=WAVENET_BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
-        val_dataloader = DataLoader(eval_dataset, batch_size=WAVENET_BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
-
-        # model hyper parameters should be modified in config file
-        input_shape = (WAVENET_BATCH_SIZE, WAVEFORM_NUM_CHANNELS, WAVEFORM_MAX_SEQUENCE_LENGTH)
-        model = WaveNetBiLSTMClassifier(
-            experiment_name,
-            num_classes=number_of_classes,
-            input_shape=input_shape,
-            device_name=device_name
-        )
-        model = model.load_checkpoint()
-        model.train_now(train_dataset, eval_dataset)
-        model.evaluate(test_dataset)
-    elif model == 'waveNetTransformer':
-        root_dir = os.path.dirname(os.path.realpath(__file__))
-        train_dataset, test_dataset, eval_dataset, number_of_classes = WaveformDataset.init_sets(
-            SingingVoiceSeparationOpenUnmixFeatureExtractor.feature_name,
-            features_path,
-            ratio=(0.5, 0.25, 0.25)
-        )
-
-        parser = WavenetTramsformerClassifier.add_model_specific_args(parser, root_dir)
-        hyperparams = parser.parse_args()
-
-        model = WavenetTramsformerClassifier(
-            hyperparams,
-            number_of_classes,
-            train_dataset,
-            eval_dataset,
-            test_dataset
-        )
-        makedirs(MODELS_DATA_PATH / experiment_name)
-        logger = ptl.logging.TestTubeLogger(
-            save_dir=MODELS_DATA_PATH / experiment_name,
-            version=1  # An existing version with a saved checkpoint
-        )
-        trainer = ptl.Trainer(
-            gpus=hyperparams.gpus,
-            distributed_backend=hyperparams.distributed_backend,
-            logger=logger,
-            default_save_path=MODELS_DATA_PATH / experiment_name,
-            early_stop_callback=None
-        )
-        trainer.fit(model)
