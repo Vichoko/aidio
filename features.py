@@ -1026,10 +1026,11 @@ class VoiceActivationFeatureExtractor(FeatureExtractor):
             from keras import backend
 
             if len(backend.tensorflow_backend._get_available_gpus()) > 0:
-                print(backend.tensorflow_backend._get_available_gpus())
+                # This NN use more that 2 GB of VRAM. So i disable GPU for my local environment with
+                # print(backend.tensorflow_backend._get_available_gpus())
                 # set gpu number
-                os.environ["CUDA_VISIBLE_DEVICES"] = str(len(backend.tensorflow_backend._get_available_gpus()))  # "0"
-
+                # os.environ["CUDA_VISIBLE_DEVICES"] = str(len(backend.tensorflow_backend._get_available_gpus()))  # "0"
+                os.environ["CUDA_VISIBLE_DEVICES"] = ""
             # load mode
             loaded_model = load_model(str(MODELS_DATA_PATH / 'leglaive' / 'rnn_{}.h5'.format(model_name)))
             print("loaded model")
