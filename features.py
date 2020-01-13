@@ -517,7 +517,7 @@ class MelCepstralCoefficientsFeatureExtractor(FeatureExtractor):
             wav = librosa.util.normalize(wav)
             # Get Mel-Spectrogram
             mfcc = librosa.feature.mfcc(wav, sr=SR, n_mfcc=MFCC_N_COEF, n_fft=MFCC_FFT_WINDOW,
-                                           hop_length=MFCC_HOP_LENGTH)
+                                        hop_length=MFCC_HOP_LENGTH)
             # this is kind-of standard
             FeatureExtractor.save_feature(mfcc, feature_name, out_path, x, y, new_labels)
 
@@ -1313,7 +1313,8 @@ AVAILABLE_FEATURES = {
     MagPhaseFeatureExtractor.feature_name: MagPhaseFeatureExtractor,
     SingingVoiceSeparationUnetFeatureExtractor.feature_name: SingingVoiceSeparationUnetFeatureExtractor,
     SingingVoiceSeparationOpenUnmixFeatureExtractor.feature_name: SingingVoiceSeparationOpenUnmixFeatureExtractor,
-    VoiceActivationSplitFeatureExtractor.feature_name: VoiceActivationSplitFeatureExtractor
+    VoiceActivationSplitFeatureExtractor.feature_name: VoiceActivationSplitFeatureExtractor,
+    MelCepstralCoefficientsFeatureExtractor.feature_name: MelCepstralCoefficientsFeatureExtractor,
 }
 
 if __name__ == '__main__':
