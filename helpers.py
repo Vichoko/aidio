@@ -4,7 +4,6 @@ A helper is a wrapper that joins a DataSet with a Trainer in a more compact way.
 import argparse
 
 import pytorch_lightning as ptl
-from pytorch_lightning.callbacks import ModelCheckpoint
 
 from config import makedirs, FEATURES_DATA_PATH, MODELS_DATA_PATH
 from features import MelSpectralCoefficientsFeatureExtractor, SingingVoiceSeparationOpenUnmixFeatureExtractor
@@ -76,14 +75,12 @@ class AbstractHelper:
             Error
         :return:
         """
+
         return
 
 
-class ResNext50Helper(AbstractHelper):
-    model_name = 'resnext50'
-    dataset = CepstrumDataset
-    source_feature_name = MelSpectralCoefficientsFeatureExtractor.feature_name
-    lightning_module = L_ResNext50
+# folder name of music files after some processing (raw, svs, svd, svs+svd, etc)
+raw_feature_name = 'svs'
 
 
 class WavenetTransformerHelper(AbstractHelper):
@@ -118,6 +115,13 @@ class GMMClassifierHelper(AbstractHelper):
         super().train()
         self.module.trained = True
         self.module.save_model()
+
+
+class ResNext50Helper(AbstractHelper):
+    model_name = 'resnext50'
+    dataset = CepstrumDataset
+    source_feature_name = MelSpectralCoefficientsFeatureExtractor.feature_name
+    lightning_module = L_ResNext50
 
 
 helpers = {

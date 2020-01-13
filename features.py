@@ -26,7 +26,7 @@ from config import SR, RAW_DATA_PATH, FEATURES_DATA_PATH, HOP_LENGTH, N_FFT, N_M
     N_MELS_HPSS, MODELS_DATA_PATH, RNN_INPUT_SIZE_VOICE_ACTIVATION, TOP_DB_WINDOWED_MFCC, \
     MIN_INTERVAL_LEN_WINDOWED_MFCC, WINDOW_LEN_WINDOWED_MFCC, WINDOW_HOP_WINDOWED_MFCC, makedirs, AVAIL_MEDIA_TYPES, \
     NUM_WORKERS, MAGPHASE_WINDOW_SIZE, MAGPHASE_HOP_LENGTH, MAGPHASE_SAMPLE_RATE, MAGPHASE_PATCH_SIZE, \
-    OUNMIX_SAMPLE_RATE
+    OUNMIX_SAMPLE_RATE, MFCC_N_COEF, MFCC_FFT_WINDOW, MFCC_HOP_LENGTH
 from util.leglaive.audio import ono_hpss, log_melgram
 
 
@@ -494,6 +494,32 @@ class MelSpectralCoefficientsFeatureExtractor(FeatureExtractor):
             melspec = librosa.power_to_db(melspec).astype(np.float32)
             # this is kind-of standard
             FeatureExtractor.save_feature(melspec, feature_name, out_path, x, y, new_labels)
+
+        return __process_element
+
+
+class MelCepstralCoefficientsFeatureExtractor(FeatureExtractor):
+    feature_name = 'mfcc'
+
+    @staticmethod
+    def process_element(feature_name, new_labels, out_path, source_path, **kwargs):
+        def __process_element(data):
+            """
+            :param x: filename (str)
+            :param y: label (str)
+            :return:
+            """
+            print('prosessing {}'.format(data))
+            x = data[0]
+            y = data[1]
+            wav, _ = librosa.load(str(source_path / x), sr=SR)
+            # Normalize audio signal
+            wav = librosa.util.normalize(wav)
+            # Get Mel-Spectrogram
+            mfcc = librosa.feature.mfcc(wav, sr=SR, n_mfcc=MFCC_N_COEF, n_fft=MFCC_FFT_WINDOW,
+                                           hop_length=MFCC_HOP_LENGTH)
+            # this is kind-of standard
+            FeatureExtractor.save_feature(mfcc, feature_name, out_path, x, y, new_labels)
 
         return __process_element
 

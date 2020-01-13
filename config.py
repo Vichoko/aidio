@@ -42,6 +42,12 @@ N_MELS = 128  # number of Mel bands to generate
 FMIN = 0  # lowest frequency (in Hz)
 FMAX = None  # Highest frequency (in Hz)
 
+
+# MFCC
+MFCC_FFT_WINDOW = SR * 0.032  # 32 ms window frame
+MFCC_HOP_LENGTH = SR * 0.010  # 10 ms shifts
+MFCC_N_COEF = 20
+
 # -- sINGING vOICE dETECTION --#
 VOICE_DETECTION_PATH = '/home/voyanedel/data/code/ismir2018-revisiting-svd/'
 VOICE_DETECTION_MODEL_NAME = 'june2019'
