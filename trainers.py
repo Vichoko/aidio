@@ -1,3 +1,4 @@
+import pickle
 from argparse import ArgumentParser
 from collections import OrderedDict
 
@@ -7,7 +8,7 @@ from torch.nn import Conv2d
 from torch.utils.data import DataLoader
 from torchvision.models import resnext50_32x4d
 
-from config import WAVENET_BATCH_SIZE, NUM_WORKERS, RESNET_V2_BATCH_SIZE
+from config import WAVENET_BATCH_SIZE, NUM_WORKERS, RESNET_V2_BATCH_SIZE, MODELS_DATA_PATH
 from loaders import ClassSampler
 from torch_models import WaveNetTransformerClassifier, GMMClassifier, WaveNetLSTMClassifier
 
@@ -21,8 +22,11 @@ class L_GMMClassifier(ptl.LightningModule):
     Sample model to show how to define a template
     """
 
-    def __init__(self, hparams, num_classes, train_dataset, eval_dataset, test_dataset):
+    def __init__(self, hparams, num_classes, train_dataset, eval_dataset, test_dataset, model_name='unnamed',
+                 model_path=MODELS_DATA_PATH):
         super(L_GMMClassifier, self).__init__()
+        self.model_name = model_name
+        self.model_path = model_path
         self.num_classes = num_classes
         self.hparams = hparams
         self.loss = torch.nn.CrossEntropyLoss()
@@ -30,8 +34,48 @@ class L_GMMClassifier(ptl.LightningModule):
         self.eval_dataset = eval_dataset
         self.test_dataset = test_dataset
         # build model
-        self.model = GMMClassifier(num_classes)
         self.optimizer = torch.optim.Adam([torch.Tensor()], lr=hparams.learning_rate)
+        self.trained = False
+        self.model = self.load_model(num_classes)
+
+    def save_model(self):
+        """
+        Save the model state with some metrics.
+
+        :return:
+        """
+        filename = 'gmm_{}.pickle'.format(self.model_name)
+        pickle.dump(self.model, open(self.model_path / filename, 'wb'))
+        print('info: gmm model saved')
+        # metadata_filename = 'gmm_{}_metadata.json'.format(model_name)
+        #
+        # # load model metadata
+        # try:
+        #     metadata = json.load(open(metadata_filename, 'r'))
+        # # or create metadata if it doesnt exist
+        # except IOError:
+        #     metadata = {
+        #         'name': model_name,
+        #         'metrics': None
+        #     }
+        #
+        # if metrics and is_better(metrics, metadata['metrics']):
+        #     pass
+        #
+        # json.dump(metadata, open(metadata_filename, 'w'))
+        return
+
+    def load_model(self, num_classes):
+        filename = 'gmm_{}.pickle'.format(self.model_name)
+        try:
+            model = pickle.load(open(self.model_path / filename, 'rb'))
+            print('info: gmm loaded fron file')
+            self.trained = True
+        except IOError:
+            model = GMMClassifier(num_classes)
+            print('info: previuous gmm not found.')
+            self.trained = False
+        return model
 
     # ---------------------
     # TRAINING

@@ -13,192 +13,111 @@ from trainers import L_ResNext50, L_WavenetTransformerClassifier, L_WavenetLSTMC
 
 
 class AbstractHelper:
-    pass
+    model_name = 'UnnamedHelper'
+    dataset = CepstrumDataset
+    source_feature_name = MelSpectralCoefficientsFeatureExtractor.feature_name
+    lightning_module = L_ResNext50
+    dataset_ratios = (0.5, 0.25, 0.25)
+
+    def __init__(self, experiment_name, parser, features_path, models_path, ):
+        self.features_path = features_path
+        self.models_path = models_path
+        self.experiment_name = experiment_name
+
+        train_dataset, test_dataset, eval_dataset, number_of_classes = self.dataset.init_sets(
+            self.source_feature_name,
+            features_path,
+            ratio=self.dataset_ratios
+        )
+
+        parser = self.lightning_module.add_model_specific_args(parser, None)
+        hyperparams = parser.parse_args()
+
+        self.module = self.lightning_module(
+            hyperparams,
+            number_of_classes,
+            train_dataset,
+            eval_dataset,
+            test_dataset
+        )
+        save_dir = models_path / model_name / experiment_name
+        makedirs(save_dir)
+        logger = ptl.logging.TestTubeLogger(
+            save_dir=save_dir,
+            version=1  # An existing version with a saved checkpoint
+        )
+
+        if 'gpus' not in hyperparams:
+            hyperparams.gpus = 0
+        if 'distributed_backend' not in hyperparams:
+            hyperparams.distributed_backend = 'dp'
+
+        self.trainer = ptl.Trainer(
+            gpus=hyperparams.gpus,
+            distributed_backend=hyperparams.distributed_backend,
+            logger=logger,
+            default_save_path=save_dir,
+            early_stop_callback=None
+        )
+
+    def train(self):
+        self.trainer.fit(self.module)
+
+    def evaluate(self):
+        """
+        Run a set of evaluations to obtain metrics of SID task.
+        Metrics:
+            Accuracy
+                Accuracy per class
+                Accuracy total
+            Recall
+                Per Class
+                Total
+            Error
+        :return:
+        """
+        return
 
 
-class ResNext50Helper:
+class ResNext50Helper(AbstractHelper):
     model_name = 'resnext50'
-
-    def __init__(self, experiment_name, parser, features_path, models_path, ):
-        self.features_path = features_path
-        self.models_path = models_path
-        self.experiment_name = experiment_name
-
-        train_dataset, test_dataset, eval_dataset, number_of_classes = CepstrumDataset.init_sets(
-            MelSpectralCoefficientsFeatureExtractor.feature_name,
-            features_path,
-            ratio=(0.5, 0.25, 0.25)
-        )
-
-        parser = L_ResNext50.add_model_specific_args(parser, None)
-        hyperparams = parser.parse_args()
-
-        self.model = L_ResNext50(
-            hyperparams,
-            number_of_classes,
-            train_dataset,
-            eval_dataset,
-            test_dataset
-        )
-        save_dir = models_path / model_name / experiment_name
-        makedirs(save_dir)
-        logger = ptl.logging.TestTubeLogger(
-            save_dir=save_dir,
-            version=1  # An existing version with a saved checkpoint
-        )
-        self.trainer = ptl.Trainer(
-            gpus=hyperparams.gpus,
-            distributed_backend=hyperparams.distributed_backend,
-            logger=logger,
-            default_save_path=save_dir,
-            early_stop_callback=None
-        )
-
-    def train(self):
-        self.trainer.fit(self.model)
+    dataset = CepstrumDataset
+    source_feature_name = MelSpectralCoefficientsFeatureExtractor.feature_name
+    lightning_module = L_ResNext50
 
 
-class WavenetTransformerHelper:
+class WavenetTransformerHelper(AbstractHelper):
     model_name = 'wavenet_transformer'
-
-    def __init__(self, experiment_name, parser, features_path, models_path, ):
-        self.features_path = features_path
-        self.models_path = models_path
-        self.experiment_name = experiment_name
-
-        train_dataset, test_dataset, eval_dataset, number_of_classes = WaveformDataset.init_sets(
-            SingingVoiceSeparationOpenUnmixFeatureExtractor.feature_name,
-            features_path,
-            ratio=(0.5, 0.25, 0.25)
-        )
-
-        parser = L_WavenetTransformerClassifier.add_model_specific_args(parser, None)
-        hyperparams = parser.parse_args()
-
-        self.model = L_WavenetTransformerClassifier(
-            hyperparams,
-            number_of_classes,
-            train_dataset,
-            eval_dataset,
-            test_dataset
-        )
-        save_dir = models_path / model_name / experiment_name
-        makedirs(save_dir)
-        logger = ptl.logging.TestTubeLogger(
-            save_dir=save_dir,
-            version=1  # An existing version with a saved checkpoint
-        )
-        self.trainer = ptl.Trainer(
-            gpus=hyperparams.gpus,
-            distributed_backend=hyperparams.distributed_backend,
-            logger=logger,
-            default_save_path=save_dir,
-            early_stop_callback=None
-        )
-
-    def train(self):
-        self.trainer.fit(self.model)
+    dataset = WaveformDataset
+    source_feature_name = SingingVoiceSeparationOpenUnmixFeatureExtractor.feature_name
+    lightning_module = L_WavenetTransformerClassifier
 
 
-class WavenetLSTMHelper:
+class WavenetLSTMHelper(AbstractHelper):
     model_name = 'wavenet_lstm'
-
-    def __init__(self, experiment_name, parser, features_path, models_path, ):
-        self.features_path = features_path
-        self.models_path = models_path
-        self.experiment_name = experiment_name
-
-        train_dataset, test_dataset, eval_dataset, number_of_classes = WaveformDataset.init_sets(
-            SingingVoiceSeparationOpenUnmixFeatureExtractor.feature_name,
-            features_path,
-            ratio=(0.5, 0.25, 0.25)
-        )
-
-        parser = L_WavenetLSTMClassifier.add_model_specific_args(parser, None)
-        hyperparams = parser.parse_args()
-
-        self.model = L_WavenetLSTMClassifier(
-            hyperparams,
-            number_of_classes,
-            train_dataset,
-            eval_dataset,
-            test_dataset
-        )
-        save_dir = models_path / model_name / experiment_name
-        makedirs(save_dir)
-        logger = ptl.logging.TestTubeLogger(
-            save_dir=save_dir,
-            version=1  # An existing version with a saved checkpoint
-        )
-        self.trainer = ptl.Trainer(
-            gpus=hyperparams.gpus,
-            distributed_backend=hyperparams.distributed_backend,
-            logger=logger,
-            default_save_path=save_dir,
-            early_stop_callback=None
-        )
-
-    def train(self):
-        self.trainer.fit(self.model)
+    dataset = WaveformDataset
+    source_feature_name = SingingVoiceSeparationOpenUnmixFeatureExtractor.feature_name
+    lightning_module = L_WavenetLSTMClassifier
 
 
-class GMMClassifierHelper:
+class GMMClassifierHelper(AbstractHelper):
     model_name = 'gmm'
-
-    def __init__(self, experiment_name, parser, features_path, models_path, ):
-        self.features_path = features_path
-        self.models_path = models_path
-        self.experiment_name = experiment_name
-
-        train_dataset, test_dataset, eval_dataset, num_classes = CepstrumDataset.init_sets(
-            MelSpectralCoefficientsFeatureExtractor.feature_name,
-            features_path,
-            ratio=(0.5, 0.25, 0.25)
-        )
-
-        # data sets
-        self.train_ds = train_dataset
-        self.test_ds = test_dataset
-        self.eval_ds = eval_dataset
-
-        parser = L_WavenetLSTMClassifier.add_model_specific_args(parser, None)
-        hyperparams = parser.parse_args()
-
-        self.model = L_GMMClassifier(
-            hyperparams,
-            num_classes,
-            train_dataset,
-            eval_dataset,
-            test_dataset
-        )
-        save_dir = models_path / model_name / experiment_name
-        makedirs(save_dir)
-
-        checkpoint_callback = ModelCheckpoint(
-            filepath=save_dir,
-            save_best_only=True,
-            verbose=True,
-            monitor='val_acc',
-            mode='max',
-            prefix=''
-        )
-        logger = ptl.logging.TestTubeLogger(
-            save_dir=save_dir,
-            version=1  # An existing version with a saved checkpoint
-        )
-        self.trainer = ptl.Trainer(
-            gpus=hyperparams.gpus,
-            distributed_backend=hyperparams.distributed_backend,
-            logger=logger,
-            checkpoint_callback=checkpoint_callback,
-            default_save_path=save_dir,
-            early_stop_callback=None,
-            max_nb_epochs=1
-        )
+    dataset = CepstrumDataset
+    source_feature_name = MelSpectralCoefficientsFeatureExtractor.feature_name
+    lightning_module = L_GMMClassifier
 
     def train(self):
-        self.trainer.fit(self.model)
-        print('trained')
+        """
+        The lighning_module of GMM has special behaviour. So it has trained boolean
+        attribute and save_model methods.
+        :return:
+        """
+        if self.module.trained:
+            print('warning: Trying to trained an gmm loaded from disc and already trained. ignoring...')
+            return
+        super().train()
+        self.module.trained = True
+        self.module.save_model()
 
 
 helpers = {
@@ -217,7 +136,7 @@ if __name__ == '__main__':
     parser.add_argument(
         '--model',
         help='Model name. (Ej. resnext50, gmm, transformer)',
-        default=GMMClassifierHelper.model_name,
+        default=WavenetLSTMHelper.model_name,
         # required=True
     )
     parser.add_argument(
@@ -234,3 +153,4 @@ if __name__ == '__main__':
     models_path = MODELS_DATA_PATH
     helper = helper_class(experiment_name, parser, features_path, models_path)
     helper.train()
+    print('helper ended')

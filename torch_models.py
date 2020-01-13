@@ -6,7 +6,6 @@ from collections import defaultdict
 from math import ceil, floor
 
 import numpy as np
-import sys
 import torch
 import tqdm
 from sklearn import mixture
@@ -736,6 +735,7 @@ class GMMClassifier(nn.Module):
         # x = x.argmax(dim=0)  # x is numeral index of class
         # sum the scores over the
         return x
+
 
 features_data_path = FEATURES_DATA_PATH
 if __name__ == '__main__':
