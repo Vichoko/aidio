@@ -44,8 +44,8 @@ FMAX = None  # Highest frequency (in Hz)
 
 
 # MFCC
-MFCC_FFT_WINDOW = SR * 0.032  # 32 ms window frame
-MFCC_HOP_LENGTH = SR * 0.010  # 10 ms shifts
+MFCC_FFT_WINDOW = int(SR * 0.032)  # 32 ms window frame
+MFCC_HOP_LENGTH = int(SR * 0.010)  # 10 ms shifts
 MFCC_N_COEF = 20
 
 # -- sINGING vOICE dETECTION --#
