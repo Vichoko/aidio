@@ -2,8 +2,6 @@ import argparse
 import subprocess
 import features
 import helpers
-import warnings
-warnings.filterwarnings('ignore')
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Extract features from a data folder to another')
@@ -30,6 +28,7 @@ if __name__ == '__main__':
         module = 'helpers.py'
         model_name, experiment_name, data_path, models_path, label_filename = helpers.parse_cli_args(args)
         cmd = ['python',
+               '-W', 'ignore',  # to suppress userwarnings of librosa
                module,
                '--model', str(model_name),
                '--experiment', str(experiment_name),
