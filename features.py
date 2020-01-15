@@ -519,7 +519,7 @@ class MelCepstralCoefficientsFeatureExtractor(FeatureExtractor):
                 # try to load if file already exist
                 np.load(out_path / file_name, allow_pickle=True)
                 print('info: {} loaded from .npy !'.format(file_name))
-                new_labels.append([file_name, y_i])
+                new_labels.append([file_name, y])
             except FileNotFoundError or OSError or EOFError:
                 wav, _ = librosa.load(str(source_path / x), sr=SR)
                 # Normalize audio signal
