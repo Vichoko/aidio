@@ -48,8 +48,6 @@ class AbstractHelper:
             save_dir=save_dir,
             version=1  # An existing version with a saved checkpoint
         )
-        if 'gpus' not in hyperparams:
-            hyperparams.gpus = 0
         if 'distributed_backend' not in hyperparams:
             hyperparams.distributed_backend = 'dp'
         self.trainer = ptl.Trainer(
@@ -161,6 +159,11 @@ def add_cli_args(parser):
         default='unnamed_experiment'
     )
 
+    parser.add_argument(
+        '--gpus',
+        help='number of gpus',
+        default=0
+    )
 
 def parse_cli_args(args):
     model_name = args.model
