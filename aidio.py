@@ -25,7 +25,7 @@ if __name__ == '__main__':
                ]
     elif mode == 'model':
         module = 'helpers.py'
-        model_name, experiment_name, data_path, models_path, label_filename = helpers.parse_cli_args()
+        model_name, experiment_name, data_path, models_path, label_filename = helpers.parse_cli_args(args)
         cmd = ['python',
                module,
                '--model_name', str(model_name),
