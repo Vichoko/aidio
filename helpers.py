@@ -158,11 +158,6 @@ def add_cli_args(parser):
         help='experiment identifier',
         default='unnamed_experiment'
     )
-    parser.add_argument(
-        '--gpus',
-        help='number of gpus',
-        default=0
-    )
 
 def parse_cli_args(args):
     model_name = args.model
@@ -170,8 +165,7 @@ def parse_cli_args(args):
     data_path = pathlib.Path(args.data_path)
     models_path = pathlib.Path(args.model_path)
     label_filename = args.label_filename
-    gpus = args.gpus
-    return model_name, experiment_name, data_path, models_path, label_filename, gpus
+    return model_name, experiment_name, data_path, models_path, label_filename
 
 
 if __name__ == '__main__':

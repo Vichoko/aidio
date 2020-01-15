@@ -7,6 +7,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Extract features from a data folder to another')
     parser.add_argument('mode',
                         help='mode can be features, models)')
+    parser.add_argument('--gpus', default=0, type=int)
+
     features.add_cli_args(parser)
     helpers.add_cli_args(parser)
 
