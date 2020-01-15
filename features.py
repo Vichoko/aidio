@@ -4,8 +4,7 @@ import os
 
 import sys
 
-import aidio
-from aidio import args
+
 
 os.environ['FOR_DISABLE_CONSOLE_CTRL_HANDLER'] = '1'
 import subprocess
