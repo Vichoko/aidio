@@ -2,6 +2,9 @@ import argparse
 import subprocess
 import features
 import helpers
+import warnings
+warnings.filterwarnings('ignore')
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Extract features from a data folder to another')
     parser.add_argument('mode',
