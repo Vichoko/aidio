@@ -4,6 +4,9 @@ import os
 
 import sys
 
+import aidio
+from aidio import args
+
 os.environ['FOR_DISABLE_CONSOLE_CTRL_HANDLER'] = '1'
 import subprocess
 
@@ -1322,21 +1325,46 @@ AVAILABLE_FEATURES = {
     MelCepstralCoefficientsFeatureExtractor.feature_name: MelCepstralCoefficientsFeatureExtractor,
 }
 
+
+def add_cli_args(parser):
+    """
+    Add raw_path and features_path arguments to an argparser.
+    :param parser: Parser where this attrobutes are going to be added.
+    :return:
+    """
+    parser.add_argument(
+        '--raw_path',
+        help='Source path where audio data files are stored',
+        default=RAW_DATA_PATH
+    )
+    parser.add_argument(
+        '--features_path',
+        help='Output path where exported data will be placed',
+        default=FEATURES_DATA_PATH
+    )
+    parser.add_argument(
+        '--feature',
+        help='name of the feature to be extracted (options: mfsc, leglaive)',
+        default=SingingVoiceSeparationOpenUnmixFeatureExtractor.feature_name
+    )
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Extract features from a data folder to another')
-    parser.add_argument('--raw_path', help='Source path where audio data files are stored', default=RAW_DATA_PATH)
-    parser.add_argument('--features_path', help='Output path where exported data will be placed',
-                        default=FEATURES_DATA_PATH)
-    # parser.add_argument('--label_filename', help='Source path where label file is stored', default='labels.csv')
-    parser.add_argument('--feature', help='name of the feature to be extracted (options: mfsc, leglaive)',
-                        default=SingingVoiceSeparationOpenUnmixFeatureExtractor.feature_name)
-
+    add_cli_args(parser)
     args = parser.parse_args()
     raw_path = pathlib.Path(args.raw_path)
     features_path = pathlib.Path(args.features_path)
-    # label_path = raw_path / args.label_filename
     feature_name = args.feature
     print('info: from {} to {}'.format(raw_path, features_path))
     extractor = AVAILABLE_FEATURES[feature_name]
     extractor = extractor.magic_init(feature_path=features_path, raw_path=raw_path)
     extractor.transform()
+
+
+def parse_cli_args():
+    features_path = args.features_path
+    raw_path = args.raw_path
+    feature_name = args.feature
+
+    return features_path, raw_path, feature_name

@@ -44,6 +44,7 @@ FMAX = None  # Highest frequency (in Hz)
 
 
 # MFCC
+# params from 2011 Tsai et al.
 MFCC_FFT_WINDOW = int(SR * 0.032)  # 32 ms window frame
 MFCC_HOP_LENGTH = int(SR * 0.010)  # 10 ms shifts
 MFCC_N_COEF = 20

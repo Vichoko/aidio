@@ -458,10 +458,165 @@ class ADiSANDataManager(DataManager):
         return feed_dict
 
 
-class WaveformDataset(Dataset):
+class ExperimentDataset(Dataset):
+    def __init__(self, filenames, labels, data_path, label_encoder) -> None:
+        """
+        Create a dataset specification with the giver parameters
+        :param filenames:
+        :param labels: Array like with the raw labels as loaded from metadata file
+        :param data_path: Path to where the feature folders are stored.
+        :param transform:
+        :param label_encoder: Pytorch encoder if needed for the self.encode_labels method.
+        """
+        self.data_path = data_path
+        self.filenames = np.asarray(filenames)
+        self.labels = self.encode_labels(np.asarray(labels), label_encoder)
+        # self.transform = transforms.Compose(
+        #     []
+        # )
+        assert len(self.filenames) == len(self.labels)
+        super().__init__()
+
+    def __len__(self) -> int:
+        return len(self.filenames)
+
+    @classmethod
+    def init_sets(cls, data_path, label_filename,
+                  ratio=(0.5, 0.3, 0.2),
+                  shuffle=True,
+                  random_state=None, ):
+        """
+        Initiate 3 Datasets: Train, Validation and Test, splitted by the given ratios.
+        :param feature_name:
+        :param feature_path:
+        :param shuffle:
+        :param ratio:
+        :param random_state:
+        :return:
+        """
+
+        # metadata_df = pd.read_csv(
+        #     features_path /
+        #     feature_name /
+        #     'labels.{}.csv'.format(feature_name)
+        # )
+
+        metadata_df = pd.read_csv(data_path / label_filename)
+        filenames = metadata_df['filename']
+        labels = metadata_df['label']
+        print('info: starting split...')
+        assert ratio[0] + ratio[1] + ratio[2] == 1
+
+        # check the nmber of classes and fit an ordinal ecoder
+        labels = np.asarray(labels)
+        number_of_classes = len(set(labels))
+        label_encoder = OrdinalEncoder().fit(labels.reshape(-1, 1))
+
+        # split metadata in 3 sets: train, test and dev
+        filenames_train, filenames_test, labels_train, labels_test = train_test_split(
+            filenames, labels, test_size=ratio[1] + ratio[2], random_state=random_state, shuffle=shuffle
+        )
+        test_dev_pivot = round(ratio[1] / (ratio[1] + ratio[2]) * len(filenames_test))
+        filenames_dev, labels_dev = filenames_test[test_dev_pivot:], labels_test[test_dev_pivot:]
+        filenames_test, labels_test = filenames_test[:test_dev_pivot], labels_test[:test_dev_pivot]
+
+        # instance 3 datasets
+        train_dataset = cls(
+            filenames_train,
+            labels_train,
+            data_path,
+            label_encoder
+        )
+        test_dataset = cls(
+            filenames_test,
+            labels_test,
+            data_path,
+            label_encoder
+        )
+        dev_dataset = cls(
+            filenames_dev,
+            labels_dev,
+            data_path,
+            label_encoder
+        )
+        return train_dataset, test_dataset, dev_dataset, number_of_classes
+
+    @staticmethod
+    def encode_labels(labels, label_encoder):
+        """
+        Function that transform the raw labels to another array like labels.
+        :param labels: Array like with the raw labels as loaded from metadata file.
+        :param label_encoder:Pytorch encoder if needed.
+        :return: Array-like with new labels as needed.
+        """
+        print('warning: using default encode_labels method. Forwarding raw labels...')
+        return labels
+
+
+class WaveformDataset(ExperimentDataset):
     """
     Load the input data as a wave net with a specified sample rate.
     """
+
+    def __init__(self, filenames, labels, data_path, label_encoder) -> None:
+        super().__init__(
+            filenames,
+            labels,
+            data_path,
+            label_encoder
+        )
+        self.transform = transforms.Compose(
+            [self.RandomCrop(WAVEFORM_MAX_SEQUENCE_LENGTH),
+             self.ToTensor()]
+        )
+
+    def __getitem__(self, index: int):
+        label = self.labels[index]
+        wav, sr = librosa.load(
+            str(self.data_path / self.filenames[index]),
+            sr=WAVEFORM_SAMPLE_RATE,
+            mono=True if WAVEFORM_NUM_CHANNELS == 1 else WAVEFORM_NUM_CHANNELS
+        )
+
+        # wav shape is (n_samples) or (n_channels, n_samples)
+        # torch 1d image is n_channels, n_samples
+        if len(wav.shape) == 1:
+            wav = wav.reshape(1, -1)
+        elif len(wav.shape) == 2:
+            if wav.shape[0] > 2:
+                print("warning: wav channel size is uncommon {}; expected is 2 (stereo) or 1 (mono) ".format(
+                    wav.shape[0]))
+        else:
+            print('error: wav shape is {}, expected N_channels x N_samples'.format(wav.shape))
+        # unify wav shape to (n_channels, n_samples)
+
+        sample = {'x': wav, 'y': label}
+        sample = self.transform(sample)
+        return sample
+
+    @staticmethod
+    def encode_labels(labels, label_encoder=None):
+        """
+        Y = ['foo', 'foo', 'bar']
+        to
+        Y = [['foo'], ['foo'], ['bar']]
+        to
+        Y = [[0],[0],[1.0]]
+        to
+        Y = [0,0,1]
+        :return: None
+        """
+        labels = np.asarray(labels)
+        if label_encoder is None:
+            """
+            OrdinalEncoder is used for CE Loss criteria 
+            """
+            label_encoder = OrdinalEncoder()
+            label_encoder.fit(labels.reshape(-1, 1))
+        labels = label_encoder.transform(labels.reshape(-1, 1))
+        labels = np.array(labels.reshape(labels.shape[:-1]),
+                          dtype=np.int64)  # drop last axis and cast to int64 aka long
+        return labels
 
     class ToTensor:
         def __call__(self, sample):
@@ -491,220 +646,26 @@ class WaveformDataset(Dataset):
             wav = wav[:, pivot: pivot + new_l]
             return {'x': wav, 'y': label}
 
-    @classmethod
-    def init_sets(cls, feature_name, features_path,
-                  ratio=(0.5, 0.3, 0.2),
-                  shuffle=True,
-                  random_state=None, ):
-        """
-        Initiate 3 Datasets: Train, Validation and Test, splitted by the given ratios.
-        :param feature_name:
-        :param feature_path:
-        :param shuffle:
-        :param ratio:
-        :param random_state:
-        :return:
-        """
 
-        metadata_df = pd.read_csv(
-            features_path /
-            feature_name /
-            'labels.{}.csv'.format(feature_name)
-        )
-        filenames = metadata_df['filename']
-        labels = metadata_df['label']
-        print('info: starting split...')
-        assert ratio[0] + ratio[1] + ratio[2] == 1
-
-        # check the nmber of classes and fit an ordinal ecoder
-        labels = np.asarray(labels)
-        number_of_classes = len(set(labels))
-        label_encoder = OrdinalEncoder().fit(labels.reshape(-1, 1))
-
-        # split metadata in 3 sets: train, test and dev
-        filenames_train, filenames_test, labels_train, labels_test = train_test_split(
-            filenames, labels, test_size=ratio[1] + ratio[2], random_state=random_state, shuffle=shuffle
-        )
-        test_dev_pivot = round(ratio[1] / (ratio[1] + ratio[2]) * len(filenames_test))
-        filenames_dev, labels_dev = filenames_test[test_dev_pivot:], labels_test[test_dev_pivot:]
-        filenames_test, labels_test = filenames_test[:test_dev_pivot], labels_test[:test_dev_pivot]
-
-        # random crop over many epochs ensure data augmentation
-        transform = transforms.Compose(
-            [cls.RandomCrop(WAVEFORM_MAX_SEQUENCE_LENGTH),
-             cls.ToTensor()]
-        )
-
-        # instance 3 datasets
-        train_dataset = cls(filenames_train, labels_train, features_path / feature_name, transform=transform,
-                            label_encoder=label_encoder)
-        test_dataset = cls(filenames_test, labels_test, features_path / feature_name, transform=transform,
-                           label_encoder=label_encoder)
-        dev_dataset = cls(filenames_dev, labels_dev, features_path / feature_name, transform=transform,
-                          label_encoder=label_encoder)
-        return train_dataset, test_dataset, dev_dataset, number_of_classes
-
-    def __getitem__(self, index: int):
-        label = self.labels[index]
-        wav, sr = librosa.load(
-            str(self.data_path / self.filenames[index]),
-            sr=WAVEFORM_SAMPLE_RATE,
-            mono=True if WAVEFORM_NUM_CHANNELS == 1 else WAVEFORM_NUM_CHANNELS
-        )
-
-        # wav shape is (n_samples) or (n_channels, n_samples)
-        # torch 1d image is n_channels, n_samples
-        if len(wav.shape) == 1:
-            wav = wav.reshape(1, -1)
-        elif len(wav.shape) == 2:
-            if wav.shape[0] > 2:
-                print("warning: wav channel size is uncommon {}; expected is 2 (stereo) or 1 (mono) ".format(
-                    wav.shape[0]))
-        else:
-            print('error: wav shape is {}, expected N_channels x N_samples'.format(wav.shape))
-        # unify wav shape to (n_channels, n_samples)
-
-        sample = {'x': wav, 'y': label}
-
-        if self.transform:
-            sample = self.transform(sample)
-        return sample
-
-    def __len__(self) -> int:
-        return len(self.filenames)
-
-    def __init__(self, filenames, labels, data_path, transform=None, label_encoder=None) -> None:
-        self.filenames = np.asarray(filenames)
-        self.labels = self.encode_labels(np.asarray(labels), label_encoder)
-        self.data_path = data_path
-        assert len(self.filenames) == len(self.labels)
-        self.transform = transform
-        super().__init__()
-
-    @staticmethod
-    def encode_labels(labels, enc=None):
-        """
-        Y = ['foo', 'foo', 'bar']
-        to
-        Y = [['foo'], ['foo'], ['bar']]
-        to
-        Y = [[0],[0],[1.0]]
-        to
-        Y = [0,0,1]
-        :return: None
-        """
-        labels = np.asarray(labels)
-        if enc is None:
-            """
-            OrdinalEncoder is used for CE Loss criteria 
-            """
-            enc = OrdinalEncoder()
-            enc.fit(labels.reshape(-1, 1))
-        labels = enc.transform(labels.reshape(-1, 1))
-        labels = np.array(labels.reshape(labels.shape[:-1]),
-                          dtype=np.int64)  # drop last axis and cast to int64 aka long
-        return labels
-
-
-class CepstrumDataset(Dataset):
+class CepstrumDataset(ExperimentDataset):
     """
     Load the input data as an MFCC with specified number of cepstral coefficients.
     """
 
     input_shape = WAVEFORM_MAX_SEQUENCE_LENGTH
 
-    def __init__(self, filenames, labels, data_path, transform=None, label_encoder=None) -> None:
-        self.filenames = np.asarray(filenames)
-        self.labels = self.encode_labels(np.asarray(labels), label_encoder)
-        self.data_path = data_path
-        assert len(self.filenames) == len(self.labels)
-        self.transform = transform
-        super().__init__()
-
-    @classmethod
-    def init_sets(cls, feature_name, features_path,
-                  ratio=(0.5, 0.3, 0.2),
-                  shuffle=True,
-                  random_state=None, ):
-        """
-        Initiate 3 Datasets: Train, Validation and Test, splitted by the given ratios.
-        :param feature_name:
-        :param feature_path:
-        :param shuffle:
-        :param ratio:
-        :param random_state:
-        :return:
-        """
-
-        metadata_df = pd.read_csv(
-            features_path /
-            feature_name /
-            'labels.{}.csv'.format(feature_name)
+    def __init__(self, filenames, labels, data_path, label_encoder) -> None:
+        super().__init__(
+            filenames,
+            labels,
+            data_path,
+            label_encoder
         )
-        filenames = metadata_df['filename']
-        labels = metadata_df['label']
-        print('info: starting split...')
-        assert ratio[0] + ratio[1] + ratio[2] == 1
-
-        # check the nmber of classes and fit an ordinal ecoder
-        labels = np.asarray(labels)
-        number_of_classes = len(set(labels))
-        label_encoder = OrdinalEncoder().fit(labels.reshape(-1, 1))
-
-        # split metadata in 3 sets: train, test and dev
-        filenames_train, filenames_test, labels_train, labels_test = train_test_split(
-            filenames, labels, test_size=ratio[1] + ratio[2], random_state=random_state, shuffle=shuffle
-        )
-        test_dev_pivot = round(ratio[1] / (ratio[1] + ratio[2]) * len(filenames_test))
-        filenames_dev, labels_dev = filenames_test[test_dev_pivot:], labels_test[test_dev_pivot:]
-        filenames_test, labels_test = filenames_test[:test_dev_pivot], labels_test[:test_dev_pivot]
-
-        # random crop over many epochs ensure data augmentation
-        transform = transforms.Compose([
+        self.transform = transforms.Compose([
             # [torchvision.transforms.RandomCrop(cls.input_shape),
             #  ]  # with numpy
-            cls.ToTensor()]  # with torch
+            self.ToTensor()]  # with torch
         )
-
-        # instance 3 datasets
-        train_dataset = cls(filenames_train, labels_train, features_path / feature_name, transform=transform,
-                            label_encoder=label_encoder)
-        test_dataset = cls(filenames_test, labels_test, features_path / feature_name, transform=transform,
-                           label_encoder=label_encoder)
-        dev_dataset = cls(filenames_dev, labels_dev, features_path / feature_name, transform=transform,
-                          label_encoder=label_encoder)
-        return train_dataset, test_dataset, dev_dataset, number_of_classes
-
-    class ToTensor:
-        def __call__(self, sample):
-            feature_tensor, label = sample['x'], sample['y']
-            feature_tensor = feature_tensor.reshape(1, feature_tensor.shape[0], -1)
-            return {'x': torch.from_numpy(feature_tensor),
-                    'y': torch.from_numpy(np.asarray(label)).type('torch.LongTensor')}
-
-    # class RandomCrop:
-    #     """Crop randomly the image in a sample.
-    #
-    #     Args:
-    #         output_size (tuple or int): Desired output size. If int, square crop
-    #             is made.
-    #     """
-    #
-    #     def __init__(self, output_size):
-    #         assert isinstance(output_size, int)
-    #         if isinstance(output_size, int):
-    #             self.output_size = output_size
-    #
-    #     def __call__(self, sample):
-    #         feature_tensor, label = sample['x'], sample['y']
-    #         # todo: fit for GMM expected input dims
-    #         # wav shape is n_channels, n_samples
-    #         l = feature_tensor.shape[1]
-    #         new_l = self.output_size
-    #
-    #         pivot = np.random.randint(0, l - new_l)
-    #         feature_tensor = feature_tensor[:, pivot: pivot + new_l]
-    #         return {'x': feature_tensor, 'y': label}
 
     def __getitem__(self, index: int):
         label = self.labels[index]
@@ -719,11 +680,8 @@ class CepstrumDataset(Dataset):
             sample = self.transform(sample)
         return sample
 
-    def __len__(self) -> int:
-        return len(self.filenames)
-
     @staticmethod
-    def encode_labels(labels, enc=None):
+    def encode_labels(labels, label_encoder=None):
         """
         Y = ['foo', 'foo', 'bar']
         to
@@ -735,16 +693,23 @@ class CepstrumDataset(Dataset):
         :return: None
         """
         labels = np.asarray(labels)
-        if enc is None:
+        if label_encoder is None:
             """
             OrdinalEncoder is used for CE Loss criteria 
             """
-            enc = OrdinalEncoder()
-            enc.fit(labels.reshape(-1, 1))
-        labels = enc.transform(labels.reshape(-1, 1))
+            label_encoder = OrdinalEncoder()
+            label_encoder.fit(labels.reshape(-1, 1))
+        labels = label_encoder.transform(labels.reshape(-1, 1))
         labels = np.array(labels.reshape(labels.shape[:-1]),
                           dtype=np.int64)  # drop last axis and cast to int64 aka long
         return labels
+
+    class ToTensor:
+        def __call__(self, sample):
+            feature_tensor, label = sample['x'], sample['y']
+            feature_tensor = feature_tensor.reshape(1, feature_tensor.shape[0], -1)
+            return {'x': torch.from_numpy(feature_tensor),
+                    'y': torch.from_numpy(np.asarray(label)).type('torch.LongTensor')}
 
 
 class ClassSampler(Sampler):
