@@ -363,31 +363,6 @@ class L_WavenetTransformerClassifier(ptl.LightningModule):
         """
         return [self.optimizer]
 
-    # def __dataloader(self, train):
-    #     # init data generators
-    #     transform = transforms.Compose([transforms.ToTensor(),
-    #                                     transforms.Normalize((0.5,), (1.0,))])
-    #     dataset = MNIST(root=self.hparams.data_root, train=train,
-    #                     transform=transform, download=True)
-    #
-    #     # when using multi-node (ddp) we need to add the  datasampler
-    #     train_sampler = None
-    #     batch_size = self.hparams.batch_size
-    #
-    #     if self.use_ddp:
-    #         train_sampler = DistributedSampler(dataset)
-    #
-    #     should_shuffle = train_sampler is None
-    #     loader = DataLoader(
-    #         dataset=dataset,
-    #         batch_size=batch_size,
-    #         shuffle=should_shuffle,
-    #         sampler=train_sampler,
-    #         num_workers=0
-    #     )
-    #
-    #     return loader
-
     @ptl.data_loader
     def train_dataloader(self):
         # logging.info('training data loader called')
@@ -415,7 +390,6 @@ class L_WavenetTransformerClassifier(ptl.LightningModule):
         parser = ArgumentParser(parents=[parent_parser])
         parser.add_argument('--learning_rate', default=0.001, type=float)
         parser.add_argument('--batch_size', default=WAVENET_BATCH_SIZE, type=int)
-        parser.add_argument('--gpus', default=0, type=int)
         parser.add_argument(
             '--distributed_backend',
             type=str,
@@ -732,30 +706,6 @@ class L_ResNext50(ptl.LightningModule):
         """
         return [self.optimizer]
 
-    # def __dataloader(self, train):
-    #     # init data generators
-    #     transform = transforms.Compose([transforms.ToTensor(),
-    #                                     transforms.Normalize((0.5,), (1.0,))])
-    #     dataset = MNIST(root=self.hparams.data_root, train=train,
-    #                     transform=transform, download=True)
-    #
-    #     # when using multi-node (ddp) we need to add the  datasampler
-    #     train_sampler = None
-    #     batch_size = self.hparams.batch_size
-    #
-    #     if self.use_ddp:
-    #         train_sampler = DistributedSampler(dataset)
-    #
-    #     should_shuffle = train_sampler is None
-    #     loader = DataLoader(
-    #         dataset=dataset,
-    #         batch_size=batch_size,
-    #         shuffle=should_shuffle,
-    #         sampler=train_sampler,
-    #         num_workers=0
-    #     )
-    #
-    #     return loader
 
     @ptl.data_loader
     def train_dataloader(self):
