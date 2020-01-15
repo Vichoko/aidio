@@ -26,7 +26,7 @@ if __name__ == '__main__':
                ]
     elif mode == 'model':
         module = 'helpers.py'
-        model_name, experiment_name, data_path, models_path, label_filename = helpers.parse_cli_args(args)
+        model_name, experiment_name, data_path, models_path, label_filename, gpus = helpers.parse_cli_args(args)
         cmd = ['python',
                '-W', 'ignore',  # to suppress userwarnings of librosa
                module,
@@ -34,7 +34,8 @@ if __name__ == '__main__':
                '--experiment', str(experiment_name),
                '--data_path', str(data_path),
                '--model_path', str(models_path),
-               '--label_filename', str(label_filename)
+               '--label_filename', str(label_filename),
+               '--gpus', str(gpus)
                ]
     else:
         raise NotImplementedError
