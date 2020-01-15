@@ -175,7 +175,7 @@ if __name__ == '__main__':
     )
     add_cli_args(parser)
     args = parser.parse_args()
-    model_name, experiment_name, data_path, models_path, label_filename, _ = parse_cli_args(args)
+    model_name, experiment_name, data_path, models_path, label_filename = parse_cli_args(args)
 
     helper_class = helpers[model_name]
     helper = helper_class(
