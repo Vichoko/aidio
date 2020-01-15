@@ -514,14 +514,23 @@ class MelCepstralCoefficientsFeatureExtractor(FeatureExtractor):
             print('prosessing {}'.format(data))
             x = data[0]
             y = data[1]
-            wav, _ = librosa.load(str(source_path / x), sr=SR)
-            # Normalize audio signal
-            wav = librosa.util.normalize(wav)
-            # Get Mel-Spectrogram
-            mfcc = librosa.feature.mfcc(wav, sr=SR, n_mfcc=MFCC_N_COEF, n_fft=MFCC_FFT_WINDOW,
-                                        hop_length=MFCC_HOP_LENGTH)
-            # this is kind-of standard
-            FeatureExtractor.save_feature(mfcc, feature_name, out_path, x, y, new_labels)
+
+            file_name = FeatureExtractor.get_file_name(x, feature_name)
+
+            try:
+                # try to load if file already exist
+                np.load(out_path / file_name, allow_pickle=True)
+                print('info: {} loaded from .npy !'.format(file_name))
+                new_labels.append([file_name, y_i])
+            except FileNotFoundError or OSError or EOFError:
+                wav, _ = librosa.load(str(source_path / x), sr=SR)
+                # Normalize audio signal
+                wav = librosa.util.normalize(wav)
+                # Get Mel-Spectrogram
+                mfcc = librosa.feature.mfcc(wav, sr=SR, n_mfcc=MFCC_N_COEF, n_fft=MFCC_FFT_WINDOW,
+                                            hop_length=MFCC_HOP_LENGTH)
+                # this is kind-of standard
+                FeatureExtractor.save_feature(mfcc, feature_name, out_path, x, y, new_labels)
 
         return __process_element
 
