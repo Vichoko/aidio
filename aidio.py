@@ -17,7 +17,7 @@ if __name__ == '__main__':
 
     if mode == 'features':
         module = 'features.py'
-        features_path, raw_path, feature_name = features.parse_cli_args()
+        features_path, raw_path, feature_name = features.parse_cli_args(args)
         cmd = ['python',
                module,
                '--features_path', str(features_path),

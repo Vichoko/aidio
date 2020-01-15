@@ -4,8 +4,6 @@ import os
 
 import sys
 
-
-
 os.environ['FOR_DISABLE_CONSOLE_CTRL_HANDLER'] = '1'
 import subprocess
 
@@ -1357,6 +1355,14 @@ def add_cli_args(parser):
     )
 
 
+def parse_cli_args(args):
+    features_path = args.features_path
+    raw_path = args.raw_path
+    feature_name = args.feature
+
+    return features_path, raw_path, feature_name
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Extract features from a data folder to another')
     add_cli_args(parser)
@@ -1368,11 +1374,3 @@ if __name__ == '__main__':
     extractor = AVAILABLE_FEATURES[feature_name]
     extractor = extractor.magic_init(feature_path=features_path, raw_path=raw_path)
     extractor.transform()
-
-
-def parse_cli_args():
-    features_path = args.features_path
-    raw_path = args.raw_path
-    feature_name = args.feature
-
-    return features_path, raw_path, feature_name
