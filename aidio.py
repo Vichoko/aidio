@@ -29,6 +29,8 @@ if __name__ == '__main__':
     elif mode == 'model':
         module = 'helpers.py'
         model_name, experiment_name, data_path, models_path, label_filename = helpers.parse_cli_args(args)
+        gpus = args.gpus
+
         cmd = ['python',
                '-W', 'ignore',  # to suppress userwarnings of librosa
                module,
