@@ -28,10 +28,10 @@ if __name__ == '__main__':
         model_name, experiment_name, data_path, models_path, label_filename = helpers.parse_cli_args(args)
         cmd = ['python',
                module,
-               '--model_name', str(model_name),
-               '--experiment_name', str(experiment_name),
+               '--model', str(model_name),
+               '--experiment', str(experiment_name),
                '--data_path', str(data_path),
-               '--models_path', str(models_path),
+               '--model_path', str(models_path),
                '--label_filename', str(label_filename)
                ]
     else:
