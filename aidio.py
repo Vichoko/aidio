@@ -7,8 +7,6 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Extract features from a data folder to another')
     parser.add_argument('mode',
                         help='mode can be features, models)')
-    parser.add_argument('--gpus', default=0, type=int)
-
     features.add_cli_args(parser)
     helpers.add_cli_args(parser)
 
@@ -28,8 +26,7 @@ if __name__ == '__main__':
                ]
     elif mode == 'model':
         module = 'helpers.py'
-        model_name, experiment_name, data_path, models_path, label_filename = helpers.parse_cli_args(args)
-        gpus = args.gpus
+        model_name, experiment_name, data_path, models_path, label_filename, gpus = helpers.parse_cli_args(args)
 
         cmd = ['python',
                '-W', 'ignore',  # to suppress userwarnings of librosa

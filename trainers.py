@@ -598,7 +598,6 @@ class L_WavenetLSTMClassifier(ptl.LightningModule):
         parser = ArgumentParser(parents=[parent_parser])
         parser.add_argument('--learning_rate', default=0.001, type=float)
         parser.add_argument('--batch_size', default=WAVENET_BATCH_SIZE, type=int)
-        parser.add_argument('--gpus', default=0, type=int)
         parser.add_argument(
             '--distributed_backend',
             type=str,
