@@ -55,7 +55,8 @@ class AbstractHelper:
             distributed_backend=hyperparams.distributed_backend,
             logger=logger,
             default_save_path=save_dir,
-            early_stop_callback=None
+            early_stop_callback=None,
+            nb_sanity_val_steps=0
         )
 
     def train(self):
