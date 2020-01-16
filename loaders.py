@@ -642,6 +642,7 @@ class WaveformDataset(ExperimentDataset):
             l = wav.shape[1]
             new_l = self.output_size
             max_pivot_exclusive = l - new_l
+            print("warning: RandomCrop processing a WAV with 0-length") if l <= 0 else None
             # if wav length is greater than new_length, random chose a pivot and pick random new_length sub-sequence.
             # if wav length is less than new_length, then just grab all the wav from the beggining.
             pivot = np.random.randint(0, max_pivot_exclusive) if max_pivot_exclusive > 0 else 0
