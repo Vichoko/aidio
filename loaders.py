@@ -641,14 +641,10 @@ class WaveformDataset(ExperimentDataset):
             # wav shape is n_channels, n_samples
             l = wav.shape[1]
             new_l = self.output_size
-
-            try:
-                pivot = np.random.randint(0, l - new_l)
-            except ValueError as e:
-                print('error: np.random.randint entre 0 y {} ({} - {})'.format(l - new_l, l, new_l))
-                print('error: sample = {}'.format(sample))
-                print('error: wav shape is {}'.format(wav.shape))
-                raise e
+            max_pivot_exclusive = l - new_l
+            # if wav length is greater than new_length, random chose a pivot and pick random new_length sub-sequence.
+            # if wav length is less than new_length, then just grab all the wav from the beggining.
+            pivot = np.random.randint(0, max_pivot_exclusive) if max_pivot_exclusive > 0 else 0
             wav = wav[:, pivot: pivot + new_l]
             return {'x': wav, 'y': label}
 
@@ -770,6 +766,8 @@ class ClassSampler(Sampler):
             if out_mfcc is None:
                 out_mfcc = batch_element['x']
             else:
+                print('debug: out_mfcc = {}'.format(out_mfcc))
+                print('debug: batch_element = {}'.format(batch_element['x']))
                 out_mfcc = torch.cat((out_mfcc, batch_element['x']), 2)
         out_mfcc = out_mfcc.squeeze()  # the first dimension (track) is dropped as all frames are concatenated (1, 128, n_frames)
         # final size is (128, n_total_frames)
