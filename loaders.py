@@ -642,7 +642,13 @@ class WaveformDataset(ExperimentDataset):
             l = wav.shape[1]
             new_l = self.output_size
 
-            pivot = np.random.randint(0, l - new_l)
+            try:
+                pivot = np.random.randint(0, l - new_l)
+            except ValueError as e:
+                print('error: np.random.randint entre 0 y {} ({} - {})'.format(l - new_l, l, new_l))
+                print('error: sample = {}'.format(sample))
+                print('error: wav shape is {}'.format(wav.shape))
+                raise e
             wav = wav[:, pivot: pivot + new_l]
             return {'x': wav, 'y': label}
 
