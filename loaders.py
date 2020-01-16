@@ -763,12 +763,11 @@ class ClassSampler(Sampler):
         label = batch[0]['y']  # as each batch is the same class
         out_mfcc = None
         for batch_element in batch:
+            batch_data = batch_element['x'].type(torch.FloatTensor)
             if out_mfcc is None:
-                out_mfcc = batch_element['x']
+                out_mfcc = batch_data
             else:
-                print('debug: out_mfcc = {}'.format(out_mfcc))
-                print('debug: batch_element = {}'.format(batch_element['x']))
-                out_mfcc = torch.cat((out_mfcc, batch_element['x']), 2)
+                out_mfcc = torch.cat((out_mfcc, batch_data), 2)
         out_mfcc = out_mfcc.squeeze()  # the first dimension (track) is dropped as all frames are concatenated (1, 128, n_frames)
         # final size is (128, n_total_frames)
         out_mfcc = out_mfcc.permute(1, 0)  # to (n_frames, n_features) standard format
