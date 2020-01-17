@@ -287,7 +287,7 @@ class Simple1dConvNet(TorchClassificationModel):
         return x
 
 
-class WaveNetClassifier(TorchClassificationModel):
+class OldWaveNetClassifier(TorchClassificationModel):
     model_name = 'wavenet_classif'
 
     def reset_hyper_parameters(self, model_name, model_type, num_classes, input_shape, initial_epoch,
@@ -734,6 +734,59 @@ class GMMClassifier(nn.Module):
         x = self.forward_score(x)  # shape is (gmm)
         # x = x.argmax(dim=0)  # x is numeral index of class
         # sum the scores over the
+        return x
+
+
+class WaveNetClassifier(nn.Module):
+
+    def __call__(self, *input, **kwargs) -> typing.Any:
+        """
+        Hack to fix '(input: (Any, ...), kwargs: dict) -> Any' warning in PyCharm auto-complete.
+        :param input:
+        :param kwargs:
+        :return:
+        """
+        return super().__call__(*input, **kwargs)
+
+    def __init__(self, num_classes):
+        super(WaveNetClassifier, self).__init__()
+        # first encoder
+        # neural audio embeddings
+        # captures local representations through convolutions
+        self.wavenet = WaveNetModel(
+            WAVENET_LAYERS,
+            WAVENET_BLOCKS,
+            WAVENET_DILATION_CHANNELS,
+            WAVENET_RESIDUAL_CHANNELS,
+            WAVENET_SKIP_CHANNELS,
+            WAVENET_END_CHANNELS,
+            WAVENET_CLASSES,
+            WAVENET_OUTPUT_LENGTH,
+            WAVENET_KERNEL_SIZE)
+
+        # reduce dim from 160k to 32k
+        pooling_kz = 10
+        pooling_stride = 5
+        self.last_pooling = nn.AvgPool1d(kernel_size=10, stride=5)
+
+        # for now output length is fixed to 159968
+
+        self.fc1 = nn.Linear(self.wavenet.end_channels * floor((159968 - pooling_kz) / pooling_stride + 1),
+                             120)  # 6*6 from image dimension
+        self.fc2 = nn.Linear(120, 84)
+        self.fc3 = nn.Linear(84, num_classes)
+
+    def forward(self, x):
+        # print('info: feeding wavenet...')
+        x = self.wavenet.forward(x)
+        # reduce samples
+        x = self.last_pooling(x)
+
+        # simple classifier
+        x = x.view(-1, x.shape[1] * x.shape[2])
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
+        x = self.fc3(x)
         return x
 
 

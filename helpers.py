@@ -8,7 +8,8 @@ import pytorch_lightning as ptl
 
 from config import makedirs, MODELS_DATA_PATH
 from loaders import CepstrumDataset, WaveformDataset, ExperimentDataset
-from trainers import L_ResNext50, L_WavenetTransformerClassifier, L_WavenetLSTMClassifier, L_GMMClassifier
+from trainers import L_ResNext50, L_WavenetTransformerClassifier, L_WavenetLSTMClassifier, L_GMMClassifier, \
+    L_WavenetClassifier
 
 
 class AbstractHelper:
@@ -97,6 +98,13 @@ class WavenetLSTMHelper(AbstractHelper):
     lightning_module = L_WavenetLSTMClassifier
 
 
+class WavenetHelper(AbstractHelper):
+    model_name = 'wavenet'
+    dataset = WaveformDataset
+    # source_feature_name = SingingVoiceSeparationOpenUnmixFeatureExtractor.feature_name
+    lightning_module = L_WavenetClassifier
+
+
 class GMMClassifierHelper(AbstractHelper):
     model_name = 'gmm'
     dataset = CepstrumDataset
@@ -129,7 +137,7 @@ helpers = {
     WavenetTransformerHelper.model_name: WavenetTransformerHelper,
     WavenetLSTMHelper.model_name: WavenetLSTMHelper,
     GMMClassifierHelper.model_name: GMMClassifierHelper,
-
+    WavenetHelper.model_name: WavenetHelper
 }
 
 
