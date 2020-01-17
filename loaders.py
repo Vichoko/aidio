@@ -647,6 +647,12 @@ class WaveformDataset(ExperimentDataset):
             # if wav length is less than new_length, then just grab all the wav from the beggining.
             pivot = np.random.randint(0, max_pivot_exclusive) if max_pivot_exclusive > 0 else 0
             wav = wav[:, pivot: pivot + new_l]
+            l = wav.shape[1]
+            # padding if neccesary
+            if l < new_l:
+                print('debug: padding {} of len {}'.format(label, wav.shape[1]))
+                # this ad-hoc padding just repeat the beggining of the wav until the sequnece is long enough for the model
+                wav = torch.cat((wav, wav[:, new_l - l]), 2)
             return {'x': wav, 'y': label}
 
 
