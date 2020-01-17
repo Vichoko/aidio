@@ -57,7 +57,9 @@ class AbstractHelper:
             logger=logger,
             default_save_path=save_dir,
             early_stop_callback=None,
-            nb_sanity_val_steps=0
+            nb_sanity_val_steps=0,
+            amp_level='O2',
+            use_amp=False
         )
 
     def train(self):
