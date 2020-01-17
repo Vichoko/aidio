@@ -336,7 +336,7 @@ class OldWaveNetClassifier(TorchClassificationModel):
         # reduce dim from 160k to 32k
         pooling_kz = 10
         pooling_stride = 5
-        self.last_pooling = nn.AvgPool1d(kernel_size=10, stride=5)
+        self.last_pooling = nn.AvgPool1d(kernel_size=pooling_kz, stride=pooling_stride)
 
         # for now output length is fixed to 159968
 
@@ -800,7 +800,7 @@ if __name__ == '__main__':
     parser.add_argument(
         '--model',
         help='name of the model to be trained (options: ResNetV2, leglaive)',
-        default='waveNetTransformer'
+        default='waveNet'
     )
 
     parser.add_argument('--features_path', help='Path to features folder',

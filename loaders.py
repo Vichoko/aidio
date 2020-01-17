@@ -572,6 +572,7 @@ class WaveformDataset(ExperimentDataset):
 
     def __getitem__(self, index: int):
         label = self.labels[index]
+        # cuello de botella de 5-10 segundos
         wav, sr = librosa.load(
             str(self.data_path / self.filenames[index]),
             sr=WAVEFORM_SAMPLE_RATE,
@@ -652,7 +653,7 @@ class WaveformDataset(ExperimentDataset):
             if l < new_l:
                 print('debug: padding {} of len {}'.format(label, wav.shape[1]))
                 # this ad-hoc padding just repeat the beggining of the wav until the sequnece is long enough for the model
-                wav = torch.cat((wav, wav[:, new_l - l]), 2)
+                wav = np.concatenate((wav, wav[:, new_l - l]), 2)
             return {'x': wav, 'y': label}
 
 

@@ -6,7 +6,7 @@ import pathlib
 
 import pytorch_lightning as ptl
 
-from config import makedirs, MODELS_DATA_PATH
+from config import makedirs, MODELS_DATA_PATH, RAW_DATA_PATH
 from loaders import CepstrumDataset, WaveformDataset, ExperimentDataset
 from trainers import L_ResNext50, L_WavenetTransformerClassifier, L_WavenetLSTMClassifier, L_GMMClassifier, \
     L_WavenetClassifier
@@ -146,7 +146,8 @@ helpers = {
 def add_cli_args(parser):
     parser.add_argument(
         '--data_path',
-        help='Source path where input data files are stored'
+        help='Source path where input data files are stored',
+        default=RAW_DATA_PATH
     )
     parser.add_argument(
         '--label_filename',
@@ -161,7 +162,7 @@ def add_cli_args(parser):
     parser.add_argument(
         '--model',
         help='Model name. (Ej. resnext50, gmm, transformer)',
-        default=WavenetLSTMHelper.model_name,
+        default=WavenetHelper.model_name,
         # required=True
     )
     parser.add_argument(
