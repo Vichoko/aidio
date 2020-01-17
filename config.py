@@ -118,9 +118,14 @@ TRANSFORMER_N_HEAD = 2
 TRANSFORMER_D_MODEL = 32
 TRANSFORMER_N_LAYERS = 2
 
+# revisar que creacion del batch no tarde demasiado
+# quiero lograr que la gpu se ocupe el maximo
+# glamses top bacan
+# hacer baseline wavenet +  pooling simple
+# slurm corre mi scropt
+
 
 # WaveNet
-
 WAVENET_LAYERS = 5
 WAVENET_BLOCKS = 4
 WAVENET_DILATION_CHANNELS = 32
@@ -131,7 +136,7 @@ WAVENET_CLASSES = 1
 WAVENET_OUTPUT_LENGTH = 32
 WAVENET_KERNEL_SIZE = 4
 WAVENET_EPOCHS = 10000
-WAVENET_BATCH_SIZE = 6
+WAVENET_BATCH_SIZE = 10
 WAVENET_POOLING_KERNEL_SIZE = 20
 WAVENET_POOLING_STRIDE = 10
 
