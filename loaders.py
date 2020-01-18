@@ -651,12 +651,9 @@ class WaveformDataset(ExperimentDataset):
             l = wav.shape[1]
             # padding if neccesary
             if l < new_l:
-                print('debug: padding {} of len {}'.format(label, wav.shape))
                 # this ad-hoc padding just repeat the beggining of the wav until the sequnece is long enough for the model
-                e1 = wav
-                e2 = wav[:, new_l - l]
-                print('debug: shapes are {} and {}'.format(e1.shape, e2.shape))
-                wav = np.concatenate((e1, e2), 1)
+                print('debug: padding {} of len {}'.format(label, wav.shape))
+                wav = np.pad(wav, (0, new_l - l), 'wrap')
             return {'x': wav, 'y': label}
 
 
