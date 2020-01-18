@@ -1,11 +1,17 @@
 import argparse
+import inspect
+import os
 import pathlib
+import sys
 from math import ceil
 
 import librosa
 import numpy as np
 import pandas as pd
 
+current_dir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
+parent_dir = os.path.dirname(current_dir)
+sys.path.insert(0, parent_dir)
 from config import SR
 
 MAX_CLASS_NUMBER = 10  # Number of classes
