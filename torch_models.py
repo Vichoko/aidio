@@ -763,27 +763,20 @@ class WaveNetClassifier(nn.Module):
             WAVENET_CLASSES,
             WAVENET_OUTPUT_LENGTH,
             WAVENET_KERNEL_SIZE)
-
-        # reduce dim from 160k to 32k
-        pooling_kz = 10
-        pooling_stride = 5
-        self.last_pooling = nn.AvgPool1d(kernel_size=10, stride=5)
-
         # for now output length is fixed to 159968
-
-        self.fc1 = nn.Linear(self.wavenet.end_channels * floor((159968 - pooling_kz) / pooling_stride + 1),
+        self.fc1 = nn.Linear(self.wavenet.end_channels,
                              120)  # 6*6 from image dimension
         self.fc2 = nn.Linear(120, 84)
         self.fc3 = nn.Linear(84, num_classes)
 
     def forward(self, x):
-        # print('info: feeding wavenet...')
+        # Encoder
+        # shape is (batch_size, channel, sequence_number)
         x = self.wavenet.forward(x)
-        # reduce samples
-        x = self.last_pooling(x)
-
-        # simple classifier
-        x = x.view(-1, x.shape[1] * x.shape[2])
+        # AvgPooling all the sequences into one Audio Embeding
+        x = torch.mean(x, dim=2)
+        # shape is (batch_size, wavenet_out_channel)
+        # Classifier
         x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))
         x = self.fc3(x)
