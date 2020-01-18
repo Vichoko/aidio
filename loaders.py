@@ -576,7 +576,7 @@ class WaveformDataset(ExperimentDataset):
         wav, sr = librosa.load(
             str(self.data_path / self.filenames[index]),
             sr=WAVEFORM_SAMPLE_RATE,
-            mono=True if WAVEFORM_NUM_CHANNELS == 1 else WAVEFORM_NUM_CHANNELS
+            mono=True if WAVEFORM_NUM_CHANNELS == 1 else False
         )
 
         # wav shape is (n_samples) or (n_channels, n_samples)
