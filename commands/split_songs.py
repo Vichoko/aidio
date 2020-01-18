@@ -55,7 +55,10 @@ def main():
         else:
             # if set is full and label is inside
             pass
-        wav, sr = librosa.core.load(data_path / filename, sr=SR)
+        wav, sr = librosa.load(
+            str(data_path / filename),
+            sr=SR
+        )
         # channels = wav.shape[0]
         number_of_samples = wav.shape[0]
         extension = filename.split('.')[-1]
