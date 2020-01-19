@@ -572,12 +572,17 @@ class WaveformDataset(ExperimentDataset):
 
     def __getitem__(self, index: int):
         label = self.labels[index]
-        # cuello de botella de 5-10 segundos
-        wav, sr = librosa.load(
-            str(self.data_path / self.filenames[index]),
-            sr=WAVEFORM_SAMPLE_RATE,
-            mono=True if WAVEFORM_NUM_CHANNELS == 1 else False
-        )
+        filename = self.filenames[index]
+
+        if '.npy' in filename:
+            wav = np.load(str(self.data_path / filename))
+        else:
+            # cuello de botella de 5-10 segundos
+            wav, _ = librosa.load(
+                str(self.data_path / filename),
+                sr=WAVEFORM_SAMPLE_RATE,
+                mono=True if WAVEFORM_NUM_CHANNELS == 1 else False
+            )
 
         # wav shape is (n_samples) or (n_channels, n_samples)
         # torch 1d image is n_channels, n_samples
@@ -653,7 +658,7 @@ class WaveformDataset(ExperimentDataset):
             if l < new_l:
                 # this ad-hoc padding just repeat the beggining of the wav until the sequnece is long enough for the model
                 print('debug: padding {} of len {}'.format(label, wav.shape))
-                wav = np.pad(wav, (0, new_l - l), 'wrap')
+                wav = np.pad(wav, ((0, 0), (0, new_l - l)), 'wrap')
             return {'x': wav, 'y': label}
 
 
