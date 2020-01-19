@@ -14,7 +14,7 @@ parent_dir = os.path.dirname(current_dir)
 sys.path.insert(0, parent_dir)
 from config import SR
 
-MAX_CLASS_NUMBER = 10  # Number of classes
+MAX_CLASS_NUMBER = 0  # Number of classes; 0 is all possible
 SPLIT_AUDIO_LENGTH = 20  # Second
 
 
@@ -46,7 +46,10 @@ def main():
     for idx, filename in enumerate(filenames):
         label = labels[idx]
         # only accept 10 classes-logic ahead
-        if len(class_set) < 10:
+        if MAX_CLASS_NUMBER == 0:
+            # if is 0, it means all possible classes
+            pass
+        elif len(class_set) < 10:
             # if less than 10 classes are seen, pass
             class_set.add(label)
         elif len(class_set) >= 10 and label not in class_set:
