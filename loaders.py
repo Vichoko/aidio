@@ -556,6 +556,10 @@ class ExperimentDataset(Dataset):
         songs = np.asarray(list(songs))
         # randomize
         np.random.shuffle(songs)
+        indices = np.arange(len(filenames))
+        np.random.shuffle(indices)
+        filenames = filenames[indices]
+        labels = labels[indices]
         # split
         first_pivot = round(ratio[0] * len(songs))
         second_pivot = round((ratio[0] + ratio[1]) * len(songs))
