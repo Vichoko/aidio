@@ -505,20 +505,14 @@ class ExperimentDataset(Dataset):
         filenames = metadata_df['filename']
         labels = metadata_df['label']
         print('info: starting split...')
-        assert ratio[0] + ratio[1] + ratio[2] == 1
 
         # check the nmber of classes and fit an ordinal ecoder
         labels = np.asarray(labels)
         number_of_classes = len(set(labels))
         label_encoder = OrdinalEncoder().fit(labels.reshape(-1, 1))
 
-        # split metadata in 3 sets: train, test and dev
-        filenames_train, filenames_test, labels_train, labels_test = train_test_split(
-            filenames, labels, test_size=ratio[1] + ratio[2], random_state=random_state, shuffle=shuffle
-        )
-        test_dev_pivot = round(ratio[1] / (ratio[1] + ratio[2]) * len(filenames_test))
-        filenames_dev, labels_dev = filenames_test[test_dev_pivot:], labels_test[test_dev_pivot:]
-        filenames_test, labels_test = filenames_test[:test_dev_pivot], labels_test[:test_dev_pivot]
+        filenames_dev, filenames_test, filenames_train, labels_dev, labels_test, labels_train = cls.split_meta_dataset(
+            filenames, labels, random_state, ratio, shuffle)
 
         # instance 3 datasets
         train_dataset = cls(
@@ -540,6 +534,62 @@ class ExperimentDataset(Dataset):
             label_encoder
         )
         return train_dataset, test_dataset, dev_dataset, number_of_classes
+
+    @staticmethod
+    def split_meta_dataset(filenames, labels, random_state, ratio, shuffle):
+        """
+        Makes sure that same-song splits stay in same partition to avoid song-effect.
+        Make random split over the songs, and prints distributuions statistics of the resulting datasets.
+
+        The random split supposes the distribution of classes is equivalent. If not another picking-algrithm should be used.
+        :param filenames:
+        :param labels:
+        :param random_state:
+        :param ratio: Tri-tuple with ratios of each data-set (train, test, dev)
+        :param shuffle:
+        :return:
+        """
+        assert ratio[0] + ratio[1] + ratio[2] == 1
+        assert len(filenames) == len(labels)
+
+        songs = set([filename.split('.')[0] for filename in filenames])
+        songs = np.asarray(list(songs))
+        # randomize
+        np.random.shuffle(songs)
+        # split
+        first_pivot = round(ratio[0] * len(songs))
+        second_pivot = round((ratio[0] + ratio[1]) * len(songs))
+
+        train_songs, test_songs, val_songs = np.split(songs, [first_pivot, second_pivot])
+
+        filenames_train, filenames_test, filenames_val = [], [], []
+        labels_train, labels_test, labels_val = [], [], []
+        for data_idx, filename in enumerate(filenames):
+            label = labels[data_idx]
+            song_name = filename.split('.')[0]
+            if song_name in train_songs:
+                filenames_train.append(filename)
+                labels_train.append(label)
+            elif song_name in test_songs:
+                filenames_test.append(filename)
+                labels_test.append(label)
+            else:
+                filenames_val.append(filename)
+                labels_val.append(label)
+
+        filenames_train, filenames_test, filenames_val = np.asarray(filenames_train), np.asarray(
+            filenames_test), np.asarray(filenames_val)
+        labels_train, labels_test, labels_val = np.asarray(labels_train), np.asarray(labels_test), np.asarray(
+            labels_val)
+
+        # # split metadata in 3 sets: train, test and dev
+        # filenames_train, filenames_test, labels_train, labels_test = train_test_split(
+        #     filenames, labels, test_size=ratio[1] + ratio[2], random_state=random_state, shuffle=shuffle
+        # )
+        # test_dev_pivot = round(ratio[1] / (ratio[1] + ratio[2]) * len(filenames_test))
+        # filenames_dev, labels_dev = filenames_test[test_dev_pivot:], labels_test[test_dev_pivot:]
+        # filenames_test, labels_test = filenames_test[:test_dev_pivot], labels_test[:test_dev_pivot]
+        return filenames_val, filenames_test, filenames_train, labels_val, labels_test, labels_train
 
     @staticmethod
     def encode_labels(labels, label_encoder):
