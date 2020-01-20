@@ -582,13 +582,26 @@ class ExperimentDataset(Dataset):
         labels_train, labels_test, labels_val = np.asarray(labels_train), np.asarray(labels_test), np.asarray(
             labels_val)
 
-        # # split metadata in 3 sets: train, test and dev
-        # filenames_train, filenames_test, labels_train, labels_test = train_test_split(
-        #     filenames, labels, test_size=ratio[1] + ratio[2], random_state=random_state, shuffle=shuffle
-        # )
-        # test_dev_pivot = round(ratio[1] / (ratio[1] + ratio[2]) * len(filenames_test))
-        # filenames_dev, labels_dev = filenames_test[test_dev_pivot:], labels_test[test_dev_pivot:]
-        # filenames_test, labels_test = filenames_test[:test_dev_pivot], labels_test[:test_dev_pivot]
+        # dataset analytics
+        def print_split_properties(labels, filenames, possible_labels, dataset_name):
+            """
+            Get dataset split properties.
+            :param labels:
+            :param filenames:
+            :param possible_labels:
+            :param dataset_name:
+            :return:
+            """
+            found_labels = set([label for label in labels])
+            songs = set([filename.split('.')[0] for filename in filenames])
+            print('info: Dataset has {} samples inside.'.format(len(labels)))
+            print('info: Dataset has {} songs inside.'.format(len(songs)))
+            print('info: Dataset {} has {} of {} classes inside.'.format(dataset_name, len(found_labels), len(possible_labels)))
+
+        possible_labels = set(label for label in labels)
+        print_split_properties(labels_train, filenames_train, possible_labels, 'train')
+        print_split_properties(labels_test, filenames_test, possible_labels, 'test')
+        print_split_properties(labels_val, filenames_val, possible_labels, 'val')
         return filenames_val, filenames_test, filenames_train, labels_val, labels_test, labels_train
 
     @staticmethod
