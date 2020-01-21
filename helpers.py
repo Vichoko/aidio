@@ -2,6 +2,7 @@
 A helper is a wrapper that joins a DataSet with a Trainer in a more compact way.
 """
 import argparse
+import json
 import pathlib
 
 import pytorch_lightning as ptl
@@ -43,6 +44,7 @@ class AbstractHelper:
             eval_dataset,
             test_dataset
         )
+        gpus = json.loads(hyperparams.gpus)
         save_dir = models_path / model_name / experiment_name
         makedirs(save_dir)
         logger = ptl.logging.TestTubeLogger(
@@ -52,7 +54,7 @@ class AbstractHelper:
         if 'distributed_backend' not in hyperparams:
             hyperparams.distributed_backend = 'dp'
         self.trainer = ptl.Trainer(
-            gpus=hyperparams.gpus,
+            gpus=gpus if len(gpus) else 0,
             distributed_backend=hyperparams.distributed_backend,
             logger=logger,
             default_save_path=save_dir,
@@ -170,7 +172,7 @@ def add_cli_args(parser):
         help='experiment identifier',
         default='unnamed_experiment'
     )
-    parser.add_argument('--gpus', default=0, type=int)
+    parser.add_argument('--gpus', default='[]', type=str)
 
 
 def parse_cli_args(args):
@@ -179,7 +181,7 @@ def parse_cli_args(args):
     data_path = pathlib.Path(args.data_path)
     models_path = pathlib.Path(args.model_path)
     label_filename = args.label_filename
-    gpus = args.gpus
+    gpus = json.loads(args.gpus)
     return model_name, experiment_name, data_path, models_path, label_filename, gpus
 
 
