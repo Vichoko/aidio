@@ -17,6 +17,161 @@ class DummyOptimizer(torch.optim.Optimizer):
     pass
 
 
+class L_AbstractClassifier(ptl.LightningModule):
+    """
+        Sample model to show how to define a template
+        """
+
+    def __init__(self, hparams, num_classes, train_dataset, eval_dataset, test_dataset, torch_module):
+        super(L_AbstractClassifier, self).__init__()
+        self.hparams = hparams
+        self.loss = torch.nn.CrossEntropyLoss()
+        self.train_dataset = train_dataset
+        self.eval_dataset = eval_dataset
+        self.test_dataset = test_dataset
+        # build model
+        self.model = torch_module
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=hparams.learning_rate)
+
+    # ---------------------
+    # TRAINING
+    # ---------------------
+    def forward(self, x):
+        """
+        No special modification required for lightning, define as you normally would
+        :param x:
+        :return:
+        """
+        return self.model(x)
+
+    def training_step(self, batch, batch_idx):
+        """
+        Lightning calls this inside the training loop
+        :param batch:
+        :return:
+        """
+        # forward pass
+        x, y = batch['x'], batch['y']
+        y_pred = self.forward(x)
+
+        # calculate loss
+        loss_val = self.loss(y_pred, y)
+        tqdm_dict = {'train_loss': loss_val}
+        output = OrderedDict({
+            'loss': loss_val,
+            'progress_bar': tqdm_dict,
+            'log': tqdm_dict
+        })
+        # can also return just a scalar instead of a dict (return loss_val)
+        return output
+
+    def validation_step(self, batch, batch_idx):
+        """
+        Lightning calls this inside the validation loop
+        :param batch:
+        :return:
+        """
+        x, y = batch['x'], batch['y']
+        y_pred = self.forward(x)
+
+        # calculate loss
+        loss_val = self.loss(y_pred, y)
+
+        # acc
+        labels_hat = torch.argmax(y_pred, dim=1)
+        val_acc = torch.sum(y == labels_hat).item() / (len(y) * 1.0)
+        val_acc = torch.tensor(val_acc)
+
+        if self.on_gpu:
+            val_acc = val_acc.cuda(loss_val.device.index)
+
+        output = OrderedDict({
+            'val_loss': loss_val,
+            'val_acc': val_acc,
+        })
+
+        # can also return just a scalar instead of a dict (return loss_val)
+        return output
+
+    def validation_end(self, outputs):
+        """
+        Called at the end of validation to aggregate outputs
+        :param outputs: list of individual outputs of each validation step
+        :return:
+        """
+        # if returned a scalar from validation_step, outputs is a list of tensor scalars
+        # we return just the average in this case (if we want)
+        # return torch.stack(outputs).mean()
+
+        val_loss_mean = 0
+        val_acc_mean = 0
+        for output in outputs:
+            val_loss = output['val_loss']
+
+            # reduce manually when using dp
+            if self.trainer.use_dp or self.trainer.use_ddp2:
+                val_loss = torch.mean(val_loss)
+            val_loss_mean += val_loss
+
+            # reduce manually when using dp
+            val_acc = output['val_acc']
+            if self.trainer.use_dp or self.trainer.use_ddp2:
+                val_acc = torch.mean(val_acc)
+
+            val_acc_mean += val_acc
+
+        val_loss_mean /= len(outputs)
+        val_acc_mean /= len(outputs)
+        tqdm_dict = {'val_loss': val_loss_mean, 'val_acc': val_acc_mean}
+        result = {'progress_bar': tqdm_dict, 'log': tqdm_dict, 'val_loss': val_loss_mean}
+        return result
+
+    # ---------------------
+    # TRAINING SETUP
+    # ---------------------
+    def configure_optimizers(self):
+        """
+        return whatever optimizers we want here
+        :return: list of optimizers
+        """
+        return [self.optimizer]
+
+    @ptl.data_loader
+    def train_dataloader(self):
+        # logging.info('training data loader called')
+        return DataLoader(self.train_dataset, batch_size=WAVENET_BATCH_SIZE, shuffle=True,
+                          num_workers=NUM_WORKERS)
+
+    @ptl.data_loader
+    def val_dataloader(self):
+        # logging.info('val data loader called')
+        return DataLoader(self.eval_dataset, batch_size=WAVENET_BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
+
+    @ptl.data_loader
+    def test_dataloader(self):
+        # logging.info('test data loader called')
+        return DataLoader(self.test_dataset, batch_size=WAVENET_BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
+
+    @staticmethod
+    def add_model_specific_args(parent_parser, root_dir):  # pragma: no cover
+        """
+        Parameters you define here will be available to your model through self.hparams
+        :param parent_parser:
+        :param root_dir:
+        :return:
+        """
+        parser = ArgumentParser(parents=[parent_parser])
+        parser.add_argument('--learning_rate', default=0.001, type=float)
+        parser.add_argument('--batch_size', default=WAVENET_BATCH_SIZE, type=int)
+        parser.add_argument(
+            '--distributed_backend',
+            type=str,
+            default='dp',
+            help='supports three options dp, ddp, ddp2'
+        )
+        return parser
+
+
 class L_GMMClassifier(ptl.LightningModule):
     """
     Sample model to show how to define a template
@@ -47,22 +202,6 @@ class L_GMMClassifier(ptl.LightningModule):
         filename = 'gmm_{}.pickle'.format(self.model_name)
         pickle.dump(self.model, open(self.model_path / filename, 'wb'))
         print('info: gmm model saved')
-        # metadata_filename = 'gmm_{}_metadata.json'.format(model_name)
-        #
-        # # load model metadata
-        # try:
-        #     metadata = json.load(open(metadata_filename, 'r'))
-        # # or create metadata if it doesnt exist
-        # except IOError:
-        #     metadata = {
-        #         'name': model_name,
-        #         'metrics': None
-        #     }
-        #
-        # if metrics and is_better(metrics, metadata['metrics']):
-        #     pass
-        #
-        # json.dump(metadata, open(metadata_filename, 'w'))
         return
 
     def load_model(self, num_classes):
@@ -96,10 +235,8 @@ class L_GMMClassifier(ptl.LightningModule):
         """
         # forward pass
         x, y = batch['x'], batch['y']
-
         self.model.fit(x, y)
         y_pred = self.forward(x)
-
         # as torch methods expect first dim to be N, add first dimension to 1
         y_pred = y_pred.reshape(1, -1)
         y = y.reshape(1)
@@ -111,7 +248,6 @@ class L_GMMClassifier(ptl.LightningModule):
             'progress_bar': tqdm_dict,
             'log': tqdm_dict
         })
-
         # can also return just a scalar instead of a dict (return loss_val)
         return output
 
@@ -595,6 +731,7 @@ class L_WavenetClassifier(ptl.LightningModule):
         self.test_dataset = test_dataset
         # build model
         self.model = WaveNetClassifier(num_classes)
+        print(self.model)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=hparams.learning_rate)
 
     # ---------------------
@@ -862,7 +999,6 @@ class L_ResNext50(ptl.LightningModule):
         :return: list of optimizers
         """
         return [self.optimizer]
-
 
     @ptl.data_loader
     def train_dataloader(self):
