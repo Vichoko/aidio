@@ -733,7 +733,7 @@ class L_WavenetClassifier(ptl.LightningModule):
         # build model
         self.model = WaveNetClassifier(num_classes)
         summary(self.model, input_size=(1, SR * 10), device="cpu")
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=hparams.learning_rate)
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=hparams.learning_rate, weight_decay=hparams.weight_decay)
 
     # ---------------------
     # TRAINING
@@ -865,7 +865,8 @@ class L_WavenetClassifier(ptl.LightningModule):
         :return:
         """
         parser = ArgumentParser(parents=[parent_parser])
-        parser.add_argument('--learning_rate', default=0.001, type=float)
+        parser.add_argument('--learning_rate', default=0.1, type=float)
+        parser.add_argument('--weight_decay', default=0.001, type=float)
         parser.add_argument('--batch_size', default=WAVENET_BATCH_SIZE, type=int)
         parser.add_argument(
             '--distributed_backend',
