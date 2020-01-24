@@ -732,7 +732,7 @@ class L_WavenetClassifier(ptl.LightningModule):
         self.test_dataset = test_dataset
         # build model
         self.model = WaveNetClassifier(num_classes)
-        summary(self.model, input_size=(1, 1, SR * 10))
+        summary(self.model, input_size=(1, SR * 10))
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=hparams.learning_rate)
 
     # ---------------------
