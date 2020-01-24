@@ -7,8 +7,9 @@ import torch
 from torch.nn import Conv2d
 from torch.utils.data import DataLoader
 from torchvision.models import resnext50_32x4d
+from torchsummary import summary
 
-from config import WAVENET_BATCH_SIZE, NUM_WORKERS, RESNET_V2_BATCH_SIZE, MODELS_DATA_PATH
+from config import WAVENET_BATCH_SIZE, NUM_WORKERS, RESNET_V2_BATCH_SIZE, MODELS_DATA_PATH, SR
 from loaders import ClassSampler
 from torch_models import WaveNetTransformerClassifier, GMMClassifier, WaveNetLSTMClassifier, WaveNetClassifier
 
@@ -731,7 +732,7 @@ class L_WavenetClassifier(ptl.LightningModule):
         self.test_dataset = test_dataset
         # build model
         self.model = WaveNetClassifier(num_classes)
-        print(self.model)
+        summary(self.model, input_size=(1, 1, SR * 10))
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=hparams.learning_rate)
 
     # ---------------------
