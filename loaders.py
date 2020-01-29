@@ -887,8 +887,12 @@ class ClassSampler(Sampler):
         Iterate over possible classes, yielding the indices of the samples of that class.
         :yield: a list of indexes
         """
+        debug = True
+        print('debug: ClassSampler.__iter__') if debug else None
         for label in range(self.number_of_classes):
-            relevant_indexes = (self.labels != label).nonzero()[0]
+            relevant_indexes = (self.labels == label).nonzero()[0]
+
+            print('debug: {} '.format((self.labels == label).nonzero())) if debug else None
 
             if self.batch_size is None:
                 yield relevant_indexes.tolist()
