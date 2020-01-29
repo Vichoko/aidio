@@ -5,12 +5,59 @@ import argparse
 import json
 import pathlib
 
+import numpy as np
 import pytorch_lightning as ptl
+import torch
+from pytorch_lightning.callbacks import EarlyStopping
+from torch.utils.data import DataLoader
 
 from config import makedirs, MODELS_DATA_PATH, RAW_DATA_PATH
-from loaders import CepstrumDataset, WaveformDataset, ExperimentDataset
+from loaders import CepstrumDataset, WaveformDataset, ExperimentDataset, ClassSampler
+from torch_models import GMMClassifier
 from trainers import L_ResNext50, L_WavenetTransformerClassifier, L_WavenetLSTMClassifier, L_GMMClassifier, \
     L_WavenetClassifier
+
+
+def mfcc_test(dataset, number_of_classes):
+    """
+
+    :param dataset:
+    :param number_of_classes:
+    :return:
+    """
+    # gmms = [sklearn.mixture.GaussianMixture(n_components=64) for _ in range(number_of_classes)]
+    dataloader = DataLoader(dataset, num_workers=4,
+                            batch_sampler=ClassSampler(number_of_classes, dataset.labels),
+                            collate_fn=ClassSampler.collate_fn
+                            )
+    # load data to ram
+    data = list(dataloader)
+    train_data = [None] * number_of_classes
+    number_of_samples = 65
+    module = GMMClassifier(number_of_classes)
+
+    for class_data in data:
+        class_id = class_data['y']
+        class_mfcc = class_data['x']
+        train_data[class_id] = class_mfcc[:]
+        module.fit(train_data[class_id], class_data['y'])
+
+    accuracy = [[]] * number_of_classes
+    for data_batch in dataset:
+        x = data_batch['x'].squeeze(0).permute(1, 0)
+        label = data_batch['y'].item()
+        y = module.forward(x)
+        sm = torch.nn.Softmax()
+        y = sm.forward(y)
+        predicted_class = y.max(0)[1]
+        if predicted_class == label:
+            # True Positive
+            accuracy[label].append(1)
+        else:
+            # False positive
+            accuracy[label].append(0)
+    for class_idx, accuracies in enumerate(accuracy):
+        print('info: Class {} has {} accuracy'.format(class_idx, np.asarray(accuracies).mean()))
 
 
 class AbstractHelper:
@@ -19,7 +66,7 @@ class AbstractHelper:
     lightning_module = L_ResNext50
     dataset_ratios = (0.5, 0.25, 0.25)
 
-    def __init__(self, experiment_name, parser, data_path, label_filename, models_path):
+    def __init__(self, experiment_name, parser, data_path, label_filename, models_path, dummy_mode=False):
         """
         The helper manages model interaction with data.
         :param experiment_name: Name of the experiment
@@ -33,8 +80,13 @@ class AbstractHelper:
         train_dataset, test_dataset, eval_dataset, number_of_classes = self.dataset.init_sets(
             data_path,
             label_filename,
-            ratio=self.dataset_ratios
+            ratio=self.dataset_ratios,
+            dummy_mode=dummy_mode
         )
+        #
+        # if dummy_mode:
+        #     mfcc_test(train_dataset, number_of_classes)
+        #     return
         parser = self.lightning_module.add_model_specific_args(parser, None)
         hyperparams = parser.parse_args()
         self.module = self.lightning_module(
@@ -42,7 +94,8 @@ class AbstractHelper:
             number_of_classes,
             train_dataset,
             eval_dataset,
-            test_dataset
+            test_dataset,
+            model_name=self.experiment_name
         )
         gpus = json.loads(hyperparams.gpus)
         save_dir = models_path / model_name / experiment_name
@@ -53,12 +106,20 @@ class AbstractHelper:
         )
         if 'distributed_backend' not in hyperparams:
             hyperparams.distributed_backend = 'dp'
+
+        early_stop_callback = EarlyStopping(
+            monitor='val_loss',
+            min_delta=0.00,
+            patience=5,
+            verbose=False,
+            mode='min'
+        )
         self.trainer = ptl.Trainer(
             gpus=gpus if len(gpus) else 0,
             distributed_backend=hyperparams.distributed_backend,
             logger=logger,
             default_save_path=save_dir,
-            early_stop_callback=None,
+            early_stop_callback=early_stop_callback,
             nb_sanity_val_steps=0,
             amp_level='O2',
             use_amp=False
@@ -164,7 +225,7 @@ def add_cli_args(parser):
     parser.add_argument(
         '--model',
         help='Model name. (Ej. resnext50, gmm, transformer)',
-        default=WavenetHelper.model_name,
+        default=GMMClassifierHelper.model_name,
         # required=True
     )
     parser.add_argument(
@@ -200,6 +261,7 @@ if __name__ == '__main__':
         parser,
         data_path,
         label_filename,
-        models_path)
+        models_path
+    )
     helper.train()
     print('helper ended')

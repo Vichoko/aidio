@@ -239,8 +239,6 @@ class L_GMMClassifier(ptl.LightningModule):
         self.model.fit(x, y)
         y_pred = self.forward(x)
         # as torch methods expect first dim to be N, add first dimension to 1
-        y_pred = y_pred.reshape(1, -1)
-        y = y.reshape(1)
         # calculate loss
         loss_val = self.loss(y_pred, y)
         tqdm_dict = {'train_loss': loss_val}
@@ -265,8 +263,7 @@ class L_GMMClassifier(ptl.LightningModule):
         x, y = batch['x'], batch['y']
         y_pred = self.forward(x)
         # as torch methods expect first dim to be N, add first dimension to 1
-        y_pred = y_pred.reshape(1, -1)
-        y = y.reshape(1)
+
         # calculate loss
         loss_val = self.loss(y_pred, y)
 
@@ -343,7 +340,6 @@ class L_GMMClassifier(ptl.LightningModule):
             self.train_dataset,
             num_workers=NUM_WORKERS,
             batch_sampler=ClassSampler(self.num_classes, self.train_dataset.labels),
-            collate_fn=ClassSampler.collate_fn
         )
 
     @ptl.data_loader
@@ -353,7 +349,6 @@ class L_GMMClassifier(ptl.LightningModule):
             self.eval_dataset,
             num_workers=NUM_WORKERS,
             batch_sampler=ClassSampler(self.num_classes, self.eval_dataset.labels),
-            collate_fn=ClassSampler.collate_fn
         )
 
     @ptl.data_loader
@@ -363,7 +358,6 @@ class L_GMMClassifier(ptl.LightningModule):
             self.test_dataset,
             num_workers=NUM_WORKERS,
             batch_sampler=ClassSampler(self.num_classes, self.test_dataset.labels),
-            collate_fn=ClassSampler.collate_fn
         )
 
     @staticmethod

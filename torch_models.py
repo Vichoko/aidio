@@ -681,15 +681,35 @@ class GMMClassifier(nn.Module):
                 mixture.GaussianMixture(n_components=n_components)
             )
 
+    def forward(self, x):
+        """
+
+        :param x: MFCC of a track with shape (n_element, n_features, n_frames, )
+        :return: The prediction for each track calculated as:
+            Singer_id = arg max_i [1/T sum^T_t=1 [log p(X_t / P_i)]]
+
+            where t is time frame and
+                i is the singer GMM
+        """
+        x = x.permute(0, 2, 1)  # shape is (batch_size, 20, n_frames)
+        x = [self.forward_score(x_i) for x_i in x]  # shape is (batch_size, 20, n_frames) # shape is (batch_size, n_frames, n_features)
+        x = torch.stack(x)
+        # x = x.argmax(dim=0)  # x is numeral index of class
+        # sum the scores over the
+        return x
+
     def fit(self, x, y):
         """
         Fit a sequence of frames of the same class into one of the
         gmm.
-        :param x: Training data (n_frames, n_features)
+        :param x: Training data (batch_element, n_features, n_frames)
         :param y: class id integer singleton tensor
         :return:
         """
-        self.gmm_list[y.item()].fit(x[:self.frame_limit, :])
+        # sklearn GMM expects (n, n_features)
+        x = x.permute(0, 2, 1)
+        x = x.reshape(-1, 20)
+        self.gmm_list[y[0].item()].fit(x[:self.frame_limit, :])
 
     def forward_score(self, x):
         """
@@ -702,10 +722,9 @@ class GMMClassifier(nn.Module):
 
             with shape: (sample, frame, gmm_prediction)
         """
-
         # asume that all the samples has equal frame number
-        n_frames = x.size(0)
-        n_features = x.size(1)
+        # n_frames = x.size(0)
+        # n_features = x.size(1)
         scores = []
         # print('info: feeditorch.zeros(1, dtype=torch.double) + float('-inf')ng gmms...')
         for gmm in self.gmm_list:
@@ -718,23 +737,8 @@ class GMMClassifier(nn.Module):
             except NotFittedError:
                 log_prob = torch.sum(torch.zeros(1, dtype=torch.double) + float('-inf'))
             scores.append(log_prob)
-
         y = torch.stack(scores)  # reshape to tensor (n_classes, )
         return y
-
-    def forward(self, x):
-        """
-        :param x: MFCC of a track with shape (frames, coefficients, )
-        :return: The prediction for each track calculated as:
-            Singer_id = arg max_i [1/T sum^T_t=1 [log p(X_t / P_i)]]
-
-            where t is time frame and
-                i is the singer GMM
-        """
-        x = self.forward_score(x)  # shape is (gmm)
-        # x = x.argmax(dim=0)  # x is numeral index of class
-        # sum the scores over the
-        return x
 
 
 class WaveNetClassifier(nn.Module):
