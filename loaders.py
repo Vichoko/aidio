@@ -893,27 +893,3 @@ class ClassSampler(Sampler):
                 # random sample without replacement
                 yield np.random.choice(relevant_indexes, self.batch_size, replace=False)
 
-    # @staticmethod
-    # def collate_fn(batch):
-    #     """
-    #     It receives a batch of track mfcc coeffcieints.
-    #     It supposes  all the received frames are relevant (so make preprocesses before)
-    #     All the song frames are join in a single dimension as they belong to the same class.
-    #
-    #     The batching logic is by classes so every track is from the same class.
-    #
-    #     :param batch: samples of the same class
-    #     :return: tuple of data Tensor, label Tensor
-    #     """
-    #     label = batch[0]['y']  # as each batch is the same class
-    #     out_mfcc = None
-    #     for batch_element in batch:
-    #         batch_data = batch_element['x'].type(torch.FloatTensor)
-    #         if out_mfcc is None:
-    #             out_mfcc = batch_data
-    #         else:
-    #             out_mfcc = torch.cat((out_mfcc, batch_data), 2)
-    #     out_mfcc = out_mfcc.squeeze()  # the first dimension (track) is dropped as all frames are concatenated (1, 128, n_frames)
-    #     # final size is (128, n_total_frames)
-    #     out_mfcc = out_mfcc.permute(1, 0)  # to (n_frames, n_features) standard format
-    #     return {'x': out_mfcc, 'y': label}

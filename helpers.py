@@ -261,7 +261,8 @@ if __name__ == '__main__':
         parser,
         data_path,
         label_filename,
-        models_path
+        models_path,
+        dummy_mode=True
     )
     helper.train()
     print('helper ended')
