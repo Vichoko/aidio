@@ -712,7 +712,7 @@ class GMMClassifier(nn.Module):
         x = x.reshape(-1, 20)
         print('Debug: y = {}'.format(y)) if debug else None
         print('Debug: x = {}'.format(x)) if debug else None
-        print('Debug: gmm_list = {}'.format(gmm_list)) if debug else None
+        print('Debug: gmm_list = {}'.format(self.gmm_list)) if debug else None
         self.gmm_list[y[0].item()].fit(x[:self.frame_limit, :])
 
     def forward_score(self, x):
