@@ -235,7 +235,9 @@ class L_GMMClassifier(ptl.LightningModule):
         :return:
         """
         # forward pass
+        debug = True
         x, y = batch['x'], batch['y']
+        print('debug: batch is {}, labels are {}'.format(batch_idx, y)) if debug else None
         self.model.fit(x, y)
         y_pred = self.forward(x)
         # as torch methods expect first dim to be N, add first dimension to 1

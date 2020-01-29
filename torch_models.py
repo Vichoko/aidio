@@ -707,7 +707,7 @@ class GMMClassifier(nn.Module):
         :return:
         """
         # sklearn GMM expects (n, n_features)
-        debug = True
+        debug = False
         x = x.permute(0, 2, 1)
         x = x.reshape(-1, 20)
         print('Debug: y = {}'.format(y)) if debug else None
