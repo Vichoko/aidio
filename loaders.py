@@ -515,6 +515,7 @@ class ExperimentDataset(Dataset):
         if dummy_mode:
             filenames_dev, filenames_test, filenames_train, labels_dev, labels_test, labels_train = cls.get_dummy_dataset(
                 filenames, labels, random_state, ratio, shuffle)
+            number_of_classes = 2
         else:
             filenames_dev, filenames_test, filenames_train, labels_dev, labels_test, labels_train = cls.split_meta_dataset(
                 filenames, labels, random_state, ratio, shuffle)
@@ -618,7 +619,7 @@ class ExperimentDataset(Dataset):
     def get_dummy_dataset(filenames, labels, random_state, ratio, shuffle):
         """
         Construct splits of the same 10 songs to test the model learning capabilities.
-        It has at least 2 classes, ideally 3.
+        It has 2 classes.
         :param filenames:
         :param labels:
         :param random_state:
