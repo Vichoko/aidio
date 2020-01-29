@@ -793,7 +793,7 @@ class CepstrumDataset(ExperimentDataset):
         data = np.load(
             str(self.data_path / self.filenames[index]),
             allow_pickle=True
-        ) if not debug else None
+        )
         print('debug: CepstrumDataset.get_item label is {}'.format(label)) if debug else None
         sample = {'x': data, 'y': label}
         if self.transform:
