@@ -865,8 +865,8 @@ class L_WavenetClassifier(ptl.LightningModule):
         :return:
         """
         parser = ArgumentParser(parents=[parent_parser])
-        parser.add_argument('--learning_rate', default=0.1, type=float)
-        parser.add_argument('--weight_decay', default=0.001, type=float)
+        parser.add_argument('--learning_rate', default=0.01, type=float)
+        parser.add_argument('--weight_decay', default=0.0001, type=float)
         parser.add_argument('--batch_size', default=WAVENET_BATCH_SIZE, type=int)
         parser.add_argument(
             '--distributed_backend',
