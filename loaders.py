@@ -769,7 +769,7 @@ class WaveformDataset(ExperimentDataset):
             # padding if neccesary
             if l < new_l:
                 # this ad-hoc padding just repeat the beggining of the wav until the sequnece is long enough for the model
-                print('debug: padding {} of len {}'.format(label, wav.shape))
+                print('debug: padding element of class {} with len {}'.format(label, wav.shape))
                 wav = np.pad(wav, ((0, 0), (0, new_l - l)), 'wrap')
             return {'x': wav, 'y': label}
 
@@ -790,7 +790,7 @@ class CepstrumDataset(ExperimentDataset):
         )
         self.transform = transforms.Compose([
             CepstrumDataset.RandomCropMFCC(GMM_FRAME_LIMIT),  # ]  # with numpy
-            # self.ToTensor(),
+            self.ToTensor(),
         ]  # with torch
         )
 
@@ -801,7 +801,7 @@ class CepstrumDataset(ExperimentDataset):
             str(self.data_path / self.filenames[index]),
             allow_pickle=True
         )
-        print('debug: CepstrumDataset.get_item label is {}'.format(label)) if debug else None
+        # print('debug: CepstrumDataset.get_item label is {}'.format(label)) if debug else None  # floody
         sample = {'x': data, 'y': label}
         if self.transform:
             sample = self.transform(sample)
