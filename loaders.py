@@ -495,7 +495,7 @@ class ExperimentDataset(Dataset):
         :param random_state:
         :return:
         """
-
+        debug = True
         # metadata_df = pd.read_csv(
         #     features_path /
         #     feature_name /
@@ -507,18 +507,25 @@ class ExperimentDataset(Dataset):
         labels = metadata_df['label']
         print('info: starting split...')
 
-        # check the nmber of classes and fit an ordinal ecoder
-        labels = np.asarray(labels)
-        number_of_classes = len(set(labels))
-        label_encoder = OrdinalEncoder().fit(labels.reshape(-1, 1))
-
         if dummy_mode:
             filenames_dev, filenames_test, filenames_train, labels_dev, labels_test, labels_train = cls.get_dummy_dataset(
                 filenames, labels, random_state, ratio, shuffle)
-            number_of_classes = 2
+            label_set = set()
+            [label_set.add(e) for e in labels_dev]
+            [label_set.add(e) for e in labels_test]
+            [label_set.add(e) for e in labels_train]
+            labels = np.asarray(list(label_set))
+
         else:
             filenames_dev, filenames_test, filenames_train, labels_dev, labels_test, labels_train = cls.split_meta_dataset(
                 filenames, labels, random_state, ratio, shuffle)
+            # check the nmber of classes and fit an ordinal ecoder
+            labels = np.asarray(labels)
+
+        label_encoder = OrdinalEncoder().fit(labels.reshape(-1, 1))
+        print('debug: label_encoder has categories = {}'.format(label_encoder.categories_[0])) if debug else None
+        number_of_classes = len(label_encoder.categories_[0])
+        print('debug: n_classes = {}'.format(number_of_classes)) if debug else None
 
         # instance 3 datasets
         train_dataset = cls(
@@ -783,7 +790,7 @@ class CepstrumDataset(ExperimentDataset):
         )
         self.transform = transforms.Compose([
             CepstrumDataset.RandomCropMFCC(GMM_FRAME_LIMIT),  # ]  # with numpy
-            #self.ToTensor(),
+            # self.ToTensor(),
         ]  # with torch
         )
 
@@ -892,11 +899,11 @@ class ClassSampler(Sampler):
         for label in range(self.number_of_classes):
             relevant_indexes = (self.labels == label).nonzero()[0]
 
-            print('debug: {} '.format((self.labels == label).nonzero())) if debug else None
+            print('debug: indexes of elements with label {} are {} '.format(label, (
+                        self.labels == label).nonzero())) if debug else None
 
             if self.batch_size is None:
                 yield relevant_indexes.tolist()
             else:
                 # random sample without replacement
                 yield np.random.choice(relevant_indexes, self.batch_size, replace=False)
-
