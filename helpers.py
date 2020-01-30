@@ -262,7 +262,7 @@ if __name__ == '__main__':
         data_path,
         label_filename,
         models_path,
-        dummy_mode=True
+        dummy_mode=False
     )
     helper.train()
     print('helper ended')
