@@ -10,7 +10,7 @@ def makedirs(path):
 
 
 AVAIL_MEDIA_TYPES = ['mp3', 'ogg', 'wav', 'flac', ]
-NUM_WORKERS = 2
+NUM_WORKERS = 0
 
 SOURCE_DATA_PATH = pathlib.Path('C:\\Users\\Vichoko\\Music\\in')
 RAW_DATA_PATH = pathlib.Path('./data/raw/')
