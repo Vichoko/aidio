@@ -850,6 +850,7 @@ class CepstrumDataset(ExperimentDataset):
                 self.output_size = output_size
 
         def __call__(self, sample):
+            debug = False
             x, label = sample['x'], sample['y']
             # mfcc shape is (20, n_seq)
             l = x.shape[1]
@@ -864,7 +865,7 @@ class CepstrumDataset(ExperimentDataset):
             # padding if neccesary
             if l < new_l:
                 # this ad-hoc padding just repeat the beggining of the wav until the sequnece is long enough for the model
-                print('debug: padding {} of len {}'.format(label, x.shape))
+                print('debug: padding {} of len {}'.format(label, x.shape)) if debug else None
                 x = np.pad(x, ((0, 0), (0, new_l - l)), 'wrap')
             return {'x': x, 'y': label}
 
