@@ -91,7 +91,7 @@ OUNMIX_MODEL = 'umxhq'
 # gmm
 
 GMM_COMPONENT_NUMBER = 64
-GMM_FRAME_LIMIT = 1000 * 60 * 1  # 1000 are 1 second
+GMM_FRAME_LIMIT = 1000 * 60 * 10  # 1000 are 1 second
 
 
 #  ResNetV2
