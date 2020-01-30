@@ -10,7 +10,7 @@ def makedirs(path):
 
 
 AVAIL_MEDIA_TYPES = ['mp3', 'ogg', 'wav', 'flac', ]
-NUM_WORKERS = 4
+NUM_WORKERS = 2
 
 SOURCE_DATA_PATH = pathlib.Path('C:\\Users\\Vichoko\\Music\\in')
 RAW_DATA_PATH = pathlib.Path('./data/raw/')
@@ -91,7 +91,7 @@ OUNMIX_MODEL = 'umxhq'
 # gmm
 
 GMM_COMPONENT_NUMBER = 64
-GMM_FRAME_LIMIT = 1000 * 60 * 3  # 1000 are 1 second; 1000 * 60 is 1 minute
+GMM_FRAME_LIMIT = 1000 * 60 * 2  # 1000 are 1 second; 1000 * 60 is 1 minute
 
 
 #  ResNetV2
