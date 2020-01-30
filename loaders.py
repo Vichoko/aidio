@@ -834,7 +834,7 @@ class CepstrumDataset(ExperimentDataset):
     class ToTensor:
         def __call__(self, sample):
             feature_tensor, label = sample['x'], sample['y']
-            return {'x': torch.from_numpy(feature_tensor),
+            return {'x': torch.from_numpy(feature_tensor).type('torch.DoubleTensor'),
                     'y': torch.from_numpy(np.asarray(label)).type('torch.LongTensor')}
 
     class RandomCropMFCC:
@@ -900,7 +900,7 @@ class ClassSampler(Sampler):
             relevant_indexes = (self.labels == label).nonzero()[0]
 
             print('debug: indexes of elements with label {} are {} '.format(label, (
-                        self.labels == label).nonzero())) if debug else None
+                    self.labels == label).nonzero())) if debug else None
 
             if self.batch_size is None:
                 yield relevant_indexes.tolist()
