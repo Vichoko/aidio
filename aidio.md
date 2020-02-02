@@ -35,7 +35,7 @@ python aidio.py features --raw_path /data/svs/ --feature mfcc
 ´´´
 python aidio.py model --model wavenet --experiment svs --data_path /home/voyanedel/data/data/svs-bin --gpus [0]
 python aidio.py model --model wavenet_transformer --experiment svs --data_path /home/voyanedel/data/data/svs-bin-full --gpus [1]
-python aidio.py model --model gmm --experiment svs --data_path /home/voyanedel/data/data/2d/svs --label_filename labels.mfcc.csv
+python aidio.py model --model gmm --experiment svs_1 --data_path /home/voyanedel/data/data/2d/svs --label_filename labels.mfcc.csv
 ´´´
 
 # Commands
