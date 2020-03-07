@@ -1070,7 +1070,7 @@ class VoiceActivationFeatureExtractor(FeatureExtractor):
                 # print(backend.tensorflow_backend._get_available_gpus())
                 # set gpu number
                 # os.environ["CUDA_VISIBLE_DEVICES"] = str(len(backend.tensorflow_backend._get_available_gpus()))  # "0"
-                os.environ["CUDA_VISIBLE_DEVICES"] = ""
+                os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
             # load mode
             loaded_model = load_model(str(MODELS_DATA_PATH / 'leglaive' / 'rnn_{}.h5'.format(model_name)))
             print("loaded model")
@@ -1097,7 +1097,7 @@ class VoiceActivationFeatureExtractor(FeatureExtractor):
                     print('info: formatting data')
                     try:
                         print("debug: hpss shape is {}".format(hpss.shape))
-                        print('debug: size of hpss is {}'.format(sys.getsizeof(hpss)))
+                        print('debug: size of hpss is {} KB'.format(sys.getsizeof(hpss)/1024))
                         padding = RNN_INPUT_SIZE_VOICE_ACTIVATION - hpss.shape[1]
                         if padding > 0:
                             # if hpss is shorter that RNN input shape, then add padding on axis=1
