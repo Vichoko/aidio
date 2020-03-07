@@ -1239,7 +1239,6 @@ class VoiceActivationSplitFeatureExtractor(FeatureExtractor):
 
         return __process_element
 
-import matplotlib.pyplot as plt
 class VoiceActivationFrameSelectionFeatureExtractor(FeatureExtractor):
     feature_name = 'frame_selection'
     dependency_feature_name = SingingVoiceSeparationOpenUnmixFeatureExtractor.feature_name
@@ -1269,8 +1268,6 @@ class VoiceActivationFrameSelectionFeatureExtractor(FeatureExtractor):
                 voice_activation_path / voice_activation_file_name,
                 allow_pickle=True
             )
-            plt.plot(time, voice_prob)
-            plt.show()
 
             threshold = 0.5
             binary_mask = np.empty_like(voice_prob)
