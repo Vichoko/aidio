@@ -1239,6 +1239,121 @@ class VoiceActivationSplitFeatureExtractor(FeatureExtractor):
 
         return __process_element
 
+import matplotlib.pyplot as plt
+class VoiceActivationFrameSelectionFeatureExtractor(FeatureExtractor):
+    feature_name = 'frame_selection'
+    dependency_feature_name = SingingVoiceSeparationOpenUnmixFeatureExtractor.feature_name
+
+    @staticmethod
+    def process_element(feature_name, new_labels, out_path, source_path, **kwargs):
+        def __process_element(data):
+            """
+            :param x: filename (str)
+            :param y: label (str)
+            :return:
+            """
+            print('prosessing {}'.format(data))
+            x = data[0]
+            y = data[1]
+
+            # params
+            feature_path = kwargs.get('features_path')
+            voice_activation_file_name = x.replace(
+                'mp3',
+                '{}.{}.npy'.format(DoubleHPSSFeatureExtractor.feature_name,
+                                   VoiceActivationFeatureExtractor.feature_name)
+            )
+            voice_activation_path = feature_path / VoiceActivationFeatureExtractor.feature_name
+
+            time, voice_prob = np.load(
+                voice_activation_path / voice_activation_file_name,
+                allow_pickle=True
+            )
+            plt.plot(time, voice_prob)
+            plt.show()
+
+            threshold = 0.5
+            binary_mask = np.empty_like(voice_prob)
+            binary_mask[voice_prob > threshold] = 1
+            binary_mask[voice_prob <= threshold] = 0
+
+            """
+            Logic to split audios by voice probability:
+            catch intervals of high activations with short interruptions, ignore
+            sections of contiguous 0 probabilities.
+            """
+
+            contiguous_counter = []
+            past_activation = 0
+            count = 0
+            for activation in binary_mask:
+                if activation == past_activation:
+                    count += 1
+                else:
+                    contiguous_counter.append((past_activation, count))
+                    past_activation = activation
+                    count = 1
+            contiguous_counter.append((past_activation, count))
+            # contiguous_cointer count the sequential repetitions of 1 and 0s
+
+            # heuristically create intervals by detecting silences and sound regions big enough to be
+            # exported
+            activation_sr = 1.0 / (time[1] - time[0])
+            # time_threshold = activation_sr * 3  # at least 3 seconds
+            time_threshold = 0
+            rec = None
+            rec_intervals = []
+            start_idx = 0
+            current_pivot = 0
+            for activation, num_samples in contiguous_counter:
+                if not num_samples:
+                    continue
+                activation = bool(activation)
+                if rec is None:
+                    rec = activation
+                if activation != rec and num_samples > time_threshold:
+                    # if activation changes and the number of samples is big enough,
+                    # switch record mode. If record mode stops, then the interval is saved
+                    if rec:
+                        # if it was recording, stop recording the interval
+                        rec_intervals.append((
+                            time[start_idx],
+                            time[current_pivot - 1]
+                        ))
+                    else:
+                        # if it wasn't recording, start new recording interval
+                        start_idx = current_pivot
+                    current_pivot += num_samples
+                    rec = not rec
+            # get song and split
+            wav, sr = librosa.load(str(source_path / x))
+
+            # stick the itervals and export as a whole
+
+            # export intervals as new songs (mp3)
+            wav_segments = []
+            for interval_idx, interval in enumerate(rec_intervals):
+                first_sample, last_sample = librosa.core.time_to_samples(
+                    np.asarray(interval),
+                    sr
+                )
+                wav_segments.append(wav[first_sample:last_sample])
+
+            cleansed_wav = np.concatenate(wav_segments)
+            filename = FeatureExtractor.get_file_name(
+                x,
+                feature_name,
+                ext='mp3'
+            )
+            FeatureExtractor.save_mp3(
+                cleansed_wav,
+                sr,
+                feature_name,
+                out_path, x, y, new_labels, mp3_filename=filename
+            )
+
+        return __process_element
+
 
 class MeanSVDFeatureExtractor(FeatureExtractor):
     """
@@ -1329,6 +1444,7 @@ AVAILABLE_FEATURES = {
     SingingVoiceSeparationOpenUnmixFeatureExtractor.feature_name: SingingVoiceSeparationOpenUnmixFeatureExtractor,
     VoiceActivationSplitFeatureExtractor.feature_name: VoiceActivationSplitFeatureExtractor,
     MelCepstralCoefficientsFeatureExtractor.feature_name: MelCepstralCoefficientsFeatureExtractor,
+    VoiceActivationFrameSelectionFeatureExtractor.feature_name: VoiceActivationFrameSelectionFeatureExtractor
 }
 
 
@@ -1351,7 +1467,7 @@ def add_cli_args(parser):
     parser.add_argument(
         '--feature',
         help='name of the feature to be extracted (options: mfsc, leglaive)',
-        default=SingingVoiceSeparationOpenUnmixFeatureExtractor.feature_name
+        default=VoiceActivationFrameSelectionFeatureExtractor.feature_name
     )
 
 
