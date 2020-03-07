@@ -6,7 +6,6 @@ from collections import defaultdict
 from math import ceil, floor
 
 import numpy as np
-import sys
 import torch
 import tqdm
 from sklearn import mixture
@@ -288,7 +287,7 @@ class Simple1dConvNet(TorchClassificationModel):
         return x
 
 
-class WaveNetClassifier(TorchClassificationModel):
+class OldWaveNetClassifier(TorchClassificationModel):
     model_name = 'wavenet_classif'
 
     def reset_hyper_parameters(self, model_name, model_type, num_classes, input_shape, initial_epoch,
@@ -337,7 +336,7 @@ class WaveNetClassifier(TorchClassificationModel):
         # reduce dim from 160k to 32k
         pooling_kz = 10
         pooling_stride = 5
-        self.last_pooling = nn.AvgPool1d(kernel_size=10, stride=5)
+        self.last_pooling = nn.AvgPool1d(kernel_size=pooling_kz, stride=pooling_stride)
 
         # for now output length is fixed to 159968
 
@@ -675,22 +674,47 @@ class GMMClassifier(nn.Module):
         super(GMMClassifier, self).__init__()
         self.frame_limit = frame_limit
         # n_features = 128
+        max_class_label = max(num_classes, 50)  # heuristically set because biggest dataset has 50 classes
         self.gmm_list = []
-        for _ in range(num_classes):
+        for _ in range(max_class_label):
             # one gmm per singer as stated in Tsai; Fujihara; Mesaros et. al works on SID
             self.gmm_list.append(
                 mixture.GaussianMixture(n_components=n_components)
             )
 
+    def forward(self, x):
+        """
+
+        :param x: MFCC of a track with shape (n_element, n_features, n_frames, )
+        :return: The prediction for each track calculated as:
+            Singer_id = arg max_i [1/T sum^T_t=1 [log p(X_t / P_i)]]
+
+            where t is time frame and
+                i is the singer GMM
+        """
+        x = x.permute(0, 2, 1)  # shape is (batch_size, 20, n_frames)
+        x = [self.forward_score(x_i) for x_i in x]  # shape is (batch_size, 20, n_frames) # shape is (batch_size, n_frames, n_features)
+        x = torch.stack(x)
+        # x = x.argmax(dim=0)  # x is numeral index of class
+        # sum the scores over the
+        return x
+
     def fit(self, x, y):
         """
         Fit a sequence of frames of the same class into one of the
         gmm.
-        :param x: Training data (n_frames, n_features)
+        :param x: Training data (batch_element, n_features, n_frames)
         :param y: class id integer singleton tensor
         :return:
         """
-        self.gmm_list[y.item()].fit(x[:self.frame_limit, :])
+        # sklearn GMM expects (n, n_features)
+        debug = False
+        x = x.permute(0, 2, 1)
+        x = x.reshape(-1, 20)
+        print('Debug: y = {}'.format(y)) if debug else None
+        print('Debug: x = {}'.format(x)) if debug else None
+        print('Debug: gmm_list = {}'.format(self.gmm_list)) if debug else None
+        self.gmm_list[y[0].item()].fit(x[:self.frame_limit, :])
 
     def forward_score(self, x):
         """
@@ -703,10 +727,9 @@ class GMMClassifier(nn.Module):
 
             with shape: (sample, frame, gmm_prediction)
         """
-
         # asume that all the samples has equal frame number
-        n_frames = x.size(0)
-        n_features = x.size(1)
+        # n_frames = x.size(0)
+        # n_features = x.size(1)
         scores = []
         # print('info: feeditorch.zeros(1, dtype=torch.double) + float('-inf')ng gmms...')
         for gmm in self.gmm_list:
@@ -719,23 +742,55 @@ class GMMClassifier(nn.Module):
             except NotFittedError:
                 log_prob = torch.sum(torch.zeros(1, dtype=torch.double) + float('-inf'))
             scores.append(log_prob)
-
         y = torch.stack(scores)  # reshape to tensor (n_classes, )
         return y
 
-    def forward(self, x):
-        """
-        :param x: MFCC of a track with shape (frames, coefficients, )
-        :return: The prediction for each track calculated as:
-            Singer_id = arg max_i [1/T sum^T_t=1 [log p(X_t / P_i)]]
 
-            where t is time frame and
-                i is the singer GMM
+class WaveNetClassifier(nn.Module):
+
+    def __call__(self, *input, **kwargs) -> typing.Any:
         """
-        x = self.forward_score(x)  # shape is (gmm)
-        # x = x.argmax(dim=0)  # x is numeral index of class
-        # sum the scores over the
+        Hack to fix '(input: (Any, ...), kwargs: dict) -> Any' warning in PyCharm auto-complete.
+        :param input:
+        :param kwargs:
+        :return:
+        """
+        return super().__call__(*input, **kwargs)
+
+    def __init__(self, num_classes):
+        super(WaveNetClassifier, self).__init__()
+        # first encoder
+        # neural audio embeddings
+        # captures local representations through convolutions
+        self.wavenet = WaveNetModel(
+            WAVENET_LAYERS,
+            WAVENET_BLOCKS,
+            WAVENET_DILATION_CHANNELS,
+            WAVENET_RESIDUAL_CHANNELS,
+            WAVENET_SKIP_CHANNELS,
+            WAVENET_END_CHANNELS,
+            WAVENET_CLASSES,
+            WAVENET_OUTPUT_LENGTH,
+            WAVENET_KERNEL_SIZE)
+        # for now output length is fixed to 159968
+        self.fc1 = nn.Linear(self.wavenet.end_channels,
+                             120)  # 6*6 from image dimension
+        self.fc2 = nn.Linear(120, 84)
+        self.fc3 = nn.Linear(84, num_classes)
+
+    def forward(self, x):
+        # Encoder
+        # shape is (batch_size, channel, sequence_number)
+        x = self.wavenet.forward(x)
+        # AvgPooling all the sequences into one Audio Embeding
+        x = torch.mean(x, dim=2)
+        # shape is (batch_size, wavenet_out_channel)
+        # Classifier
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
+        x = self.fc3(x)
         return x
+
 
 features_data_path = FEATURES_DATA_PATH
 if __name__ == '__main__':
@@ -747,7 +802,7 @@ if __name__ == '__main__':
     parser.add_argument(
         '--model',
         help='name of the model to be trained (options: ResNetV2, leglaive)',
-        default='waveNetTransformer'
+        default='waveNet'
     )
 
     parser.add_argument('--features_path', help='Path to features folder',

@@ -10,7 +10,7 @@ def makedirs(path):
 
 
 AVAIL_MEDIA_TYPES = ['mp3', 'ogg', 'wav', 'flac', ]
-NUM_WORKERS = 4
+NUM_WORKERS = 1
 
 SOURCE_DATA_PATH = pathlib.Path('C:\\Users\\Vichoko\\Music\\in')
 RAW_DATA_PATH = pathlib.Path('./data/raw/')
@@ -41,6 +41,13 @@ POWER = 2  # Exponent for the magnitude melspectrogram. e.g., 1 for energy, 2 fo
 N_MELS = 128  # number of Mel bands to generate
 FMIN = 0  # lowest frequency (in Hz)
 FMAX = None  # Highest frequency (in Hz)
+
+
+# MFCC
+# params from 2011 Tsai et al.
+MFCC_FFT_WINDOW = int(SR * 0.032)  # 32 ms window frame
+MFCC_HOP_LENGTH = int(SR * 0.010)  # 10 ms shifts
+MFCC_N_COEF = 20
 
 # -- sINGING vOICE dETECTION --#
 VOICE_DETECTION_PATH = '/home/voyanedel/data/code/ismir2018-revisiting-svd/'
@@ -84,7 +91,7 @@ OUNMIX_MODEL = 'umxhq'
 # gmm
 
 GMM_COMPONENT_NUMBER = 64
-GMM_FRAME_LIMIT = 1000
+GMM_FRAME_LIMIT = 17 * 1000  # 1000 are 1 second; 1000 * 60 is 1 minute
 
 
 #  ResNetV2
@@ -111,22 +118,30 @@ TRANSFORMER_N_HEAD = 2
 TRANSFORMER_D_MODEL = 32
 TRANSFORMER_N_LAYERS = 2
 
+# revisar que creacion del batch no tarde demasiado
+# quiero lograr que la gpu se ocupe el maximo
+# glamses top bacan
+# hacer baseline wavenet +  pooling simple
+# slurm corre mi scropt
+
 
 # WaveNet
-
-WAVENET_LAYERS = 1
-WAVENET_BLOCKS = 1
-WAVENET_DILATION_CHANNELS = 8
-WAVENET_RESIDUAL_CHANNELS = 8
-WAVENET_SKIP_CHANNELS = 16
-WAVENET_END_CHANNELS = 32
+WAVENET_LAYERS = 5
+WAVENET_BLOCKS = 4
+WAVENET_DILATION_CHANNELS = 32
+WAVENET_RESIDUAL_CHANNELS = 32
+WAVENET_SKIP_CHANNELS = 64
+WAVENET_END_CHANNELS = 256
 WAVENET_CLASSES = 1
 WAVENET_OUTPUT_LENGTH = 32
-WAVENET_KERNEL_SIZE = 2
-WAVENET_EPOCHS = 1000
-WAVENET_BATCH_SIZE = 1
+WAVENET_KERNEL_SIZE = 4
+WAVENET_EPOCHS = 10000
+WAVENET_BATCH_SIZE = 8
 WAVENET_POOLING_KERNEL_SIZE = 20
 WAVENET_POOLING_STRIDE = 10
+WAVENET_LEARNING_RATE = 0.001
+WAVENET_WEIGHT_DECAY = 0.0001
+
 
 # Infersent
 # BiLSTM w& Max Pooling ecoding
