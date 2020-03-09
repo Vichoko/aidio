@@ -116,7 +116,7 @@ S1DCONV_HIDDEN_BLOCKS = 1
 
 TRANSFORMER_N_HEAD = 2
 TRANSFORMER_D_MODEL = 32
-TRANSFORMER_N_LAYERS = 2
+TRANSFORMER_N_LAYERS = 3
 
 # revisar que creacion del batch no tarde demasiado
 # quiero lograr que la gpu se ocupe el maximo
