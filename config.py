@@ -115,7 +115,7 @@ WAVEFORM_NUM_CHANNELS = 1  # can be 1 for mono or 2 for stereo; any other value 
 S1DCONV_HIDDEN_BLOCKS = 1
 
 TRANSFORMER_N_HEAD = 8
-TRANSFORMER_D_MODEL = 128
+TRANSFORMER_D_MODEL = 512
 TRANSFORMER_N_LAYERS = 6
 
 # revisar que creacion del batch no tarde demasiado
