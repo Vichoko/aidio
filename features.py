@@ -521,7 +521,14 @@ class MelCepstralCoefficientsFeatureExtractor(FeatureExtractor):
                 print('info: {} loaded from .npy !'.format(file_name))
                 new_labels.append([file_name, y])
             except FileNotFoundError or OSError or EOFError:
-                wav, _ = librosa.load(str(source_path / x), sr=SR)
+                source_file_path = str(source_path / x)
+                ext = source_file_path.split('.')[-1]
+                if 'npy' in ext:
+                    wav = np.load(source_file_path)
+                elif ext in AVAIL_MEDIA_TYPES:
+                    wav, _ = librosa.load(source_file_path, sr=SR)
+                else:
+                    raise TypeError('source file ext not recognized ({})'.format(source_file_path))
                 # Normalize audio signal
                 wav = librosa.util.normalize(wav)
                 # Get Mel-Spectrogram
