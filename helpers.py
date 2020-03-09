@@ -95,7 +95,6 @@ class AbstractHelper:
             train_dataset,
             eval_dataset,
             test_dataset,
-            model_name=self.experiment_name
         )
         gpus = json.loads(hyperparams.gpus)
         save_dir = models_path / model_name / experiment_name
