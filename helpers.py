@@ -11,7 +11,7 @@ import torch
 from pytorch_lightning.callbacks import EarlyStopping
 from torch.utils.data import DataLoader
 
-from config import makedirs, MODELS_DATA_PATH, RAW_DATA_PATH
+from config import makedirs, MODELS_DATA_PATH, RAW_DATA_PATH, EARLY_STOP_PATIENCE
 from loaders import CepstrumDataset, WaveformDataset, ExperimentDataset, ClassSampler
 from torch_models import GMMClassifier
 from trainers import L_ResNext50, L_WavenetTransformerClassifier, L_WavenetLSTMClassifier, L_GMMClassifier, \
@@ -109,7 +109,7 @@ class AbstractHelper:
         early_stop_callback = EarlyStopping(
             monitor='val_loss',
             min_delta=0.00,
-            patience=5,
+            patience=EARLY_STOP_PATIENCE,
             verbose=False,
             mode='min'
         )

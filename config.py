@@ -84,6 +84,12 @@ OUNMIX_TARGETS = ['vocals']
 OUNMIX_SOFTMAX = False
 OUNMIX_RESIDUAL_MODEL = False
 OUNMIX_MODEL = 'umxhq'
+###########################
+## trainer
+
+
+# early stop
+EARLY_STOP_PATIENCE = 20
 
 #########################################
 ####    MODELS
