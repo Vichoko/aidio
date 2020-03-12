@@ -533,19 +533,19 @@ class ExperimentDataset(Dataset):
             labels_train,
             data_path,
             label_encoder
-        )
+        ) if ratio[0] else None
         test_dataset = cls(
             filenames_test,
             labels_test,
             data_path,
             label_encoder
-        )
+        ) if ratio[1] else None
         dev_dataset = cls(
             filenames_dev,
             labels_dev,
             data_path,
             label_encoder
-        )
+        ) if ratio[2] else None
         return train_dataset, test_dataset, dev_dataset, number_of_classes
 
     @staticmethod
@@ -895,7 +895,7 @@ class ClassSampler(Sampler):
         Iterate over possible classes, yielding the indices of the samples of that class.
         :yield: a list of indexes
         """
-        debug = True
+        debug = False
         print('debug: ClassSampler.__iter__') if debug else None
         for label in range(self.number_of_classes):
             relevant_indexes = (self.labels == label).nonzero()[0]

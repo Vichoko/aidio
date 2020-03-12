@@ -97,10 +97,10 @@ class AbstractHelper:
             test_dataset,
         )
         gpus = json.loads(hyperparams.gpus)
-        save_dir = models_path / model_name / experiment_name
-        makedirs(save_dir)
+        self.save_dir = models_path / model_name / experiment_name
+        makedirs(self.save_dir)
         logger = ptl.logging.TestTubeLogger(
-            save_dir=save_dir,
+            save_dir=self.save_dir,
             version=1  # An existing version with a saved checkpoint
         )
         if 'distributed_backend' not in hyperparams:
@@ -117,7 +117,7 @@ class AbstractHelper:
             gpus=gpus if len(gpus) else 0,
             distributed_backend=hyperparams.distributed_backend,
             logger=logger,
-            default_save_path=save_dir,
+            default_save_path=self.save_dir,
             early_stop_callback=early_stop_callback,
             nb_sanity_val_steps=0,
             amp_level='O2',
@@ -174,6 +174,11 @@ class GMMClassifierHelper(AbstractHelper):
     dataset = CepstrumDataset
     # source_feature_name = MelSpectralCoefficientsFeatureExtractor.feature_name
     lightning_module = L_GMMClassifier
+    dataset_ratios = (.7, .3, .0)
+
+    def __init__(self, experiment_name, parser, data_path, label_filename, models_path, dummy_mode=False):
+        super().__init__(experiment_name, parser, data_path, label_filename, models_path, dummy_mode)
+        self.module.load_model(self.save_dir)
 
     def train(self):
         """
@@ -181,12 +186,8 @@ class GMMClassifierHelper(AbstractHelper):
         attribute and save_model methods.
         :return:
         """
-        if self.module.trained:
-            print('warning: Trying to trained an gmm loaded from disc and already trained. ignoring...')
-            return
-        super().train()
-        self.module.trained = True
-        self.module.save_model()
+        if self.module.train_now() == 0:
+            self.module.save_model(self.save_dir)
 
 
 class ResNext50Helper(AbstractHelper):

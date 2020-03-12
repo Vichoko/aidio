@@ -6,10 +6,11 @@ import pytorch_lightning as ptl
 import torch
 from torch.nn import Conv2d
 from torch.utils.data import DataLoader
-from torchvision.models import resnext50_32x4d
 from torchsummary import summary
+from torchvision.models import resnext50_32x4d
 
-from config import WAVENET_BATCH_SIZE, NUM_WORKERS, RESNET_V2_BATCH_SIZE, MODELS_DATA_PATH, SR
+from config import WAVENET_BATCH_SIZE, NUM_WORKERS, RESNET_V2_BATCH_SIZE, MODELS_DATA_PATH, SR, WAVENET_LEARNING_RATE, \
+    WAVENET_WEIGHT_DECAY
 from loaders import ClassSampler
 from torch_models import WaveNetTransformerClassifier, GMMClassifier, WaveNetLSTMClassifier, WaveNetClassifier
 
@@ -178,11 +179,9 @@ class L_GMMClassifier(ptl.LightningModule):
     Sample model to show how to define a template
     """
 
-    def __init__(self, hparams, num_classes, train_dataset, eval_dataset, test_dataset, model_name='unnamed',
-                 model_path=MODELS_DATA_PATH):
+    def __init__(self, hparams, num_classes, train_dataset, eval_dataset, test_dataset):
         super(L_GMMClassifier, self).__init__()
-        self.model_name = model_name
-        self.model_path = model_path
+        self.model_path = None
         self.num_classes = num_classes
         self.hparams = hparams
         self.loss = torch.nn.CrossEntropyLoss()
@@ -192,29 +191,49 @@ class L_GMMClassifier(ptl.LightningModule):
         # build model
         self.optimizer = torch.optim.Adam([torch.Tensor()], lr=hparams.learning_rate)
         self.trained = False
-        self.model = self.load_model(num_classes)
+        self.model = None
+        #self.model = self.load_model(self.num_classes)
 
-    def save_model(self):
+    def train_now(self):
+        if self.trained:
+            print('warning: Trying to train an alredy fitted GMM loaded from folder: {}. Skipping train...'.format(self.model_path))
+            return -1
+
+        print('info: starting training')
+        train_dataloader = self.train_dataloader()
+        test_dataloader = self.test_dataloader()
+        for batch_idx, batch in enumerate(train_dataloader):
+            self.training_step(batch, batch_idx)
+
+        self.trained = True
+        # for batch_idx, batch in enumerate(test_dataloader):
+        #     pass
+        print('info: ending training')
+        return 0
+
+    def save_model(self, model_path):
         """
         Save the model state with some metrics.
 
         :return:
         """
-        filename = 'gmm_{}.pickle'.format(self.model_name)
-        pickle.dump(self.model, open(self.model_path / filename, 'wb'))
+        filename = 'model.pickle'
+        pickle.dump(self.model, open(model_path / filename, 'wb'))
         print('info: gmm model saved')
         return
 
-    def load_model(self, num_classes):
-        filename = 'gmm_{}.pickle'.format(self.model_name)
+    def load_model(self, model_path):
+        filename = 'model.pickle'
+        self.model_path = model_path
         try:
-            model = pickle.load(open(self.model_path / filename, 'rb'))
+            model = pickle.load(open(model_path / filename, 'rb'))
             print('info: gmm loaded fron file')
             self.trained = True
         except IOError:
-            model = GMMClassifier(num_classes)
+            model = GMMClassifier(self.num_classes)
             print('info: previuous gmm not found.')
             self.trained = False
+        self.model = model
         return model
 
     # ---------------------
@@ -256,7 +275,6 @@ class L_GMMClassifier(ptl.LightningModule):
         return
 
     def validation_step(self, batch, batch_idx):
-
         """
         Lightning calls this inside the validation loop
         :param batch:
@@ -389,8 +407,9 @@ class L_WavenetTransformerClassifier(ptl.LightningModule):
         self.test_dataset = test_dataset
         # build model
         self.model = WaveNetTransformerClassifier(num_classes)
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=hparams.learning_rate)
-
+        #self.optimizer = torch.optim.Adam(self.model.parameters(), lr=hparams.learning_rate)
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=hparams.learning_rate,
+                                          weight_decay=hparams.weight_decay)
     # ---------------------
     # TRAINING
     # ---------------------
@@ -521,7 +540,8 @@ class L_WavenetTransformerClassifier(ptl.LightningModule):
         :return:
         """
         parser = ArgumentParser(parents=[parent_parser])
-        parser.add_argument('--learning_rate', default=0.001, type=float)
+        parser.add_argument('--learning_rate', default=WAVENET_LEARNING_RATE, type=float)
+        parser.add_argument('--weight_decay', default=WAVENET_WEIGHT_DECAY, type=float)
         parser.add_argument('--batch_size', default=WAVENET_BATCH_SIZE, type=int)
         parser.add_argument(
             '--distributed_backend',
@@ -729,7 +749,8 @@ class L_WavenetClassifier(ptl.LightningModule):
         # build model
         self.model = WaveNetClassifier(num_classes)
         summary(self.model, input_size=(1, SR * 10), device="cpu")
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=hparams.learning_rate, weight_decay=hparams.weight_decay)
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=hparams.learning_rate,
+                                          weight_decay=hparams.weight_decay)
 
     # ---------------------
     # TRAINING
@@ -861,8 +882,8 @@ class L_WavenetClassifier(ptl.LightningModule):
         :return:
         """
         parser = ArgumentParser(parents=[parent_parser])
-        parser.add_argument('--learning_rate', default=0.1, type=float)
-        parser.add_argument('--weight_decay', default=0.001, type=float)
+        parser.add_argument('--learning_rate', default=WAVENET_LEARNING_RATE, type=float)
+        parser.add_argument('--weight_decay', default=WAVENET_WEIGHT_DECAY, type=float)
         parser.add_argument('--batch_size', default=WAVENET_BATCH_SIZE, type=int)
         parser.add_argument(
             '--distributed_backend',
