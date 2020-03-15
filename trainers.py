@@ -202,7 +202,7 @@ class L_GMMClassifier(ptl.LightningModule):
         print('info: starting training')
         train_dataloader = self.train_dataloader()
         test_dataloader = self.test_dataloader()
-        for batch_idx, batch in enumerate(train_dataloader):
+        for batch_idx, batch in enumerate(train_dataloader): # Add tqdm
             self.training_step(batch, batch_idx)
 
         self.trained = True
