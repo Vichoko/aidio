@@ -639,6 +639,7 @@ class ExperimentDataset(Dataset):
                 # song name is the first part of the filename
                 song_name = filename.split('.')[0]
                 if song_name in train_songs:
+                    print('f: {}, l: {}'.format(filename, label))
                     filenames_train.append(filename)
                     labels_train.append(label)
                 elif song_name in test_songs:
