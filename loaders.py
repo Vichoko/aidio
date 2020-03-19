@@ -630,6 +630,7 @@ class ExperimentDataset(Dataset):
             np.random.shuffle(indices)
             filenames = filenames[indices]
             labels = labels[indices]
+            print('f: {}, l: {}'.format(filenames, labels))
             # gather the corresponding song pieces (filenames) to each set
             # note: here we enforce that the same song pieces fall in the same train/test/val to avoid song-effect
             filenames_train, filenames_test, filenames_val = [], [], []
@@ -639,7 +640,6 @@ class ExperimentDataset(Dataset):
                 # song name is the first part of the filename
                 song_name = filename.split('.')[0]
                 if song_name in train_songs:
-                    print('f: {}, l: {}'.format(filename, label))
                     filenames_train.append(filename)
                     labels_train.append(label)
                 elif song_name in test_songs:
