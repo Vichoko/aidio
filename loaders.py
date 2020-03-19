@@ -486,7 +486,7 @@ class ExperimentDataset(Dataset):
     def init_sets(cls, data_path, label_filename,
                   ratio=(0.5, 0.3, 0.2),
                   shuffle=True,
-                  random_state=None,
+                  random_seed=69,
                   dummy_mode=False):
         """
         Initiate 3 Datasets: Train, Validation and Test, splitted by the given ratios.
@@ -494,7 +494,7 @@ class ExperimentDataset(Dataset):
         :param feature_path:
         :param shuffle:
         :param ratio:
-        :param random_state:
+        :param random_seed:
         :return:
         """
         debug = True
@@ -511,7 +511,7 @@ class ExperimentDataset(Dataset):
 
         if dummy_mode:
             filenames_dev, filenames_test, filenames_train, labels_dev, labels_test, labels_train = cls.get_dummy_dataset(
-                filenames, labels, random_state, ratio, shuffle)
+                filenames, labels, shuffle, ratio, random_seed)
             label_set = set()
             [label_set.add(e) for e in labels_dev]
             [label_set.add(e) for e in labels_test]
@@ -520,7 +520,7 @@ class ExperimentDataset(Dataset):
 
         else:
             filenames_dev, filenames_test, filenames_train, labels_dev, labels_test, labels_train = cls.split_meta_dataset(
-                filenames, labels, random_state, ratio, shuffle, data_path, label_filename)
+                filenames, labels, label_filename, ratio, shuffle, data_path, random_seed)
             # check the nmber of classes and fit an ordinal ecoder
             labels = np.asarray(labels)
 
@@ -551,7 +551,7 @@ class ExperimentDataset(Dataset):
         return train_dataset, test_dataset, dev_dataset, number_of_classes
 
     @staticmethod
-    def split_meta_dataset(filenames, labels, random_state, ratio, shuffle, data_path, label_filename):
+    def split_meta_dataset(filenames, labels, label_filename, ratio, shuffle, data_path, random_seed):
         """
         Makes sure that same-song splits stay in same partition to avoid song-effect.
         Make random split over the songs, and prints distributuions statistics of the resulting datasets.
@@ -559,7 +559,7 @@ class ExperimentDataset(Dataset):
         The random split supposes the distribution of classes is equivalent. If not another picking-algrithm should be used.
         :param filenames: All available filenames
         :param labels: All filename labels with same indexing
-        :param random_state: unused
+        :param random_seed: unused
         :param ratio: Tri-tuple with ratios of each data-set (train, test, dev)
         :param shuffle: unused
         :param data_path: Path to where data and label files are stored
@@ -567,7 +567,6 @@ class ExperimentDataset(Dataset):
         :return:
         """
         possible_labels = set(label for label in labels)
-
         # Check if split was already done in label files
         train_label_filename = label_filename.replace(
             '.csv',
@@ -602,10 +601,21 @@ class ExperimentDataset(Dataset):
             # assert minimum conditions
             assert ratio[0] + ratio[1] + ratio[2] == 1
             assert len(filenames) == len(labels)
-            # get unique song names from filenames
-            songs = set([filename.split('.')[0] for filename in filenames])
+
+            # Limit the number of classes in the splits
+            unique_labels = list(set(labels))[:NUMBER_OF_CLASSES]
+            # get unique song names from filenames and selected unique labels
+            songs = set()
+            for data_idx, filename in enumerate(filenames):
+                label = labels[data_idx]
+                if label not in unique_labels:
+                    # if the song-piece label is not in the selected unique_labels discard it
+                    continue
+                song_name = filename.split('.')[0]
+                songs.add(song_name)
             songs = np.asarray(list(songs))
             # randomize unique songs
+            np.random.seed(random_seed)
             np.random.shuffle(songs)
             # split unique songs in 3 sets
             first_pivot = round(ratio[0] * len(songs))
@@ -614,20 +624,16 @@ class ExperimentDataset(Dataset):
             # randomize filenames together with the labels
             # note: there is multiple filenames pointing to different pieces of a same song
             indices = np.arange(len(filenames))
+            np.random.seed(random_seed)
             np.random.shuffle(indices)
             filenames = filenames[indices]
             labels = labels[indices]
-            # Limit the number of classes in the split
-            unique_labels = list(set(labels))[:NUMBER_OF_CLASSES]
             # gather the corresponding song pieces (filenames) to each set
             # note: here we enforce that the same song pieces fall in the same train/test/val to avoid song-effect
             filenames_train, filenames_test, filenames_val = [], [], []
             labels_train, labels_test, labels_val = [], [], []
             for data_idx, filename in enumerate(filenames):
                 label = labels[data_idx]
-                if label not in unique_labels:
-                    # if the song-piece label is not in the selected unique_labels discard it
-                    continue
                 # song name is the first part of the filename
                 song_name = filename.split('.')[0]
                 if song_name in train_songs:
@@ -672,13 +678,13 @@ class ExperimentDataset(Dataset):
         return filenames_val, filenames_test, filenames_train, labels_val, labels_test, labels_train
 
     @staticmethod
-    def get_dummy_dataset(filenames, labels, random_state, ratio, shuffle):
+    def get_dummy_dataset(filenames, labels, shuffle, ratio, random_seed):
         """
         Construct splits of the same 10 songs to test the model learning capabilities.
         It has 2 classes.
         :param filenames:
         :param labels:
-        :param random_state:
+        :param random_seed:
         :param ratio: Tri-tuple with ratios of each data-set (train, test, dev)
         :param shuffle:
         :return:
