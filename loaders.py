@@ -615,19 +615,19 @@ class ExperimentDataset(Dataset):
                 songs.add(song_name)
             songs = np.asarray(list(songs))
             # randomize unique songs
-            np.random.seed(random_seed)
-            np.random.shuffle(songs)
+            # np.random.seed(random_seed)
+            # np.random.shuffle(songs)
             # split unique songs in 3 sets
             first_pivot = round(ratio[0] * len(songs))
             second_pivot = round((ratio[0] + ratio[1]) * len(songs))
             train_songs, test_songs, val_songs = np.split(songs, [first_pivot, second_pivot])
             # randomize filenames together with the labels
             # note: there is multiple filenames pointing to different pieces of a same song
-            indices = np.arange(len(filenames))
-            np.random.seed(random_seed)
-            np.random.shuffle(indices)
-            filenames = filenames[indices]
-            labels = labels[indices]
+            # indices = np.arange(len(filenames))
+            # np.random.seed(random_seed)
+            # np.random.shuffle(indices)
+            # filenames = filenames[indices]
+            # labels = labels[indices]
             # gather the corresponding song pieces (filenames) to each set
             # note: here we enforce that the same song pieces fall in the same train/test/val to avoid song-effect
             filenames_train, filenames_test, filenames_val = [], [], []
