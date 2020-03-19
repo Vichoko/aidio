@@ -628,8 +628,8 @@ class ExperimentDataset(Dataset):
             indices = np.arange(len(filenames))
             np.random.seed(random_seed)
             np.random.shuffle(indices)
-            filenames = filenames[indices]
-            labels = labels[indices]
+            filenames = np.asarray(filenames[indices])
+            labels = np.asarray(labels[indices])
             print('f: {}, l: {}'.format(filenames, labels))
             # gather the corresponding song pieces (filenames) to each set
             # note: here we enforce that the same song pieces fall in the same train/test/val to avoid song-effect
