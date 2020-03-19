@@ -565,7 +565,7 @@ class ExperimentDataset(Dataset):
         :param label_filename: Filename of CSV file containing all filenames and it labels
         :return:
         """
-        debug = False
+        debug = True
         possible_labels = set(label for label in labels)
         # Check if split was already done in label files
         train_label_filename = label_filename.replace(
