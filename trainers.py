@@ -4,12 +4,13 @@ from collections import OrderedDict
 
 import pytorch_lightning as ptl
 import torch
+import tqdm
 from torch.nn import Conv2d
 from torch.utils.data import DataLoader
 from torchsummary import summary
 from torchvision.models import resnext50_32x4d
 
-from config import WAVENET_BATCH_SIZE, NUM_WORKERS, RESNET_V2_BATCH_SIZE, MODELS_DATA_PATH, SR, WAVENET_LEARNING_RATE, \
+from config import WAVENET_BATCH_SIZE, NUM_WORKERS, RESNET_V2_BATCH_SIZE, SR, WAVENET_LEARNING_RATE, \
     WAVENET_WEIGHT_DECAY
 from loaders import ClassSampler
 from torch_models import WaveNetTransformerClassifier, GMMClassifier, WaveNetLSTMClassifier, WaveNetClassifier
@@ -192,22 +193,24 @@ class L_GMMClassifier(ptl.LightningModule):
         self.optimizer = torch.optim.Adam([torch.Tensor()], lr=hparams.learning_rate)
         self.trained = False
         self.model = None
-        #self.model = self.load_model(self.num_classes)
+        # self.model = self.load_model(self.num_classes)
 
     def train_now(self):
         if self.trained:
-            print('warning: Trying to train an alredy fitted GMM loaded from folder: {}. Skipping train...'.format(self.model_path))
+            print('warning: Trying to train an alredy fitted GMM loaded from folder: {}. Skipping train...'.format(
+                self.model_path))
             return -1
 
         print('info: starting training')
         train_dataloader = self.train_dataloader()
         test_dataloader = self.test_dataloader()
-        for batch_idx, batch in enumerate(train_dataloader): # Add tqdm
+        for batch_idx, batch in tqdm.tqdm(enumerate(train_dataloader)):  # Add tqdm
             self.training_step(batch, batch_idx)
 
         self.trained = True
         # for batch_idx, batch in enumerate(test_dataloader):
         #     pass
+        # todo: add validation as soon as the training works
         print('info: ending training')
         return 0
 
@@ -407,9 +410,10 @@ class L_WavenetTransformerClassifier(ptl.LightningModule):
         self.test_dataset = test_dataset
         # build model
         self.model = WaveNetTransformerClassifier(num_classes)
-        #self.optimizer = torch.optim.Adam(self.model.parameters(), lr=hparams.learning_rate)
+        # self.optimizer = torch.optim.Adam(self.model.parameters(), lr=hparams.learning_rate)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=hparams.learning_rate,
                                           weight_decay=hparams.weight_decay)
+
     # ---------------------
     # TRAINING
     # ---------------------

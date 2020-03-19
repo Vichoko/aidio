@@ -1,5 +1,7 @@
 import os
 from math import ceil
+from os.path import isfile
+from sys import path
 
 import librosa
 import numpy as np
@@ -12,7 +14,7 @@ from torch.utils.data.sampler import Sampler
 from torchvision import transforms
 
 from config import FEATURES_DATA_PATH, RESNET_MIN_DIM, ADISAN_BATCH_SIZE, ADISAN_EPOCHS, WAVEFORM_MAX_SEQUENCE_LENGTH, \
-    WAVEFORM_NUM_CHANNELS, WAVEFORM_SAMPLE_RATE, GMM_FRAME_LIMIT
+    WAVEFORM_NUM_CHANNELS, WAVEFORM_SAMPLE_RATE, GMM_FRAME_LIMIT, NUMBER_OF_CLASSES
 
 
 # def get_shuffle_split(self, n_splits=2, test_size=0.5, train_size=0.5):
@@ -518,7 +520,7 @@ class ExperimentDataset(Dataset):
 
         else:
             filenames_dev, filenames_test, filenames_train, labels_dev, labels_test, labels_train = cls.split_meta_dataset(
-                filenames, labels, random_state, ratio, shuffle)
+                filenames, labels, random_state, ratio, shuffle, data_path, label_filename)
             # check the nmber of classes and fit an ordinal ecoder
             labels = np.asarray(labels)
 
@@ -549,55 +551,103 @@ class ExperimentDataset(Dataset):
         return train_dataset, test_dataset, dev_dataset, number_of_classes
 
     @staticmethod
-    def split_meta_dataset(filenames, labels, random_state, ratio, shuffle):
+    def split_meta_dataset(filenames, labels, random_state, ratio, shuffle, data_path, label_filename):
         """
         Makes sure that same-song splits stay in same partition to avoid song-effect.
         Make random split over the songs, and prints distributuions statistics of the resulting datasets.
 
         The random split supposes the distribution of classes is equivalent. If not another picking-algrithm should be used.
-        :param filenames:
-        :param labels:
-        :param random_state:
+        :param filenames: All available filenames
+        :param labels: All filename labels with same indexing
+        :param random_state: unused
         :param ratio: Tri-tuple with ratios of each data-set (train, test, dev)
-        :param shuffle:
+        :param shuffle: unused
+        :param data_path: Path to where data and label files are stored
+        :param label_filename: Filename of CSV file containing all filenames and it labels
         :return:
         """
-        assert ratio[0] + ratio[1] + ratio[2] == 1
-        assert len(filenames) == len(labels)
+        possible_labels = set(label for label in labels)
 
-        songs = set([filename.split('.')[0] for filename in filenames])
-        songs = np.asarray(list(songs))
-        # randomize
-        np.random.shuffle(songs)
-        indices = np.arange(len(filenames))
-        np.random.shuffle(indices)
-        filenames = filenames[indices]
-        labels = labels[indices]
-        # split
-        first_pivot = round(ratio[0] * len(songs))
-        second_pivot = round((ratio[0] + ratio[1]) * len(songs))
-
-        train_songs, test_songs, val_songs = np.split(songs, [first_pivot, second_pivot])
-
-        filenames_train, filenames_test, filenames_val = [], [], []
-        labels_train, labels_test, labels_val = [], [], []
-        for data_idx, filename in enumerate(filenames):
-            label = labels[data_idx]
-            song_name = filename.split('.')[0]
-            if song_name in train_songs:
-                filenames_train.append(filename)
-                labels_train.append(label)
-            elif song_name in test_songs:
-                filenames_test.append(filename)
-                labels_test.append(label)
-            else:
-                filenames_val.append(filename)
-                labels_val.append(label)
-
-        filenames_train, filenames_test, filenames_val = np.asarray(filenames_train), np.asarray(
-            filenames_test), np.asarray(filenames_val)
-        labels_train, labels_test, labels_val = np.asarray(labels_train), np.asarray(labels_test), np.asarray(
-            labels_val)
+        # Check if split was already done in label files
+        train_label_filename = label_filename.replace(
+            '.csv',
+            '.{}.{}.csv'.format(NUMBER_OF_CLASSES, 'train')
+        )
+        test_label_filename = label_filename.replace(
+            '.csv',
+            '.{}.{}.csv'.format(NUMBER_OF_CLASSES, 'test')
+        )
+        val_label_filename = label_filename.replace(
+            '.csv',
+            '.{}.{}.csv'.format(NUMBER_OF_CLASSES, 'val')
+        )
+        # if 3set-label files exist
+        cond = isfile(data_path / train_label_filename) \
+               and isfile(data_path / test_label_filename) \
+               and isfile(data_path / val_label_filename)
+        if cond:
+            # train set load
+            metadata_df = pd.read_csv(data_path / train_label_filename)
+            filenames_train = metadata_df['filename']
+            labels_train = metadata_df['label']
+            # test set load
+            metadata_df = pd.read_csv(data_path / test_label_filename)
+            filenames_test = metadata_df['filename']
+            labels_test = metadata_df['label']
+            # val set load
+            metadata_df = pd.read_csv(data_path / val_label_filename)
+            filenames_val = metadata_df['filename']
+            labels_val = metadata_df['label']
+        else:
+            # assert minimum conditions
+            assert ratio[0] + ratio[1] + ratio[2] == 1
+            assert len(filenames) == len(labels)
+            # get unique song names from filenames
+            songs = set([filename.split('.')[0] for filename in filenames])
+            songs = np.asarray(list(songs))
+            # randomize unique songs
+            np.random.shuffle(songs)
+            # split unique songs in 3 sets
+            first_pivot = round(ratio[0] * len(songs))
+            second_pivot = round((ratio[0] + ratio[1]) * len(songs))
+            train_songs, test_songs, val_songs = np.split(songs, [first_pivot, second_pivot])
+            # randomize filenames together with the labels
+            # note: there is multiple filenames pointing to different pieces of a same song
+            indices = np.arange(len(filenames))
+            np.random.shuffle(indices)
+            filenames = filenames[indices]
+            labels = labels[indices]
+            # Limit the number of classes in the split
+            unique_labels = list(set(labels))[:NUMBER_OF_CLASSES]
+            # gather the corresponding song pieces (filenames) to each set
+            # note: here we enforce that the same song pieces fall in the same train/test/val to avoid song-effect
+            filenames_train, filenames_test, filenames_val = [], [], []
+            labels_train, labels_test, labels_val = [], [], []
+            for data_idx, filename in enumerate(filenames):
+                label = labels[data_idx]
+                if label not in unique_labels:
+                    # if the song-piece label is not in the selected unique_labels discard it
+                    continue
+                # song name is the first part of the filename
+                song_name = filename.split('.')[0]
+                if song_name in train_songs:
+                    filenames_train.append(filename)
+                    labels_train.append(label)
+                elif song_name in test_songs:
+                    filenames_test.append(filename)
+                    labels_test.append(label)
+                else:
+                    filenames_val.append(filename)
+                    labels_val.append(label)
+            # transform python list to np.array
+            filenames_train, filenames_test, filenames_val = np.asarray(filenames_train), np.asarray(
+                filenames_test), np.asarray(filenames_val)
+            labels_train, labels_test, labels_val = np.asarray(labels_train), np.asarray(labels_test), np.asarray(
+                labels_val)
+            # export to external file to enforce same sets to different experiments with the same class_number
+            pd.DataFrame({'filename': filenames_train, 'label': labels_train}).to_csv(data_path / train_label_filename)
+            pd.DataFrame({'filename': filenames_test, 'label': labels_test}).to_csv(data_path / test_label_filename)
+            pd.DataFrame({'filename': filenames_val, 'label': labels_val}).to_csv(data_path / val_label_filename)
 
         # dataset analytics
         def print_split_properties(labels, filenames, possible_labels, dataset_name):
@@ -616,7 +666,6 @@ class ExperimentDataset(Dataset):
             print('info: Dataset {} has {} of {} classes inside.'.format(dataset_name, len(found_labels),
                                                                          len(possible_labels)))
 
-        possible_labels = set(label for label in labels)
         print_split_properties(labels_train, filenames_train, possible_labels, 'train')
         print_split_properties(labels_test, filenames_test, possible_labels, 'test')
         print_split_properties(labels_val, filenames_val, possible_labels, 'val')

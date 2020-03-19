@@ -1,7 +1,11 @@
 import pathlib
 from os import makedirs as _makedirs
 
+# General Settings
+NUMBER_OF_CLASSES = 2
 
+
+# Configuration Settings
 def makedirs(path):
     try:
         _makedirs(path)
@@ -41,7 +45,6 @@ POWER = 2  # Exponent for the magnitude melspectrogram. e.g., 1 for energy, 2 fo
 N_MELS = 128  # number of Mel bands to generate
 FMIN = 0  # lowest frequency (in Hz)
 FMAX = None  # Highest frequency (in Hz)
-
 
 # MFCC
 # params from 2011 Tsai et al.
@@ -99,7 +102,6 @@ EARLY_STOP_PATIENCE = 20
 GMM_COMPONENT_NUMBER = 64
 GMM_FRAME_LIMIT = 17 * 1000  # 1000 are 1 second; 1000 * 60 is 1 minute
 
-
 #  ResNetV2
 RESNET_V2_VERSION = 2
 RESNET_V2_BATCH_SIZE = 32  # orig paper trained all networks with batch_size=128
@@ -147,7 +149,6 @@ WAVENET_POOLING_KERNEL_SIZE = 20
 WAVENET_POOLING_STRIDE = 10
 WAVENET_LEARNING_RATE = 0.0001
 WAVENET_WEIGHT_DECAY = 0
-
 
 # Infersent
 # BiLSTM w& Max Pooling ecoding
