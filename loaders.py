@@ -566,6 +566,7 @@ class ExperimentDataset(Dataset):
         :param label_filename: Filename of CSV file containing all filenames and it labels
         :return:
         """
+        debug=True
         possible_labels = set(label for label in labels)
         # Check if split was already done in label files
         train_label_filename = label_filename.replace(
@@ -606,6 +607,7 @@ class ExperimentDataset(Dataset):
             unique_labels = list(set(labels))[:NUMBER_OF_CLASSES]
             # get unique song names from filenames and selected unique labels
             songs = set()
+            print('debug: selected labels: {}'.format(unique_labels)) if debug else None
             for data_idx, filename in enumerate(filenames):
                 label = labels[data_idx]
                 if label not in unique_labels:
@@ -614,6 +616,7 @@ class ExperimentDataset(Dataset):
                 song_name = filename.split('.')[0]
                 songs.add(song_name)
             songs = np.asarray(list(songs))
+            print('debug: selected songs: {}'.format(songs)) if debug else None
             # randomize unique songs
             # np.random.seed(random_seed)
             # np.random.shuffle(songs)
