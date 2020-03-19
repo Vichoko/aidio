@@ -1,7 +1,6 @@
 import os
 from math import ceil
 from os.path import isfile
-from sys import path
 
 import librosa
 import numpy as np
@@ -566,7 +565,7 @@ class ExperimentDataset(Dataset):
         :param label_filename: Filename of CSV file containing all filenames and it labels
         :return:
         """
-        debug=True
+        debug = False
         possible_labels = set(label for label in labels)
         # Check if split was already done in label files
         train_label_filename = label_filename.replace(
@@ -626,11 +625,11 @@ class ExperimentDataset(Dataset):
             train_songs, test_songs, val_songs = np.split(songs, [first_pivot, second_pivot])
             # randomize filenames together with the labels
             # note: there is multiple filenames pointing to different pieces of a same song
-            # indices = np.arange(len(filenames))
-            # np.random.seed(random_seed)
-            # np.random.shuffle(indices)
-            # filenames = filenames[indices]
-            # labels = labels[indices]
+            indices = np.arange(len(filenames))
+            np.random.seed(random_seed)
+            np.random.shuffle(indices)
+            filenames = filenames[indices]
+            labels = labels[indices]
             # gather the corresponding song pieces (filenames) to each set
             # note: here we enforce that the same song pieces fall in the same train/test/val to avoid song-effect
             filenames_train, filenames_test, filenames_val = [], [], []
@@ -645,9 +644,11 @@ class ExperimentDataset(Dataset):
                 elif song_name in test_songs:
                     filenames_test.append(filename)
                     labels_test.append(label)
-                else:
+                elif song_name in val_songs:
                     filenames_val.append(filename)
                     labels_val.append(label)
+                else:
+                    continue
             # transform python list to np.array
             filenames_train, filenames_test, filenames_val = np.asarray(filenames_train), np.asarray(
                 filenames_test), np.asarray(filenames_val)
