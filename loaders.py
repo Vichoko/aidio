@@ -585,6 +585,7 @@ class ExperimentDataset(Dataset):
                and isfile(data_path / test_label_filename) \
                and isfile(data_path / val_label_filename)
         if cond:
+            print('info: loading from pre-splitted data-sets')
             # train set load
             metadata_df = pd.read_csv(data_path / train_label_filename)
             filenames_train = metadata_df['filename']
@@ -603,6 +604,9 @@ class ExperimentDataset(Dataset):
             assert len(filenames) == len(labels)
 
             # Limit the number of classes in the splits
+            # note: this method pick random classes as set is unordered.
+            # todo: more inteligent class picker.
+            #  Ex. Rank by example count, pick the first N, upsample or subsample for balance
             unique_labels = list(set(labels))[:NUMBER_OF_CLASSES]
             # get unique song names from filenames and selected unique labels
             songs = set()

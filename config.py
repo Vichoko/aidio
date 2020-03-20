@@ -3,7 +3,7 @@ from os import makedirs as _makedirs
 
 # General Settings
 NUMBER_OF_CLASSES = 2
-
+RANDOM_SEED = 69
 
 # Configuration Settings
 def makedirs(path):
