@@ -511,18 +511,17 @@ class ExperimentDataset(Dataset):
         if dummy_mode:
             filenames_dev, filenames_test, filenames_train, labels_dev, labels_test, labels_train = cls.get_dummy_dataset(
                 filenames, labels, shuffle, ratio, random_seed)
-            label_set = set()
-            [label_set.add(e) for e in labels_dev]
-            [label_set.add(e) for e in labels_test]
-            [label_set.add(e) for e in labels_train]
-            labels = np.asarray(list(label_set))
-
         else:
             filenames_dev, filenames_test, filenames_train, labels_dev, labels_test, labels_train = cls.split_meta_dataset(
                 filenames, labels, label_filename, ratio, shuffle, data_path, random_seed)
             # check the nmber of classes and fit an ordinal ecoder
-            labels = np.asarray(labels)
 
+        # as split can sub-set the original label set, we need to build a fresh one
+        label_set = set()
+        [label_set.add(e) for e in labels_dev]
+        [label_set.add(e) for e in labels_test]
+        [label_set.add(e) for e in labels_train]
+        labels = np.asarray(list(label_set))
         label_encoder = OrdinalEncoder().fit(labels.reshape(-1, 1))
         print('debug: label_encoder has categories = {}'.format(label_encoder.categories_[0])) if debug else None
         number_of_classes = len(label_encoder.categories_[0])
