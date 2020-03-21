@@ -174,7 +174,7 @@ class GMMClassifierHelper(AbstractHelper):
     dataset = CepstrumDataset
     # source_feature_name = MelSpectralCoefficientsFeatureExtractor.feature_name
     lightning_module = L_GMMClassifier
-    dataset_ratios = (.7, .3, .0)
+    dataset_ratios = (.7, .29, .01)
 
     def __init__(self, experiment_name, parser, data_path, label_filename, models_path, dummy_mode=False):
         super().__init__(experiment_name, parser, data_path, label_filename, models_path, dummy_mode)
@@ -188,6 +188,8 @@ class GMMClassifierHelper(AbstractHelper):
         """
         if self.module.train_now() == 0:
             self.module.save_model(self.save_dir)
+        self.module.eval_now()
+
 
 
 class ResNext50Helper(AbstractHelper):

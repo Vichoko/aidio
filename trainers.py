@@ -203,15 +203,22 @@ class L_GMMClassifier(ptl.LightningModule):
 
         print('info: starting training')
         train_dataloader = self.train_dataloader()
-        test_dataloader = self.test_dataloader()
-        for batch_idx, batch in tqdm.tqdm(enumerate(train_dataloader)):  # Add tqdm
+        for batch_idx, batch in tqdm.tqdm(enumerate(train_dataloader)):
             self.training_step(batch, batch_idx)
-
         self.trained = True
-        # for batch_idx, batch in enumerate(test_dataloader):
-        #     pass
-        # todo: add validation as soon as the training works
         print('info: ending training')
+        return 0
+
+    def eval_now(self):
+        print('info: starting evaluation')
+        val_dataloader = self.val_dataloader()[0]
+        test_dataloader = self.test_dataloader()[0]
+        val_out = []
+        for batch_idx, batch in tqdm.tqdm(enumerate(val_dataloader)):
+            val_out.append(self.validation_step(batch, batch_idx))
+        res = self.validation_end(val_out)
+        print(res['log'])
+        print('info: ending evaluation')
         return 0
 
     def save_model(self, model_path):
@@ -230,7 +237,7 @@ class L_GMMClassifier(ptl.LightningModule):
         self.model_path = model_path
         try:
             model = pickle.load(open(model_path / filename, 'rb'))
-            print('info: gmm loaded fron file')
+            print('info: gmm loaded from file')
             self.trained = True
         except IOError:
             model = GMMClassifier(self.num_classes)
@@ -295,11 +302,11 @@ class L_GMMClassifier(ptl.LightningModule):
         val_acc = torch.sum(y == labels_hat).item() / (len(y) * 1.0)
         val_acc = torch.tensor(val_acc)
 
-        if self.on_gpu:
-            val_acc = val_acc.cuda(loss_val.device.index)
+        # if self.on_gpu:
+        #     val_acc = val_acc.cuda(loss_val.device.index)
 
         output = OrderedDict({
-            # 'val_loss': loss_val,
+            'val_loss': loss_val,
             'val_acc': val_acc,
         })
 
@@ -316,27 +323,19 @@ class L_GMMClassifier(ptl.LightningModule):
         # we return just the average in this case (if we want)
         # return torch.stack(outputs).mean()
 
-        # val_loss_mean = 0
+        val_loss_mean = 0
         val_acc_mean = 0
+
         for output in outputs:
-            # val_loss = output['val_loss']
-
-            # reduce manually when using dp
-            # if self.trainer.use_dp or self.trainer.use_ddp2:
-            #     val_loss = torch.mean(val_loss)
-            # val_loss_mean += val_loss
-
-            # reduce manually when using dp
+            val_loss = output['val_loss']
             val_acc = output['val_acc']
-            if self.trainer.use_dp or self.trainer.use_ddp2:
-                val_acc = torch.mean(val_acc)
-
+            val_loss_mean += val_loss
             val_acc_mean += val_acc
 
-        # val_loss_mean /= len(outputs)
+        val_loss_mean /= len(outputs)
         val_acc_mean /= len(outputs)
         tqdm_dict = {
-            # 'val_loss': val_loss_mean,
+            'val_loss': val_loss_mean,
             'val_acc': val_acc_mean
         }
         result = {

@@ -674,9 +674,10 @@ class GMMClassifier(nn.Module):
         super(GMMClassifier, self).__init__()
         self.frame_limit = frame_limit
         # n_features = 128
-        max_class_label = max(num_classes, 50)  # heuristically set because biggest dataset has 50 classes
+        # max_class_label = max(num_classes, 50)  # heuristically set because biggest dataset has 50 classes
+        # note: cant remember why i did this
         self.gmm_list = []
-        for _ in range(max_class_label):
+        for _ in range(num_classes):
             # one gmm per singer as stated in Tsai; Fujihara; Mesaros et. al works on SID
             self.gmm_list.append(
                 mixture.GaussianMixture(n_components=n_components)
