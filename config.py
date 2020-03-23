@@ -100,7 +100,7 @@ EARLY_STOP_PATIENCE = 20
 # gmm
 
 GMM_COMPONENT_NUMBER = 64
-GMM_FRAME_LIMIT = 17 * 1000  # 1000 are 1 second; 1000 * 60 is 1 minute
+GMM_FRAME_LIMIT = 30 * 1000  # 1000 are 1 second; 1000 * 60 is 1 minute
 
 #  ResNetV2
 RESNET_V2_VERSION = 2

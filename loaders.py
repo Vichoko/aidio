@@ -1,4 +1,5 @@
 import os
+from collections import defaultdict
 from math import ceil
 from os.path import isfile
 
@@ -549,7 +550,51 @@ class ExperimentDataset(Dataset):
         return train_dataset, test_dataset, dev_dataset, number_of_classes
 
     @staticmethod
-    def split_meta_dataset(filenames, labels, label_filename, ratio, shuffle, data_path, random_seed):
+    def select_classes(filenames, labels, n_classes=NUMBER_OF_CLASSES):
+        """
+        Take the complete set of labels and make a subset.
+        :param filenames: np.array with filenames as strings
+        :param labels: np.array with labels as strings
+        :return: List of Strings: Sub-set of labels
+        """
+        data_dict = defaultdict(list)
+
+        assert len(filenames) == len(labels)
+        for data_idx, filename in enumerate(filenames):
+            label = labels[data_idx]
+            data_dict[label].append(filename)
+
+        # make a list of tuples (label, data_count) then sort it desc
+        label_rank = []
+        for label in data_dict.keys():
+            label_rank.append((label, len(data_dict[label])))
+        label_rank = sorted(label_rank, key=lambda e: e[1], reverse=True)
+        # subset the label set by n_classes
+
+        selected_labels_n_count = label_rank[:n_classes]
+        selected_labels = [label_n_count[0] for label_n_count in selected_labels_n_count]
+        selected_labels = set(selected_labels)
+        print('info: selected labels = {}'.format(selected_labels))
+
+        min_count = selected_labels_n_count[-1][1]
+        print('info: min count of the selected labels for subsampling = {}'.format(min_count))
+        max_count = selected_labels_n_count[0][1]
+
+        new_filenames = []
+        new_labels = []
+        # subsample the elements by the count of the min of the subset labels
+        for label in data_dict.keys():
+            label_filenames = data_dict[label][:min_count]
+            if label in selected_labels:
+                [new_filenames.append(filename) for filename in label_filenames]
+                [new_labels.append(label) for _ in label_filenames]
+
+        # note: the following line pick random classes as set is unordered.
+        # new_labels = list(set(labels))[:n_classes]
+        return np.asarray(new_filenames), np.asarray(new_labels), selected_labels
+
+    @classmethod
+    def split_meta_dataset(cls, filenames, labels, label_filename, ratio, shuffle, data_path, random_seed):
         """
         Makes sure that same-song splits stay in same partition to avoid song-effect.
         Make random split over the songs, and prints distributuions statistics of the resulting datasets.
@@ -603,10 +648,8 @@ class ExperimentDataset(Dataset):
             assert len(filenames) == len(labels)
 
             # Limit the number of classes in the splits
-            # note: this method pick random classes as set is unordered.
-            # todo: more inteligent class picker.
-            #  Ex. Rank by example count, pick the first N, upsample or subsample for balance
-            unique_labels = list(set(labels))[:NUMBER_OF_CLASSES]
+            filenames, labels, unique_labels = cls.select_classes(filenames, labels)
+
             # get unique song names from filenames and selected unique labels
             songs = set()
             print('debug: selected labels: {}'.format(unique_labels)) if debug else None
