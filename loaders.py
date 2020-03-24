@@ -14,7 +14,7 @@ from torch.utils.data.sampler import Sampler
 from torchvision import transforms
 
 from config import FEATURES_DATA_PATH, RESNET_MIN_DIM, ADISAN_BATCH_SIZE, ADISAN_EPOCHS, WAVEFORM_MAX_SEQUENCE_LENGTH, \
-    WAVEFORM_NUM_CHANNELS, WAVEFORM_SAMPLE_RATE, GMM_FRAME_LIMIT, NUMBER_OF_CLASSES
+    WAVEFORM_NUM_CHANNELS, WAVEFORM_SAMPLE_RATE, NUMBER_OF_CLASSES, SONG_FRAME_LIMIT
 
 
 # def get_shuffle_split(self, n_splits=2, test_size=0.5, train_size=0.5):
@@ -895,7 +895,7 @@ class CepstrumDataset(ExperimentDataset):
             label_encoder
         )
         self.transform = transforms.Compose([
-            CepstrumDataset.RandomCropMFCC(GMM_FRAME_LIMIT),  # ]  # with numpy
+            CepstrumDataset.RandomCropMFCC(SONG_FRAME_LIMIT),  # ]  # with numpy
             self.ToTensor(),
         ]  # with torch
         )
