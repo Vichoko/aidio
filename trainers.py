@@ -269,15 +269,15 @@ class L_GMMClassifier(ptl.LightningModule):
         print('debug: batch is {}, labels are {}'.format(batch_idx, y)) if debug else None
         self.model.fit(x, y)
         print('info: Getting train data metrics...')
-        y_pred = self.forward(x)
-        # as torch methods expect first dim to be N, add first dimension to 1
-        # calculate loss
-        loss_val = self.loss(y_pred, y)
-        tqdm_dict = {'train_loss': loss_val}
+        # y_pred = self.forward(x)
+        # # as torch methods expect first dim to be N, add first dimension to 1
+        # # calculate loss
+        # loss_val = self.loss(y_pred, y)
+        # tqdm_dict = {'train_loss': loss_val}
         output = OrderedDict({
-            'loss': loss_val,
-            'progress_bar': tqdm_dict,
-            'log': tqdm_dict
+            # 'loss': loss_val,
+            # 'progress_bar': tqdm_dict,
+            # 'log': tqdm_dict
         })
         print('info: Done!')
         # can also return just a scalar instead of a dict (return loss_val)
