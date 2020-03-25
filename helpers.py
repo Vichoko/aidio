@@ -235,6 +235,12 @@ def add_cli_args(parser):
         help='experiment identifier',
         default='unnamed_experiment'
     )
+    parser.add_argument(
+        '--dummy_mode',
+        help='if something then activate dummy mode to test learning capabilities of the a model. '
+             '2 classes are predicted under a training where training and test sets are the same.',
+        default=False
+    )
     parser.add_argument('--gpus', default='[]', type=str)
 
 
@@ -245,7 +251,8 @@ def parse_cli_args(args):
     models_path = pathlib.Path(args.model_path)
     label_filename = args.label_filename
     gpus = json.loads(args.gpus)
-    return model_name, experiment_name, data_path, models_path, label_filename, gpus
+    dummy_mode = True if args.dummy_mode else False
+    return model_name, experiment_name, data_path, models_path, label_filename, gpus, dummy_mode
 
 
 if __name__ == '__main__':
@@ -255,7 +262,7 @@ if __name__ == '__main__':
     )
     add_cli_args(parser)
     args = parser.parse_args()
-    model_name, experiment_name, data_path, models_path, label_filename, _ = parse_cli_args(args)
+    model_name, experiment_name, data_path, models_path, label_filename, _, dummy_flag = parse_cli_args(args)
 
     helper_class = helpers[model_name]
     helper = helper_class(
@@ -264,7 +271,7 @@ if __name__ == '__main__':
         data_path,
         label_filename,
         models_path,
-        dummy_mode=False
+        dummy_mode=dummy_flag
     )
     helper.train()
     print('helper ended')
