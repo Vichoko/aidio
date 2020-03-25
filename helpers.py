@@ -9,7 +9,7 @@ import numpy as np
 import pytorch_lightning as ptl
 import torch
 from pytorch_lightning.callbacks import EarlyStopping
-from pytorch_lightning.loggers import TestTubeLogger
+from pytorch_lightning.logging import TestTubeLogger
 from torch.utils.data import DataLoader
 
 from config import makedirs, MODELS_DATA_PATH, RAW_DATA_PATH, EARLY_STOP_PATIENCE
