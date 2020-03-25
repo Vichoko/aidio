@@ -9,6 +9,7 @@ import numpy as np
 import pytorch_lightning as ptl
 import torch
 from pytorch_lightning.callbacks import EarlyStopping
+from pytorch_lightning.loggers import TestTubeLogger
 from torch.utils.data import DataLoader
 
 from config import makedirs, MODELS_DATA_PATH, RAW_DATA_PATH, EARLY_STOP_PATIENCE
@@ -99,7 +100,7 @@ class AbstractHelper:
         gpus = json.loads(hyperparams.gpus)
         self.save_dir = models_path / model_name / experiment_name
         makedirs(self.save_dir)
-        logger = ptl.logging.TestTubeLogger(
+        logger = TestTubeLogger(
             save_dir=self.save_dir,
             version=1  # An existing version with a saved checkpoint
         )
