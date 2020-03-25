@@ -1,5 +1,6 @@
 import argparse
 import subprocess
+
 import features
 import helpers
 
@@ -26,7 +27,8 @@ if __name__ == '__main__':
                ]
     elif mode == 'model':
         module = 'helpers.py'
-        model_name, experiment_name, data_path, models_path, label_filename, gpus = helpers.parse_cli_args(args)
+        model_name, experiment_name, data_path, models_path, label_filename, gpus, dummy_mode = helpers.parse_cli_args(
+            args)
 
         cmd = ['python',
                '-W', 'ignore',  # to suppress userwarnings of librosa
@@ -36,7 +38,9 @@ if __name__ == '__main__':
                '--data_path', str(data_path),
                '--model_path', str(models_path),
                '--label_filename', str(label_filename),
-               '--gpus', str(gpus)
+               '--gpus', str(gpus),
+               '--dummy_mode' if dummy_mode else '',
+               'true' if dummy_mode else '',
                ]
     else:
         raise NotImplementedError
