@@ -746,7 +746,7 @@ class ExperimentDataset(Dataset):
         first_class_filenames = filenames[labels == available_labels[0]]
         second_class_filenames = filenames[labels == available_labels[1]]
 
-        examples_per_class = 5
+        examples_per_class = 1
         out_filenames = np.concatenate(
             (first_class_filenames[:examples_per_class], second_class_filenames[:examples_per_class]))
         out_labels = np.asarray([available_labels[0]] * examples_per_class + [available_labels[1]] * examples_per_class)
