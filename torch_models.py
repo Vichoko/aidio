@@ -527,37 +527,18 @@ class WaveNetTransformerClassifier(nn.Module):
 
         # reduce sample resolution from 160k to 32k
         # output_length = floor((input_length - stride)/kernel_size + 1)
-        conv_downsampler_stride = 3
-        self.conv_downsampler_1 = nn.Conv1d(
-            in_channels=WAVENET_END_CHANNELS,
-            out_channels=384,
-            kernel_size=4,
-            stride=conv_downsampler_stride,
-            dilation=2
-        )
-        self.conv_downsampler_2 = nn.Conv1d(
-            in_channels=384,
-            out_channels=448,
-            kernel_size=4,
-            stride=conv_downsampler_stride,
-            dilation=2
-        )
-        self.conv_downsampler_3 = nn.Conv1d(
-            in_channels=448,
-            out_channels=d_model,
-            kernel_size=4,
-            stride=conv_downsampler_stride,
-            dilation=2
+        self.avg_pooling = nn.AvgPool1d(
+            kernel_size=WAVENET_POOLING_KERNEL_SIZE,
+            stride=WAVENET_POOLING_STRIDE
         )
 
         self.positional_encoder = PositionalEncoder(
             d_model,
-            max_seq_len=math.floor(max_raw_sequnece / (conv_downsampler_stride * 3))
+            max_seq_len=math.floor((max_raw_sequnece - WAVENET_POOLING_STRIDE) / (WAVENET_POOLING_KERNEL_SIZE) + 1)
         )
 
         encoder_layer = nn.TransformerEncoderLayer(d_model=d_model, nhead=nhead)
         self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
-
         self.fc1 = nn.Linear(d_model, 120)  # 6*6 from image dimension
         self.fc2 = nn.Linear(120, 84)
         self.fc3 = nn.Linear(84, num_classes)
@@ -572,9 +553,10 @@ class WaveNetTransformerClassifier(nn.Module):
         # print('info: feeding wavenet...')
         x = self.wavenet.forward(x)
         # reduce sequence_length / 10 three times == 16Khz to 10Hz; increase the number of channels
-        x = self.conv_downsampler_1(x)
-        x = self.conv_downsampler_2(x)
-        x = self.conv_downsampler_3(x)
+        # x = self.conv_downsampler_1(x)
+        # x = self.conv_downsampler_2(x)
+        # x = self.conv_downsampler_3(x)
+        x = self.avg_pooling(x)
         # x.shape for convs is n_data, n_channels, n_sequence
         # transformer expected input is n_data, n_sequence, wavenet_channels
         x = x.transpose(1, 2)
@@ -697,7 +679,8 @@ class GMMClassifier(nn.Module):
                 i is the singer GMM
         """
         x = x.permute(0, 2, 1)  # shape is (batch_size, 20, n_frames)
-        x = [self.forward_score(x_i) for x_i in x]  # shape is (batch_size, 20, n_frames) # shape is (batch_size, n_frames, n_features)
+        x = [self.forward_score(x_i) for x_i in
+             x]  # shape is (batch_size, 20, n_frames) # shape is (batch_size, n_frames, n_features)
         x = torch.stack(x)
         # x = x.argmax(dim=0)  # x is numeral index of class
         # sum the scores over the
