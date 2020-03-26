@@ -14,6 +14,7 @@ def makedirs(path):
 
 
 AVAIL_MEDIA_TYPES = ['mp3', 'ogg', 'wav', 'flac', ]
+FEATURE_EXTRACTOR_NUM_WORKERS = 4
 NUM_WORKERS = 1
 
 SOURCE_DATA_PATH = pathlib.Path('C:\\Users\\Vichoko\\Music\\in')

@@ -26,7 +26,7 @@ from config import SR, RAW_DATA_PATH, FEATURES_DATA_PATH, HOP_LENGTH, N_FFT, N_M
     N_MELS_HPSS, MODELS_DATA_PATH, RNN_INPUT_SIZE_VOICE_ACTIVATION, TOP_DB_WINDOWED_MFCC, \
     MIN_INTERVAL_LEN_WINDOWED_MFCC, WINDOW_LEN_WINDOWED_MFCC, WINDOW_HOP_WINDOWED_MFCC, makedirs, AVAIL_MEDIA_TYPES, \
     NUM_WORKERS, MAGPHASE_WINDOW_SIZE, MAGPHASE_HOP_LENGTH, MAGPHASE_SAMPLE_RATE, MAGPHASE_PATCH_SIZE, \
-    OUNMIX_SAMPLE_RATE, MFCC_N_COEF, MFCC_FFT_WINDOW, MFCC_HOP_LENGTH
+    OUNMIX_SAMPLE_RATE, MFCC_N_COEF, MFCC_FFT_WINDOW, MFCC_HOP_LENGTH, FEATURE_EXTRACTOR_NUM_WORKERS
 from util.leglaive.audio import ono_hpss, log_melgram
 
 
@@ -262,7 +262,7 @@ class FeatureExtractor:
             existing_labels=self.existing_labels,
             **kwargs)
         try:
-            with concurrent.futures.ThreadPoolExecutor(max_workers=NUM_WORKERS) as executor:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=FEATURE_EXTRACTOR_NUM_WORKERS) as executor:
                 iterator = executor.map(process_element, data)
             list(iterator)
         except KeyboardInterrupt:
