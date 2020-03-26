@@ -907,7 +907,7 @@ class IntensitySplitterFeatureExtractor(FeatureExtractor):
             :param y: label (str)
             :return:
             """
-            print('prosessing {}'.format(data))
+            print('processing {}'.format(data))
             x = data[0]
             y = data[1]
 
@@ -919,18 +919,20 @@ class IntensitySplitterFeatureExtractor(FeatureExtractor):
                 wav,
                 top_db=TOP_DB_WINDOWED_MFCC
             )
+            wav_intervals = []
             # export intervals as new songs (wav)
             for interval_idx, interval in enumerate(intervals):
                 if interval[1] - interval[0] < MIN_INTERVAL_LEN_WINDOWED_MFCC:
                     # if length is lesser that 1 second, discard interval
                     continue
-
-                filename = FeatureExtractor.get_file_name(x, feature_name,
-                                                          ext='{}.mp3'.format(interval_idx))
-                FeatureExtractor.save_mp3(
-                    wav[interval[0]:interval[1]], SR,
-                    feature_name,
-                    out_path, x, y, new_labels, mp3_filename=filename)
+                print('debug: appending interval {}'.format(interval))
+                wav_intervals.append(wav[interval[0]:interval[1]])
+            filename = FeatureExtractor.get_file_name(x, feature_name,
+                                                      ext='mp3')
+            FeatureExtractor.save_mp3(
+                np.concatenate(wav_intervals), SR,
+                feature_name,
+                out_path, x, y, new_labels, mp3_filename=filename)
 
         return __process_element
 

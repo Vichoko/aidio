@@ -15,7 +15,7 @@ sys.path.insert(0, parent_dir)
 from config import SR
 
 MAX_CLASS_NUMBER = 0  # Number of classes; 0 is all possible
-SPLIT_AUDIO_LENGTH = 20  # Second
+SPLIT_AUDIO_LENGTH = 11  # Second
 
 
 def main():
