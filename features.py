@@ -547,6 +547,9 @@ class MelCepstralCoefficientsFeatureExtractor(FeatureExtractor):
 
 # MFSC
 class WindowedMelSpectralCoefficientsFeatureExtractor(FeatureExtractor):
+    """
+    Do not use.
+    """
     feature_name = 'windowed_spec'
 
     @staticmethod
@@ -910,6 +913,11 @@ class IntensitySplitterFeatureExtractor(FeatureExtractor):
             print('processing {}'.format(data))
             x = data[0]
             y = data[1]
+            filename = FeatureExtractor.get_file_name(x, feature_name,
+                                                      ext='mp3')
+
+            if os.path.isfile(filename):
+                return
 
             # params
 
@@ -927,8 +935,7 @@ class IntensitySplitterFeatureExtractor(FeatureExtractor):
                     continue
                 print('debug: appending interval {}'.format(interval))
                 wav_intervals.append(wav[interval[0]:interval[1]])
-            filename = FeatureExtractor.get_file_name(x, feature_name,
-                                                      ext='mp3')
+
             FeatureExtractor.save_mp3(
                 np.concatenate(wav_intervals), SR,
                 feature_name,
