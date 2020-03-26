@@ -582,7 +582,7 @@ class WaveNetTransformerClassifier(nn.Module):
         x = self.positional_encoder(x)
         # print('info: feeding transformer...')
         x = self.transformer_encoder(x)  # shape  n_data, n_sequence, d_model
-        # x = x[:, -1, :]  # pick the last vector from the output as the sentence embedding
+        x = x[:, -1, :]  # pick the last vector from the output as the sentence embedding
         # x, _ = x.max(1)  # max pooling over the sequence dim; drop sequence axis
         print('info. x shape {}'.format(x.shape))
 
