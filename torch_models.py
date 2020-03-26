@@ -453,7 +453,7 @@ class WaveNetBiLSTMClassifier(TorchClassificationModel):
         x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))
         x = self.fc3(x)
-        x = self.soft_max(x)
+        # x = self.soft_max(x)
         return x
 
 
