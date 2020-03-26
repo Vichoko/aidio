@@ -11,7 +11,7 @@ from torchsummary import summary
 from torchvision.models import resnext50_32x4d
 
 from config import WAVENET_BATCH_SIZE, NUM_WORKERS, RESNET_V2_BATCH_SIZE, SR, WAVENET_LEARNING_RATE, \
-    WAVENET_WEIGHT_DECAY
+    WAVENET_WEIGHT_DECAY, WAVENET_USE_AMSGRAD
 from loaders import ClassSampler
 from torch_models import WaveNetTransformerClassifier, GMMClassifier, WaveNetLSTMClassifier, WaveNetClassifier
 
@@ -413,7 +413,7 @@ class L_WavenetTransformerClassifier(ptl.LightningModule):
         self.model = WaveNetTransformerClassifier(num_classes)
         # self.optimizer = torch.optim.Adam(self.model.parameters(), lr=hparams.learning_rate)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=hparams.learning_rate,
-                                          weight_decay=hparams.weight_decay, amsgrad=True)
+                                          weight_decay=hparams.weight_decay, amsgrad=WAVENET_USE_AMSGRAD)
 
     # ---------------------
     # TRAINING
