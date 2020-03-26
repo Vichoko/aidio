@@ -413,7 +413,7 @@ class L_WavenetTransformerClassifier(ptl.LightningModule):
         self.model = WaveNetTransformerClassifier(num_classes)
         # self.optimizer = torch.optim.Adam(self.model.parameters(), lr=hparams.learning_rate)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=hparams.learning_rate,
-                                          weight_decay=hparams.weight_decay)
+                                          weight_decay=hparams.weight_decay, amsgrad=True)
 
     # ---------------------
     # TRAINING
