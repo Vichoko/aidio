@@ -532,6 +532,14 @@ class WaveNetTransformerClassifier(nn.Module):
             stride=WAVENET_POOLING_STRIDE
         )
 
+        self.conv_dimension_reshaper = nn.Conv1d(
+            in_channels=WAVENET_END_CHANNELS,
+            out_channels=TRANSFORMER_D_MODEL,
+            kernel_size=4,
+            stride=1,
+            dilation=2
+        )
+
         self.positional_encoder = PositionalEncoder(
             d_model,
             max_seq_len=math.floor((max_raw_sequnece - WAVENET_POOLING_STRIDE) / (WAVENET_POOLING_KERNEL_SIZE) + 1)
@@ -557,6 +565,7 @@ class WaveNetTransformerClassifier(nn.Module):
         # x = self.conv_downsampler_2(x)
         # x = self.conv_downsampler_3(x)
         x = self.avg_pooling(x)
+        x = self.conv_dimension_reshaper(x)
         # x.shape for convs is n_data, n_channels, n_sequence
         # transformer expected input is n_data, n_sequence, wavenet_channels
         x = x.transpose(1, 2)
