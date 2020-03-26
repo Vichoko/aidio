@@ -585,9 +585,7 @@ class WaveNetTransformerClassifier(nn.Module):
         # x = x[:, -1, :]  # pick the last vector from the output as the sentence embedding
         # x, _ = x.max(1)  # max pooling over the sequence dim; drop sequence axis
         x = x.mean(1)  # max pooling over the sequence dim; drop sequence axis
-
-        print('info. x shape {}'.format(x.shape))
-
+        # print('info. x shape {}'.format(x.shape))
         # x final shape is n_data, lstm_hidden_size * 2
         # print('info: feeding fully-connected...')
         # simple classifier
