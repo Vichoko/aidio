@@ -915,12 +915,8 @@ class IntensitySplitterFeatureExtractor(FeatureExtractor):
             y = data[1]
             filename = FeatureExtractor.get_file_name(x, feature_name,
                                                       ext='mp3')
-
-            if os.path.isfile(filename):
+            if os.path.isfile(out_path / filename):
                 return
-
-            # params
-
             # get song and split
             wav, _ = librosa.load(str(source_path / x), sr=SR)
             intervals = librosa.effects.split(
@@ -1113,7 +1109,7 @@ class VoiceActivationFeatureExtractor(FeatureExtractor):
                     print('info: formatting data')
                     try:
                         print("debug: hpss shape is {}".format(hpss.shape))
-                        print('debug: size of hpss is {} KB'.format(sys.getsizeof(hpss)/1024))
+                        print('debug: size of hpss is {} KB'.format(sys.getsizeof(hpss) / 1024))
                         padding = RNN_INPUT_SIZE_VOICE_ACTIVATION - hpss.shape[1]
                         if padding > 0:
                             # if hpss is shorter that RNN input shape, then add padding on axis=1
@@ -1254,6 +1250,7 @@ class VoiceActivationSplitFeatureExtractor(FeatureExtractor):
                 )
 
         return __process_element
+
 
 class VoiceActivationFrameSelectionFeatureExtractor(FeatureExtractor):
     feature_name = 'frame_selection'
