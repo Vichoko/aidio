@@ -742,8 +742,8 @@ class ExperimentDataset(Dataset):
         """
         assert ratio[0] + ratio[1] + ratio[2] == 1
         assert len(filenames) == len(labels)
-        filenames = sorted(filenames)
-        available_labels = sorted(list(set(labels)))
+        filenames = np.asarray(sorted(list(filenames)))
+        available_labels = np.asarray(sorted(list(set(labels))))
         first_class_filenames = filenames[labels == available_labels[0]]
         second_class_filenames = filenames[labels == available_labels[1]]
 
