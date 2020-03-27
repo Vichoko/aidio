@@ -539,6 +539,9 @@ class WaveNetTransformerClassifier(nn.Module):
 
         max_seq_len = math.floor(
             (max_raw_sequnece - (WAVENET_POOLING_KERNEL_SIZE - 1)) / (WAVENET_POOLING_KERNEL_SIZE) + 1)
+        print('info: max_raw_sequnece {}'.format(max_raw_sequnece))
+        print('info: WAVENET_POOLING_KERNEL_SIZE {}'.format(WAVENET_POOLING_KERNEL_SIZE))
+        print('info: WAVENET_POOLING_KERNEL_SIZE {}'.format(WAVENET_POOLING_KERNEL_SIZE))
         print('info: max_seq_len {}'.format(max_seq_len))
         self.positional_encoder = PositionalEncoder(
             d_model,
