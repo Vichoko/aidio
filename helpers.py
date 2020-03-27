@@ -240,7 +240,8 @@ def add_cli_args(parser):
         '--dummy_mode',
         help='if something then activate dummy mode to test learning capabilities of the a model. '
              '2 classes are predicted under a training where training and test sets are the same.',
-        default=False
+        default=False,
+        required=False
     )
     parser.add_argument('--gpus', default='[]', type=str)
 
