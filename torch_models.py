@@ -526,7 +526,10 @@ class WaveNetTransformerClassifier(nn.Module):
         num_layers = TRANSFORMER_N_LAYERS
 
         # reduce sample resolution from 160k to 32k
-        # output_length = floor((input_length - stride)/kernel_size + 1)
+        # output_length = floor(
+        #       (input_length - (kernel_size-1)) / stride + 1
+        #   )
+
         self.conv_dimension_reshaper = nn.Conv1d(
             in_channels=WAVENET_END_CHANNELS,
             out_channels=TRANSFORMER_D_MODEL,
@@ -536,7 +539,7 @@ class WaveNetTransformerClassifier(nn.Module):
 
         self.positional_encoder = PositionalEncoder(
             d_model,
-            max_seq_len=math.floor((max_raw_sequnece - WAVENET_POOLING_STRIDE) / (WAVENET_POOLING_KERNEL_SIZE) + 1)
+            max_seq_len=math.floor((max_raw_sequnece - (WAVENET_POOLING_KERNEL_SIZE - 1)) / (WAVENET_POOLING_KERNEL_SIZE) + 1)
         )
 
         encoder_layer = nn.TransformerEncoderLayer(d_model=d_model, nhead=nhead)
