@@ -75,7 +75,6 @@ def main():
                 # if new slice is short, discard it to avoid issues
                 print('warning: Slice {} of {} discarded because was too short.'.format(slice_idx, filename))
                 continue
-
             new_filename = filename.replace(extension, '{}.npy'.format(slice_idx))
             np.save(
                 out_path / new_filename,

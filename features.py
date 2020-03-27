@@ -25,7 +25,7 @@ from config import SR, RAW_DATA_PATH, FEATURES_DATA_PATH, HOP_LENGTH, N_FFT, N_M
     VOICE_DETECTION_MODEL_NAME, N_FFT_HPSS_1, N_HOP_HPSS_1, N_FFT_HPSS_2, N_HOP_HPSS_2, SR_HPSS, \
     N_MELS_HPSS, MODELS_DATA_PATH, RNN_INPUT_SIZE_VOICE_ACTIVATION, TOP_DB_WINDOWED_MFCC, \
     MIN_INTERVAL_LEN_WINDOWED_MFCC, WINDOW_LEN_WINDOWED_MFCC, WINDOW_HOP_WINDOWED_MFCC, makedirs, AVAIL_MEDIA_TYPES, \
-    NUM_WORKERS, MAGPHASE_WINDOW_SIZE, MAGPHASE_HOP_LENGTH, MAGPHASE_SAMPLE_RATE, MAGPHASE_PATCH_SIZE, \
+    MAGPHASE_WINDOW_SIZE, MAGPHASE_HOP_LENGTH, MAGPHASE_SAMPLE_RATE, MAGPHASE_PATCH_SIZE, \
     OUNMIX_SAMPLE_RATE, MFCC_N_COEF, MFCC_FFT_WINDOW, MFCC_HOP_LENGTH, FEATURE_EXTRACTOR_NUM_WORKERS
 from util.leglaive.audio import ono_hpss, log_melgram
 
@@ -916,6 +916,7 @@ class IntensitySplitterFeatureExtractor(FeatureExtractor):
             filename = FeatureExtractor.get_file_name(x, feature_name,
                                                       ext='mp3')
             if os.path.isfile(out_path / filename):
+                new_labels.append([filename, y])
                 return
             # get song and split
             wav, _ = librosa.load(str(source_path / x), sr=SR)
