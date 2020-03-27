@@ -38,10 +38,11 @@ if __name__ == '__main__':
                '--data_path', str(data_path),
                '--model_path', str(models_path),
                '--label_filename', str(label_filename),
-               '--gpus', str(gpus),
-               '--dummy_mode' if dummy_mode else None,
-               'true' if dummy_mode else None,
+               '--gpus', str(gpus)
                ]
+        if dummy_mode:
+            cmd.append('--dummy_mode')
+            cmd.append('true')
     else:
         raise NotImplementedError
 
