@@ -507,6 +507,7 @@ class ExperimentDataset(Dataset):
         metadata_df = pd.read_csv(data_path / label_filename)
         filenames = metadata_df['filename']
         labels = metadata_df['label']
+        print('info: total label universe: {}'.format(set(labels)))
         print('info: starting split...')
 
         if dummy_mode:
