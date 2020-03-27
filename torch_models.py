@@ -527,17 +527,11 @@ class WaveNetTransformerClassifier(nn.Module):
 
         # reduce sample resolution from 160k to 32k
         # output_length = floor((input_length - stride)/kernel_size + 1)
-        self.avg_pooling = nn.AvgPool1d(
-            kernel_size=WAVENET_POOLING_KERNEL_SIZE,
-            stride=WAVENET_POOLING_STRIDE
-        )
-
         self.conv_dimension_reshaper = nn.Conv1d(
             in_channels=WAVENET_END_CHANNELS,
             out_channels=TRANSFORMER_D_MODEL,
-            kernel_size=4,
-            stride=1,
-            dilation=2
+            kernel_size=WAVENET_POOLING_KERNEL_SIZE,
+            stride=WAVENET_POOLING_STRIDE
         )
 
         self.positional_encoder = PositionalEncoder(
@@ -564,8 +558,9 @@ class WaveNetTransformerClassifier(nn.Module):
         # x = self.conv_downsampler_1(x)
         # x = self.conv_downsampler_2(x)
         # x = self.conv_downsampler_3(x)
-        x = self.avg_pooling(x)
+        print('info: x before reshape {}'.format(x.size))
         x = self.conv_dimension_reshaper(x)
+        print('info: x after reshape {}'.format(x.size))
         # x.shape for convs is n_data, n_channels, n_sequence
         # transformer expected input is n_data, n_sequence, wavenet_channels
         x = x.transpose(1, 2)
