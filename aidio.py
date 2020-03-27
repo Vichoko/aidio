@@ -39,8 +39,8 @@ if __name__ == '__main__':
                '--model_path', str(models_path),
                '--label_filename', str(label_filename),
                '--gpus', str(gpus),
-               '--dummy_mode' if dummy_mode else '',
-               'true' if dummy_mode else '',
+               '--dummy_mode' if dummy_mode else None,
+               'true' if dummy_mode else None,
                ]
     else:
         raise NotImplementedError
