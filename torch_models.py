@@ -570,7 +570,7 @@ class WaveNetTransformerClassifier(nn.Module):
         # transformer expected input is n_data, n_sequence, wavenet_channels
         x = x.transpose(1, 2)
         # print('info: feeding positional encoder...')
-        # x = self.positional_encoder(x)
+        x = self.positional_encoder(x)
         # print('info: feeding transformer...')
         x = self.transformer_encoder(x)  # shape  n_data, n_sequence, d_model
         x = x[:, -1, :]  # pick the last vector from the output as the sentence embedding
