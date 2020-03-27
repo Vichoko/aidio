@@ -537,9 +537,12 @@ class WaveNetTransformerClassifier(nn.Module):
             stride=WAVENET_POOLING_STRIDE
         )
 
+        max_seq_len = math.floor(
+            (max_raw_sequnece - (WAVENET_POOLING_KERNEL_SIZE - 1)) / (WAVENET_POOLING_KERNEL_SIZE) + 1)
+        print('info: max_seq_len {}'.format(max_seq_len))
         self.positional_encoder = PositionalEncoder(
             d_model,
-            max_seq_len=math.floor((max_raw_sequnece - (WAVENET_POOLING_KERNEL_SIZE - 1)) / (WAVENET_POOLING_KERNEL_SIZE) + 1)
+            max_seq_len=max_seq_len
         )
 
         encoder_layer = nn.TransformerEncoderLayer(d_model=d_model, nhead=nhead)
@@ -561,9 +564,9 @@ class WaveNetTransformerClassifier(nn.Module):
         # x = self.conv_downsampler_1(x)
         # x = self.conv_downsampler_2(x)
         # x = self.conv_downsampler_3(x)
-        print('info: x before reshape {}'.format(x.size()))
+        # print('info: x before reshape {}'.format(x.size()))
         x = self.conv_dimension_reshaper(x)
-        print('info: x after reshape {}'.format(x.size()))
+        # print('info: x after reshape {}'.format(x.size()))
         # x.shape for convs is n_data, n_channels, n_sequence
         # transformer expected input is n_data, n_sequence, wavenet_channels
         x = x.transpose(1, 2)
