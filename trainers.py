@@ -400,7 +400,7 @@ class L_WavenetTransformerClassifier(L_WavenetAbstractClassifier):
         super().__init__(hparams, num_classes, train_dataset, eval_dataset, test_dataset)
         # build model
         self.model = WaveNetTransformerClassifier(num_classes)
-        summary(self.model, input_size=(WAVENET_BATCH_SIZE, WAVEFORM_MAX_SEQUENCE_LENGTH), device="cpu")
+        summary(self.model, input_size=(WNTF_BATCH_SIZE, WAVEFORM_MAX_SEQUENCE_LENGTH), device="cpu")
         self.optimizer = torch.optim.Adam(
             self.model.parameters(),
             lr=self.lr,
@@ -438,7 +438,7 @@ class L_WavenetLSTMClassifier(L_WavenetAbstractClassifier):
         super().__init__(hparams, num_classes, train_dataset, eval_dataset, test_dataset, *args, **kwargs)
         # build model
         self.model = WaveNetLSTMClassifier(num_classes)
-        summary(self.model, input_size=(WAVENET_BATCH_SIZE, WAVEFORM_MAX_SEQUENCE_LENGTH), device="cpu")
+        summary(self.model, input_size=(WNLSTM_BATCH_SIZE, WAVEFORM_MAX_SEQUENCE_LENGTH), device="cpu")
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr, weight_decay=self.wd)
 
     @staticmethod
