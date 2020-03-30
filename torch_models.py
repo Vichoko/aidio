@@ -539,11 +539,10 @@ class WaveNetTransformerClassifier(nn.Module):
         )
         max_seq_len = math.floor(
             (max_raw_sequnece - (WAVENET_POOLING_KERNEL_SIZE - 1)) / WAVENET_POOLING_STRIDE + 1)
-        self.positional_encoder = PositionalEncoder(
-            d_model,
-            max_seq_len=max_seq_len
-        )
-
+        # self.positional_encoder = PositionalEncoder(
+        #     d_model,
+        #     max_seq_len=max_seq_len
+        # )
         encoder_layer = nn.TransformerEncoderLayer(d_model=d_model, nhead=nhead)
         self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
         self.fc1 = nn.Linear(d_model, 120)  # 6*6 from image dimension
