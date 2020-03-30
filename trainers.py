@@ -11,7 +11,7 @@ from torchsummary import summary
 from torchvision.models import resnext50_32x4d
 
 from config import WAVENET_BATCH_SIZE, NUM_WORKERS, RESNET_V2_BATCH_SIZE, SR, WAVENET_LEARNING_RATE, \
-    WAVENET_WEIGHT_DECAY, WAVENET_USE_AMSGRAD, WNTF_BATCH_SIZE, WNLSTM_BATCH_SIZE
+    WAVENET_WEIGHT_DECAY, WAVENET_USE_AMSGRAD, WNTF_BATCH_SIZE, WNLSTM_BATCH_SIZE, WAVEFORM_MAX_SEQUENCE_LENGTH
 from loaders import ClassSampler
 from torch_models import WaveNetTransformerClassifier, GMMClassifier, WaveNetLSTMClassifier, WaveNetClassifier
 
@@ -414,6 +414,7 @@ class L_WavenetTransformerClassifier(ptl.LightningModule):
         self.test_dataset = test_dataset
         # build model
         self.model = WaveNetTransformerClassifier(num_classes)
+        summary(self.model, input_size=(WAVENET_BATCH_SIZE, WAVEFORM_MAX_SEQUENCE_LENGTH), device="cpu")
         # self.optimizer = torch.optim.Adam(self.model.parameters(), lr=hparams.learning_rate)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr,
                                           weight_decay=self.wd, amsgrad=WAVENET_USE_AMSGRAD)
@@ -577,7 +578,7 @@ class L_WavenetLSTMClassifier(ptl.LightningModule):
         self.test_dataset = test_dataset
         # build model
         self.model = WaveNetLSTMClassifier(num_classes)
-        # summary(self.model, input_size=(1, SR * 10), device="cpu")
+        summary(self.model, input_size=(WAVENET_BATCH_SIZE, WAVEFORM_MAX_SEQUENCE_LENGTH), device="cpu")
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr, weight_decay=self.wd)
 
     # ---------------------
@@ -736,7 +737,7 @@ class L_WavenetClassifier(ptl.LightningModule):
         self.test_dataset = test_dataset
         # build model
         self.model = WaveNetClassifier(num_classes)
-        summary(self.model, input_size=(1, SR * 10), device="cpu")
+        summary(self.model, input_size=(WAVENET_BATCH_SIZE, WAVEFORM_MAX_SEQUENCE_LENGTH), device="cpu")
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr,
                                           weight_decay=self.wd)
 
