@@ -11,7 +11,7 @@ from torchsummary import summary
 from torchvision.models import resnext50_32x4d
 
 from config import WAVENET_BATCH_SIZE, NUM_WORKERS, RESNET_V2_BATCH_SIZE, SR, WAVENET_LEARNING_RATE, \
-    WAVENET_WEIGHT_DECAY, WAVENET_USE_AMSGRAD
+    WAVENET_WEIGHT_DECAY, WAVENET_USE_AMSGRAD, WNTF_BATCH_SIZE, WNLSTM_BATCH_SIZE
 from loaders import ClassSampler
 from torch_models import WaveNetTransformerClassifier, GMMClassifier, WaveNetLSTMClassifier, WaveNetClassifier
 
@@ -405,6 +405,9 @@ class L_WavenetTransformerClassifier(ptl.LightningModule):
     def __init__(self, hparams, num_classes, train_dataset, eval_dataset, test_dataset):
         super(L_WavenetTransformerClassifier, self).__init__()
         self.hparams = hparams
+        self.lr = hparams.learning_rate
+        self.batch_size = hparams.batch_size
+        self.wd = hparams.weight_decay
         self.loss = torch.nn.CrossEntropyLoss()
         self.train_dataset = train_dataset
         self.eval_dataset = eval_dataset
@@ -412,8 +415,8 @@ class L_WavenetTransformerClassifier(ptl.LightningModule):
         # build model
         self.model = WaveNetTransformerClassifier(num_classes)
         # self.optimizer = torch.optim.Adam(self.model.parameters(), lr=hparams.learning_rate)
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=hparams.learning_rate,
-                                          weight_decay=hparams.weight_decay, amsgrad=WAVENET_USE_AMSGRAD)
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr,
+                                          weight_decay=self.wd, amsgrad=WAVENET_USE_AMSGRAD)
 
     # ---------------------
     # TRAINING
@@ -523,18 +526,18 @@ class L_WavenetTransformerClassifier(ptl.LightningModule):
     @ptl.data_loader
     def train_dataloader(self):
         # logging.info('training data loader called')
-        return DataLoader(self.train_dataset, batch_size=WAVENET_BATCH_SIZE, shuffle=True,
+        return DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=True,
                           num_workers=NUM_WORKERS)
 
     @ptl.data_loader
     def val_dataloader(self):
         # logging.info('val data loader called')
-        return DataLoader(self.eval_dataset, batch_size=WAVENET_BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
+        return DataLoader(self.eval_dataset, batch_size=self.batch_size, shuffle=True, num_workers=NUM_WORKERS)
 
     @ptl.data_loader
     def test_dataloader(self):
         # logging.info('test data loader called')
-        return DataLoader(self.test_dataset, batch_size=WAVENET_BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
+        return DataLoader(self.test_dataset, batch_size=self.batch_size, shuffle=True, num_workers=NUM_WORKERS)
 
     @staticmethod
     def add_model_specific_args(parent_parser, root_dir):  # pragma: no cover
@@ -547,7 +550,7 @@ class L_WavenetTransformerClassifier(ptl.LightningModule):
         parser = ArgumentParser(parents=[parent_parser])
         parser.add_argument('--learning_rate', default=WAVENET_LEARNING_RATE, type=float)
         parser.add_argument('--weight_decay', default=WAVENET_WEIGHT_DECAY, type=float)
-        parser.add_argument('--batch_size', default=WAVENET_BATCH_SIZE, type=int)
+        parser.add_argument('--batch_size', default=WNTF_BATCH_SIZE, type=int)
         parser.add_argument(
             '--distributed_backend',
             type=str,
@@ -565,6 +568,9 @@ class L_WavenetLSTMClassifier(ptl.LightningModule):
     def __init__(self, hparams, num_classes, train_dataset, eval_dataset, test_dataset):
         super(L_WavenetLSTMClassifier, self).__init__()
         self.hparams = hparams
+        self.batch_size = hparams.batch_size
+        self.lr = hparams.learning_rate
+        self.wd = hparams.weight_decay
         self.loss = torch.nn.CrossEntropyLoss()
         self.train_dataset = train_dataset
         self.eval_dataset = eval_dataset
@@ -572,7 +578,7 @@ class L_WavenetLSTMClassifier(ptl.LightningModule):
         # build model
         self.model = WaveNetLSTMClassifier(num_classes)
         # summary(self.model, input_size=(1, SR * 10), device="cpu")
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=hparams.learning_rate)
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr, weight_decay=self.wd)
 
     # ---------------------
     # TRAINING
@@ -669,9 +675,6 @@ class L_WavenetLSTMClassifier(ptl.LightningModule):
         result = {'progress_bar': tqdm_dict, 'log': tqdm_dict, 'val_loss': val_loss_mean}
         return result
 
-    # ---------------------
-    # TRAINING SETUP
-    # ---------------------
     def configure_optimizers(self):
         """
         return whatever optimizers we want here
@@ -679,46 +682,21 @@ class L_WavenetLSTMClassifier(ptl.LightningModule):
         """
         return [self.optimizer]
 
-    # def __dataloader(self, train):
-    #     # init data generators
-    #     transform = transforms.Compose([transforms.ToTensor(),
-    #                                     transforms.Normalize((0.5,), (1.0,))])
-    #     dataset = MNIST(root=self.hparams.data_root, train=train,
-    #                     transform=transform, download=True)
-    #
-    #     # when using multi-node (ddp) we need to add the  datasampler
-    #     train_sampler = None
-    #     batch_size = self.hparams.batch_size
-    #
-    #     if self.use_ddp:
-    #         train_sampler = DistributedSampler(dataset)
-    #
-    #     should_shuffle = train_sampler is None
-    #     loader = DataLoader(
-    #         dataset=dataset,
-    #         batch_size=batch_size,
-    #         shuffle=should_shuffle,
-    #         sampler=train_sampler,
-    #         num_workers=0
-    #     )
-    #
-    #     return loader
-
     @ptl.data_loader
     def train_dataloader(self):
         # logging.info('training data loader called')
-        return DataLoader(self.train_dataset, batch_size=WAVENET_BATCH_SIZE, shuffle=True,
+        return DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=True,
                           num_workers=NUM_WORKERS)
 
     @ptl.data_loader
     def val_dataloader(self):
         # logging.info('val data loader called')
-        return DataLoader(self.eval_dataset, batch_size=WAVENET_BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
+        return DataLoader(self.eval_dataset, batch_size=self.batch_size, shuffle=True, num_workers=NUM_WORKERS)
 
     @ptl.data_loader
     def test_dataloader(self):
         # logging.info('test data loader called')
-        return DataLoader(self.test_dataset, batch_size=WAVENET_BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
+        return DataLoader(self.test_dataset, batch_size=self.batch_size, shuffle=True, num_workers=NUM_WORKERS)
 
     @staticmethod
     def add_model_specific_args(parent_parser, root_dir):  # pragma: no cover
@@ -729,8 +707,9 @@ class L_WavenetLSTMClassifier(ptl.LightningModule):
         :return:
         """
         parser = ArgumentParser(parents=[parent_parser])
-        parser.add_argument('--learning_rate', default=0.001, type=float)
-        parser.add_argument('--batch_size', default=WAVENET_BATCH_SIZE, type=int)
+        parser.add_argument('--learning_rate', default=WAVENET_LEARNING_RATE, type=float)
+        parser.add_argument('--batch_size', default=WNLSTM_BATCH_SIZE, type=int)
+        parser.add_argument('--weight_decay', default=WAVENET_WEIGHT_DECAY, type=float)
         parser.add_argument(
             '--distributed_backend',
             type=str,
@@ -748,6 +727,9 @@ class L_WavenetClassifier(ptl.LightningModule):
     def __init__(self, hparams, num_classes, train_dataset, eval_dataset, test_dataset):
         super(L_WavenetClassifier, self).__init__()
         self.hparams = hparams
+        self.wd = hparams.weight_decay
+        self.lr = hparams.learning_rate
+        self.batch_size = hparams.batch_size
         self.loss = torch.nn.CrossEntropyLoss()
         self.train_dataset = train_dataset
         self.eval_dataset = eval_dataset
@@ -755,8 +737,8 @@ class L_WavenetClassifier(ptl.LightningModule):
         # build model
         self.model = WaveNetClassifier(num_classes)
         summary(self.model, input_size=(1, SR * 10), device="cpu")
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=hparams.learning_rate,
-                                          weight_decay=hparams.weight_decay)
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr,
+                                          weight_decay=self.wd)
 
     # ---------------------
     # TRAINING
@@ -866,18 +848,18 @@ class L_WavenetClassifier(ptl.LightningModule):
     @ptl.data_loader
     def train_dataloader(self):
         # logging.info('training data loader called')
-        return DataLoader(self.train_dataset, batch_size=WAVENET_BATCH_SIZE, shuffle=True,
+        return DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=True,
                           num_workers=NUM_WORKERS)
 
     @ptl.data_loader
     def val_dataloader(self):
         # logging.info('val data loader called')
-        return DataLoader(self.eval_dataset, batch_size=WAVENET_BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
+        return DataLoader(self.eval_dataset, batch_size=self.batch_size, shuffle=True, num_workers=NUM_WORKERS)
 
     @ptl.data_loader
     def test_dataloader(self):
         # logging.info('test data loader called')
-        return DataLoader(self.test_dataset, batch_size=WAVENET_BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
+        return DataLoader(self.test_dataset, batch_size=self.batch_size, shuffle=True, num_workers=NUM_WORKERS)
 
     @staticmethod
     def add_model_specific_args(parent_parser, root_dir):  # pragma: no cover

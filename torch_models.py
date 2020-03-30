@@ -19,7 +19,8 @@ from config import MODELS_DATA_PATH, S1DCONV_EPOCHS, S1DCONV_BATCH_SIZE, WAVENET
     WAVENET_END_CHANNELS, WAVENET_CLASSES, WAVENET_OUTPUT_LENGTH, WAVENET_KERNEL_SIZE, WAVENET_POOLING_KERNEL_SIZE, \
     WAVENET_POOLING_STRIDE, LSTM_HIDDEN_SIZE, LSTM_NUM_LAYERS, LSTM_DROPOUT_PROB, WAVEFORM_MAX_SEQUENCE_LENGTH, \
     TRANSFORMER_D_MODEL, TRANSFORMER_N_HEAD, TRANSFORMER_N_LAYERS, NUM_WORKERS, WAVEFORM_NUM_CHANNELS, \
-    FEATURES_DATA_PATH, GMM_COMPONENT_NUMBER, GMM_FRAME_LIMIT
+    FEATURES_DATA_PATH, GMM_COMPONENT_NUMBER, GMM_FRAME_LIMIT, WNTF_WAVENET_LAYERS, WNTF_WAVENET_BLOCKS, \
+    WNLSTM_WAVENET_LAYERS, WNLSTM_WAVENET_BLOCKS
 from features import SingingVoiceSeparationOpenUnmixFeatureExtractor
 from loaders import WaveformDataset
 from models import ClassificationModel
@@ -510,8 +511,8 @@ class WaveNetTransformerClassifier(nn.Module):
         # neural audio embeddings
         # captures local representations through convolutions
         self.wavenet = WaveNetModel(
-            WAVENET_LAYERS,
-            WAVENET_BLOCKS,
+            WNTF_WAVENET_LAYERS,
+            WNTF_WAVENET_BLOCKS,
             WAVENET_DILATION_CHANNELS,
             WAVENET_RESIDUAL_CHANNELS,
             WAVENET_SKIP_CHANNELS,
@@ -602,8 +603,8 @@ class WaveNetLSTMClassifier(nn.Module):
         # neural audio embeddings
         # captures local representations through convolutions
         self.wavenet = WaveNetModel(
-            WAVENET_LAYERS,
-            WAVENET_BLOCKS,
+            WNLSTM_WAVENET_LAYERS,
+            WNLSTM_WAVENET_BLOCKS,
             WAVENET_DILATION_CHANNELS,
             WAVENET_RESIDUAL_CHANNELS,
             WAVENET_SKIP_CHANNELS,
@@ -611,23 +612,18 @@ class WaveNetLSTMClassifier(nn.Module):
             WAVENET_CLASSES,
             WAVENET_OUTPUT_LENGTH,
             WAVENET_KERNEL_SIZE)
-
         # reduce sample resolution from 160k to 32k
-        # output_length = floor((input_length - stride)/kernel_size + 1)
+        # output_length = floor((input_length - (kernel_size - 1))/stride + 1)
         self.avg_pooling = nn.AvgPool1d(
             kernel_size=WAVENET_POOLING_KERNEL_SIZE,
             stride=WAVENET_POOLING_STRIDE
         )
-
         self.enc_lstm = nn.LSTM(
             self.wavenet.end_channels,
             LSTM_HIDDEN_SIZE, LSTM_NUM_LAYERS,
             bidirectional=True,
             dropout=LSTM_DROPOUT_PROB)
-
-        # for now output length is fixed to 159968
-
-        self.fc1 = nn.Linear(LSTM_HIDDEN_SIZE * 2, 120)  # 6*6 from image dimension
+        self.fc1 = nn.Linear(LSTM_HIDDEN_SIZE * 2, 120)
         self.fc2 = nn.Linear(120, 84)
         self.fc3 = nn.Linear(84, num_classes)
 
