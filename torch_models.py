@@ -539,10 +539,11 @@ class WaveNetTransformerClassifier(nn.Module):
         )
         max_seq_len = math.floor(
             (max_raw_sequnece - (WAVENET_POOLING_KERNEL_SIZE - 1)) / WAVENET_POOLING_STRIDE + 1)
-        # self.positional_encoder = PositionalEncoder(
-        #     d_model,
-        #     max_seq_len=max_seq_len
-        # )
+        self.positional_encoder = PositionalEncoder(
+            d_model,
+            max_seq_len=max_seq_len
+        )
+
         encoder_layer = nn.TransformerEncoderLayer(d_model=d_model, nhead=nhead)
         self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
         self.fc1 = nn.Linear(d_model, 120)  # 6*6 from image dimension
@@ -569,7 +570,7 @@ class WaveNetTransformerClassifier(nn.Module):
         # transformer expected input is n_data, n_sequence, wavenet_channels
         x = x.transpose(1, 2)
         # print('info: feeding positional encoder...')
-        # x = self.positional_encoder(x)
+        x = self.positional_encoder(x)
         # print('info: feeding transformer...')
         x = self.transformer_encoder(x)  # shape  n_data, n_sequence, d_model
         x = x[:, -1, :]  # pick the last vector from the output as the sentence embedding
