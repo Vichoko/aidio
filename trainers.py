@@ -10,169 +10,14 @@ from torch.utils.data import DataLoader
 from torchsummary import summary
 from torchvision.models import resnext50_32x4d
 
-from config import WAVENET_BATCH_SIZE, NUM_WORKERS, RESNET_V2_BATCH_SIZE, SR, WAVENET_LEARNING_RATE, \
-    WAVENET_WEIGHT_DECAY, WAVENET_USE_AMSGRAD, WNTF_BATCH_SIZE, WNLSTM_BATCH_SIZE, WAVEFORM_MAX_SEQUENCE_LENGTH
+from config import WAVENET_BATCH_SIZE, NUM_WORKERS, RESNET_V2_BATCH_SIZE, WAVENET_LEARNING_RATE, \
+    WAVENET_WEIGHT_DECAY, WNTF_BATCH_SIZE, WNLSTM_BATCH_SIZE, WAVEFORM_MAX_SEQUENCE_LENGTH
 from loaders import ClassSampler
 from torch_models import WaveNetTransformerClassifier, GMMClassifier, WaveNetLSTMClassifier, WaveNetClassifier
 
 
 class DummyOptimizer(torch.optim.Optimizer):
     pass
-
-
-class L_AbstractClassifier(ptl.LightningModule):
-    """
-        Sample model to show how to define a template
-        """
-
-    def __init__(self, hparams, num_classes, train_dataset, eval_dataset, test_dataset, torch_module):
-        super(L_AbstractClassifier, self).__init__()
-        self.hparams = hparams
-        self.loss = torch.nn.CrossEntropyLoss()
-        self.train_dataset = train_dataset
-        self.eval_dataset = eval_dataset
-        self.test_dataset = test_dataset
-        # build model
-        self.model = torch_module
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=hparams.learning_rate)
-
-    # ---------------------
-    # TRAINING
-    # ---------------------
-    def forward(self, x):
-        """
-        No special modification required for lightning, define as you normally would
-        :param x:
-        :return:
-        """
-        return self.model(x)
-
-    def training_step(self, batch, batch_idx):
-        """
-        Lightning calls this inside the training loop
-        :param batch:
-        :return:
-        """
-        # forward pass
-        x, y = batch['x'], batch['y']
-        y_pred = self.forward(x)
-
-        # calculate loss
-        loss_val = self.loss(y_pred, y)
-        tqdm_dict = {'train_loss': loss_val}
-        output = OrderedDict({
-            'loss': loss_val,
-            'progress_bar': tqdm_dict,
-            'log': tqdm_dict
-        })
-        # can also return just a scalar instead of a dict (return loss_val)
-        return output
-
-    def validation_step(self, batch, batch_idx):
-        """
-        Lightning calls this inside the validation loop
-        :param batch:
-        :return:
-        """
-        x, y = batch['x'], batch['y']
-        y_pred = self.forward(x)
-
-        # calculate loss
-        loss_val = self.loss(y_pred, y)
-
-        # acc
-        labels_hat = torch.argmax(y_pred, dim=1)
-        val_acc = torch.sum(y == labels_hat).item() / (len(y) * 1.0)
-        val_acc = torch.tensor(val_acc)
-
-        if self.on_gpu:
-            val_acc = val_acc.cuda(loss_val.device.index)
-
-        output = OrderedDict({
-            'val_loss': loss_val,
-            'val_acc': val_acc,
-        })
-
-        # can also return just a scalar instead of a dict (return loss_val)
-        return output
-
-    def validation_end(self, outputs):
-        """
-        Called at the end of validation to aggregate outputs
-        :param outputs: list of individual outputs of each validation step
-        :return:
-        """
-        # if returned a scalar from validation_step, outputs is a list of tensor scalars
-        # we return just the average in this case (if we want)
-        # return torch.stack(outputs).mean()
-
-        val_loss_mean = 0
-        val_acc_mean = 0
-        for output in outputs:
-            val_loss = output['val_loss']
-
-            # reduce manually when using dp
-            if self.trainer.use_dp or self.trainer.use_ddp2:
-                val_loss = torch.mean(val_loss)
-            val_loss_mean += val_loss
-
-            # reduce manually when using dp
-            val_acc = output['val_acc']
-            if self.trainer.use_dp or self.trainer.use_ddp2:
-                val_acc = torch.mean(val_acc)
-
-            val_acc_mean += val_acc
-
-        val_loss_mean /= len(outputs)
-        val_acc_mean /= len(outputs)
-        tqdm_dict = {'val_loss': val_loss_mean, 'val_acc': val_acc_mean}
-        result = {'progress_bar': tqdm_dict, 'log': tqdm_dict, 'val_loss': val_loss_mean}
-        return result
-
-    # ---------------------
-    # TRAINING SETUP
-    # ---------------------
-    def configure_optimizers(self):
-        """
-        return whatever optimizers we want here
-        :return: list of optimizers
-        """
-        return [self.optimizer]
-
-    @ptl.data_loader
-    def train_dataloader(self):
-        # logging.info('training data loader called')
-        return DataLoader(self.train_dataset, batch_size=WAVENET_BATCH_SIZE, shuffle=True,
-                          num_workers=NUM_WORKERS)
-
-    @ptl.data_loader
-    def val_dataloader(self):
-        # logging.info('val data loader called')
-        return DataLoader(self.eval_dataset, batch_size=WAVENET_BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
-
-    @ptl.data_loader
-    def test_dataloader(self):
-        # logging.info('test data loader called')
-        return DataLoader(self.test_dataset, batch_size=WAVENET_BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
-
-    @staticmethod
-    def add_model_specific_args(parent_parser, root_dir):  # pragma: no cover
-        """
-        Parameters you define here will be available to your model through self.hparams
-        :param parent_parser:
-        :param root_dir:
-        :return:
-        """
-        parser = ArgumentParser(parents=[parent_parser])
-        parser.add_argument('--learning_rate', default=0.001, type=float)
-        parser.add_argument('--batch_size', default=WAVENET_BATCH_SIZE, type=int)
-        parser.add_argument(
-            '--distributed_backend',
-            type=str,
-            default='dp',
-            help='supports three options dp, ddp, ddp2'
-        )
-        return parser
 
 
 class L_GMMClassifier(ptl.LightningModule):
@@ -190,7 +35,7 @@ class L_GMMClassifier(ptl.LightningModule):
         self.eval_dataset = eval_dataset
         self.test_dataset = test_dataset
         # build model
-        self.optimizer = torch.optim.Adam([torch.Tensor()], lr=hparams.learning_rate)
+        self.optimizer = DummyOptimizer()
         self.trained = False
         self.model = None
         # self.model = self.load_model(self.num_classes)
@@ -393,35 +238,26 @@ class L_GMMClassifier(ptl.LightningModule):
         :return:
         """
         parser = ArgumentParser(parents=[parent_parser])
-        parser.add_argument('--learning_rate', default=0.001, type=float)
+        # parser.add_argument('--learning_rate', default=0.001, type=float)
         return parser
 
 
-class L_WavenetTransformerClassifier(ptl.LightningModule):
+class L_WavenetAbstractClassifier(ptl.LightningModule):
     """
     Sample model to show how to define a template
     """
 
-    def __init__(self, hparams, num_classes, train_dataset, eval_dataset, test_dataset):
-        super(L_WavenetTransformerClassifier, self).__init__()
+    def __init__(self, hparams, num_classes, train_dataset, eval_dataset, test_dataset, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.hparams = hparams
+        self.wd = hparams.weight_decay
         self.lr = hparams.learning_rate
         self.batch_size = hparams.batch_size
-        self.wd = hparams.weight_decay
         self.loss = torch.nn.CrossEntropyLoss()
         self.train_dataset = train_dataset
         self.eval_dataset = eval_dataset
         self.test_dataset = test_dataset
-        # build model
-        self.model = WaveNetTransformerClassifier(num_classes)
-        summary(self.model, input_size=(WAVENET_BATCH_SIZE, WAVEFORM_MAX_SEQUENCE_LENGTH), device="cpu")
-        # self.optimizer = torch.optim.Adam(self.model.parameters(), lr=hparams.learning_rate)
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr,
-                                          weight_decay=self.wd, amsgrad=WAVENET_USE_AMSGRAD)
 
-    # ---------------------
-    # TRAINING
-    # ---------------------
     def forward(self, x):
         """
         No special modification required for lightning, define as you normally would
@@ -439,17 +275,14 @@ class L_WavenetTransformerClassifier(ptl.LightningModule):
         # forward pass
         x, y = batch['x'], batch['y']
         y_pred = self.forward(x)
-
         # calculate loss
         loss_val = self.loss(y_pred, y)
-
         tqdm_dict = {'train_loss': loss_val}
         output = OrderedDict({
             'loss': loss_val,
             'progress_bar': tqdm_dict,
             'log': tqdm_dict
         })
-
         # can also return just a scalar instead of a dict (return loss_val)
         return output
 
@@ -461,23 +294,18 @@ class L_WavenetTransformerClassifier(ptl.LightningModule):
         """
         x, y = batch['x'], batch['y']
         y_pred = self.forward(x)
-
         # calculate loss
         loss_val = self.loss(y_pred, y)
-
         # acc
         labels_hat = torch.argmax(y_pred, dim=1)
         val_acc = torch.sum(y == labels_hat).item() / (len(y) * 1.0)
         val_acc = torch.tensor(val_acc)
-
         if self.on_gpu:
             val_acc = val_acc.cuda(loss_val.device.index)
-
         output = OrderedDict({
             'val_loss': loss_val,
             'val_acc': val_acc,
         })
-
         # can also return just a scalar instead of a dict (return loss_val)
         return output
 
@@ -490,33 +318,25 @@ class L_WavenetTransformerClassifier(ptl.LightningModule):
         # if returned a scalar from validation_step, outputs is a list of tensor scalars
         # we return just the average in this case (if we want)
         # return torch.stack(outputs).mean()
-
         val_loss_mean = 0
         val_acc_mean = 0
         for output in outputs:
             val_loss = output['val_loss']
-
             # reduce manually when using dp
             if self.trainer.use_dp or self.trainer.use_ddp2:
                 val_loss = torch.mean(val_loss)
             val_loss_mean += val_loss
-
             # reduce manually when using dp
             val_acc = output['val_acc']
             if self.trainer.use_dp or self.trainer.use_ddp2:
                 val_acc = torch.mean(val_acc)
-
             val_acc_mean += val_acc
-
         val_loss_mean /= len(outputs)
         val_acc_mean /= len(outputs)
         tqdm_dict = {'val_loss': val_loss_mean, 'val_acc': val_acc_mean}
         result = {'progress_bar': tqdm_dict, 'log': tqdm_dict, 'val_loss': val_loss_mean}
         return result
 
-    # ---------------------
-    # TRAINING SETUP
-    # ---------------------
     def configure_optimizers(self):
         """
         return whatever optimizers we want here
@@ -526,19 +346,67 @@ class L_WavenetTransformerClassifier(ptl.LightningModule):
 
     @ptl.data_loader
     def train_dataloader(self):
-        # logging.info('training data loader called')
-        return DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=True,
-                          num_workers=NUM_WORKERS)
+        return DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=True, num_workers=NUM_WORKERS)
 
     @ptl.data_loader
     def val_dataloader(self):
-        # logging.info('val data loader called')
         return DataLoader(self.eval_dataset, batch_size=self.batch_size, shuffle=True, num_workers=NUM_WORKERS)
 
     @ptl.data_loader
     def test_dataloader(self):
-        # logging.info('test data loader called')
         return DataLoader(self.test_dataset, batch_size=self.batch_size, shuffle=True, num_workers=NUM_WORKERS)
+
+
+class L_WavenetClassifier(L_WavenetAbstractClassifier):
+    """
+    Sample model to show how to define a template
+    """
+
+    def __init__(self, hparams, num_classes, train_dataset, eval_dataset, test_dataset, *args, **kwargs):
+        super().__init__(hparams, num_classes, train_dataset, eval_dataset, test_dataset, *args, **kwargs)
+        # build model
+        self.model = WaveNetClassifier(num_classes)
+        summary(self.model, input_size=(WAVENET_BATCH_SIZE, WAVEFORM_MAX_SEQUENCE_LENGTH), device="cpu")
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr,
+                                          weight_decay=self.wd)
+
+    @staticmethod
+    def add_model_specific_args(parent_parser, root_dir):  # pragma: no cover
+        """
+        Parameters you define here will be available to your model through self.hparams
+        :param parent_parser:
+        :param root_dir:
+        :return:
+        """
+        parser = ArgumentParser(parents=[parent_parser])
+        parser.add_argument('--learning_rate', default=WAVENET_LEARNING_RATE, type=float)
+        parser.add_argument('--weight_decay', default=WAVENET_WEIGHT_DECAY, type=float)
+        parser.add_argument('--batch_size', default=WAVENET_BATCH_SIZE, type=int)
+        parser.add_argument(
+            '--distributed_backend',
+            type=str,
+            default='dp',
+            help='supports three options dp, ddp, ddp2'
+        )
+        return parser
+
+
+class L_WavenetTransformerClassifier(L_WavenetAbstractClassifier):
+    """
+    Sample model to show how to define a template
+    """
+
+    def __init__(self, hparams, num_classes, train_dataset, eval_dataset, test_dataset):
+        super().__init__(hparams, num_classes, train_dataset, eval_dataset, test_dataset)
+        # build model
+        self.model = WaveNetTransformerClassifier(num_classes)
+        summary(self.model, input_size=(WAVENET_BATCH_SIZE, WAVEFORM_MAX_SEQUENCE_LENGTH), device="cpu")
+        self.optimizer = torch.optim.Adam(
+            self.model.parameters(),
+            lr=self.lr,
+            weight_decay=self.wd,
+            # amsgrad=WAVENET_USE_AMSGRAD
+        )
 
     @staticmethod
     def add_model_specific_args(parent_parser, root_dir):  # pragma: no cover
@@ -561,143 +429,17 @@ class L_WavenetTransformerClassifier(ptl.LightningModule):
         return parser
 
 
-class L_WavenetLSTMClassifier(ptl.LightningModule):
+class L_WavenetLSTMClassifier(L_WavenetAbstractClassifier):
     """
     Sample model to show how to define a template
     """
 
-    def __init__(self, hparams, num_classes, train_dataset, eval_dataset, test_dataset):
-        super(L_WavenetLSTMClassifier, self).__init__()
-        self.hparams = hparams
-        self.batch_size = hparams.batch_size
-        self.lr = hparams.learning_rate
-        self.wd = hparams.weight_decay
-        self.loss = torch.nn.CrossEntropyLoss()
-        self.train_dataset = train_dataset
-        self.eval_dataset = eval_dataset
-        self.test_dataset = test_dataset
+    def __init__(self, hparams, num_classes, train_dataset, eval_dataset, test_dataset, *args, **kwargs):
+        super().__init__(hparams, num_classes, train_dataset, eval_dataset, test_dataset, *args, **kwargs)
         # build model
         self.model = WaveNetLSTMClassifier(num_classes)
         summary(self.model, input_size=(WAVENET_BATCH_SIZE, WAVEFORM_MAX_SEQUENCE_LENGTH), device="cpu")
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr, weight_decay=self.wd)
-
-    # ---------------------
-    # TRAINING
-    # ---------------------
-    def forward(self, x):
-        """
-        No special modification required for lightning, define as you normally would
-        :param x:
-        :return:
-        """
-        return self.model(x)
-
-    def training_step(self, batch, batch_idx):
-        """
-        Lightning calls this inside the training loop
-        :param batch:
-        :return:
-        """
-        # forward pass
-        x, y = batch['x'], batch['y']
-        y_pred = self.forward(x)
-
-        # calculate loss
-        loss_val = self.loss(y_pred, y)
-
-        tqdm_dict = {'train_loss': loss_val}
-        output = OrderedDict({
-            'loss': loss_val,
-            'progress_bar': tqdm_dict,
-            'log': tqdm_dict
-        })
-
-        # can also return just a scalar instead of a dict (return loss_val)
-        return output
-
-    def validation_step(self, batch, batch_idx):
-        """
-        Lightning calls this inside the validation loop
-        :param batch:
-        :return:
-        """
-        x, y = batch['x'], batch['y']
-        y_pred = self.forward(x)
-
-        # calculate loss
-        loss_val = self.loss(y_pred, y)
-
-        # acc
-        labels_hat = torch.argmax(y_pred, dim=1)
-        val_acc = torch.sum(y == labels_hat).item() / (len(y) * 1.0)
-        val_acc = torch.tensor(val_acc)
-
-        if self.on_gpu:
-            val_acc = val_acc.cuda(loss_val.device.index)
-
-        output = OrderedDict({
-            'val_loss': loss_val,
-            'val_acc': val_acc,
-        })
-
-        # can also return just a scalar instead of a dict (return loss_val)
-        return output
-
-    def validation_end(self, outputs):
-        """
-        Called at the end of validation to aggregate outputs
-        :param outputs: list of individual outputs of each validation step
-        :return:
-        """
-        # if returned a scalar from validation_step, outputs is a list of tensor scalars
-        # we return just the average in this case (if we want)
-        # return torch.stack(outputs).mean()
-
-        val_loss_mean = 0
-        val_acc_mean = 0
-        for output in outputs:
-            val_loss = output['val_loss']
-
-            # reduce manually when using dp
-            if self.trainer.use_dp or self.trainer.use_ddp2:
-                val_loss = torch.mean(val_loss)
-            val_loss_mean += val_loss
-
-            # reduce manually when using dp
-            val_acc = output['val_acc']
-            if self.trainer.use_dp or self.trainer.use_ddp2:
-                val_acc = torch.mean(val_acc)
-
-            val_acc_mean += val_acc
-
-        val_loss_mean /= len(outputs)
-        val_acc_mean /= len(outputs)
-        tqdm_dict = {'val_loss': val_loss_mean, 'val_acc': val_acc_mean}
-        result = {'progress_bar': tqdm_dict, 'log': tqdm_dict, 'val_loss': val_loss_mean}
-        return result
-
-    def configure_optimizers(self):
-        """
-        return whatever optimizers we want here
-        :return: list of optimizers
-        """
-        return [self.optimizer]
-
-    @ptl.data_loader
-    def train_dataloader(self):
-        # logging.info('training data loader called')
-        return DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=True,
-                          num_workers=NUM_WORKERS)
-
-    @ptl.data_loader
-    def val_dataloader(self):
-        # logging.info('val data loader called')
-        return DataLoader(self.eval_dataset, batch_size=self.batch_size, shuffle=True, num_workers=NUM_WORKERS)
-
-    @ptl.data_loader
-    def test_dataloader(self):
-        # logging.info('test data loader called')
-        return DataLoader(self.test_dataset, batch_size=self.batch_size, shuffle=True, num_workers=NUM_WORKERS)
 
     @staticmethod
     def add_model_specific_args(parent_parser, root_dir):  # pragma: no cover
@@ -711,169 +453,6 @@ class L_WavenetLSTMClassifier(ptl.LightningModule):
         parser.add_argument('--learning_rate', default=WAVENET_LEARNING_RATE, type=float)
         parser.add_argument('--batch_size', default=WNLSTM_BATCH_SIZE, type=int)
         parser.add_argument('--weight_decay', default=WAVENET_WEIGHT_DECAY, type=float)
-        parser.add_argument(
-            '--distributed_backend',
-            type=str,
-            default='dp',
-            help='supports three options dp, ddp, ddp2'
-        )
-        return parser
-
-
-class L_WavenetClassifier(ptl.LightningModule):
-    """
-    Sample model to show how to define a template
-    """
-
-    def __init__(self, hparams, num_classes, train_dataset, eval_dataset, test_dataset):
-        super(L_WavenetClassifier, self).__init__()
-        self.hparams = hparams
-        self.wd = hparams.weight_decay
-        self.lr = hparams.learning_rate
-        self.batch_size = hparams.batch_size
-        self.loss = torch.nn.CrossEntropyLoss()
-        self.train_dataset = train_dataset
-        self.eval_dataset = eval_dataset
-        self.test_dataset = test_dataset
-        # build model
-        self.model = WaveNetClassifier(num_classes)
-        summary(self.model, input_size=(WAVENET_BATCH_SIZE, WAVEFORM_MAX_SEQUENCE_LENGTH), device="cpu")
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr,
-                                          weight_decay=self.wd)
-
-    # ---------------------
-    # TRAINING
-    # ---------------------
-    def forward(self, x):
-        """
-        No special modification required for lightning, define as you normally would
-        :param x:
-        :return:
-        """
-        return self.model(x)
-
-    def training_step(self, batch, batch_idx):
-        """
-        Lightning calls this inside the training loop
-        :param batch:
-        :return:
-        """
-        # forward pass
-        x, y = batch['x'], batch['y']
-        y_pred = self.forward(x)
-
-        # calculate loss
-        loss_val = self.loss(y_pred, y)
-
-        tqdm_dict = {'train_loss': loss_val}
-        output = OrderedDict({
-            'loss': loss_val,
-            'progress_bar': tqdm_dict,
-            'log': tqdm_dict
-        })
-
-        # can also return just a scalar instead of a dict (return loss_val)
-        return output
-
-    def validation_step(self, batch, batch_idx):
-        """
-        Lightning calls this inside the validation loop
-        :param batch:
-        :return:
-        """
-        x, y = batch['x'], batch['y']
-        y_pred = self.forward(x)
-
-        # calculate loss
-        loss_val = self.loss(y_pred, y)
-
-        # acc
-        labels_hat = torch.argmax(y_pred, dim=1)
-        val_acc = torch.sum(y == labels_hat).item() / (len(y) * 1.0)
-        val_acc = torch.tensor(val_acc)
-
-        if self.on_gpu:
-            val_acc = val_acc.cuda(loss_val.device.index)
-
-        output = OrderedDict({
-            'val_loss': loss_val,
-            'val_acc': val_acc,
-        })
-
-        # can also return just a scalar instead of a dict (return loss_val)
-        return output
-
-    def validation_end(self, outputs):
-        """
-        Called at the end of validation to aggregate outputs
-        :param outputs: list of individual outputs of each validation step
-        :return:
-        """
-        # if returned a scalar from validation_step, outputs is a list of tensor scalars
-        # we return just the average in this case (if we want)
-        # return torch.stack(outputs).mean()
-
-        val_loss_mean = 0
-        val_acc_mean = 0
-        for output in outputs:
-            val_loss = output['val_loss']
-
-            # reduce manually when using dp
-            if self.trainer.use_dp or self.trainer.use_ddp2:
-                val_loss = torch.mean(val_loss)
-            val_loss_mean += val_loss
-
-            # reduce manually when using dp
-            val_acc = output['val_acc']
-            if self.trainer.use_dp or self.trainer.use_ddp2:
-                val_acc = torch.mean(val_acc)
-
-            val_acc_mean += val_acc
-
-        val_loss_mean /= len(outputs)
-        val_acc_mean /= len(outputs)
-        tqdm_dict = {'val_loss': val_loss_mean, 'val_acc': val_acc_mean}
-        result = {'progress_bar': tqdm_dict, 'log': tqdm_dict, 'val_loss': val_loss_mean}
-        return result
-
-    # ---------------------
-    # TRAINING SETUP
-    # ---------------------
-    def configure_optimizers(self):
-        """
-        return whatever optimizers we want here
-        :return: list of optimizers
-        """
-        return [self.optimizer]
-
-    @ptl.data_loader
-    def train_dataloader(self):
-        # logging.info('training data loader called')
-        return DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=True,
-                          num_workers=NUM_WORKERS)
-
-    @ptl.data_loader
-    def val_dataloader(self):
-        # logging.info('val data loader called')
-        return DataLoader(self.eval_dataset, batch_size=self.batch_size, shuffle=True, num_workers=NUM_WORKERS)
-
-    @ptl.data_loader
-    def test_dataloader(self):
-        # logging.info('test data loader called')
-        return DataLoader(self.test_dataset, batch_size=self.batch_size, shuffle=True, num_workers=NUM_WORKERS)
-
-    @staticmethod
-    def add_model_specific_args(parent_parser, root_dir):  # pragma: no cover
-        """
-        Parameters you define here will be available to your model through self.hparams
-        :param parent_parser:
-        :param root_dir:
-        :return:
-        """
-        parser = ArgumentParser(parents=[parent_parser])
-        parser.add_argument('--learning_rate', default=WAVENET_LEARNING_RATE, type=float)
-        parser.add_argument('--weight_decay', default=WAVENET_WEIGHT_DECAY, type=float)
-        parser.add_argument('--batch_size', default=WAVENET_BATCH_SIZE, type=int)
         parser.add_argument(
             '--distributed_backend',
             type=str,
