@@ -614,7 +614,7 @@ class WaveNetLSTMClassifier(nn.Module):
             WAVENET_KERNEL_SIZE)
         # reduce sample resolution from 160k to 32k
         # output_length = floor((input_length - (kernel_size - 1))/stride + 1)
-        self.avg_pooling = nn.AvgPool1d(
+        self.conv_dimension_reshaper = nn.Conv1d(
             kernel_size=WAVENET_POOLING_KERNEL_SIZE,
             stride=WAVENET_POOLING_STRIDE
         )
@@ -631,7 +631,7 @@ class WaveNetLSTMClassifier(nn.Module):
         # print('info: feeding wavenet...')
         x = self.wavenet.forward(x)
         # reduce sequence_length / 5
-        # x = self.avg_pooling(x)
+        x = self.conv_dimension_reshaper(x)
         # x.shape is n_data, n_channels, n_sequence
         # rnn expected input is n_sequence, n_data, wavenet_channels
         x = x.transpose(0, 2).transpose(1, 2)
