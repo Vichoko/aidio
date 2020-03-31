@@ -631,7 +631,7 @@ class WaveNetLSTMClassifier(nn.Module):
         # print('info: feeding wavenet...')
         x = self.wavenet.forward(x)
         # reduce sequence_length / 5
-        x = self.avg_pooling(x)
+        # x = self.avg_pooling(x)
         # x.shape is n_data, n_channels, n_sequence
         # rnn expected input is n_sequence, n_data, wavenet_channels
         x = x.transpose(0, 2).transpose(1, 2)
