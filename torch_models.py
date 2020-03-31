@@ -615,6 +615,8 @@ class WaveNetLSTMClassifier(nn.Module):
         # reduce sample resolution from 160k to 32k
         # output_length = floor((input_length - (kernel_size - 1))/stride + 1)
         self.conv_dimension_reshaper = nn.Conv1d(
+            in_channels=WAVENET_END_CHANNELS,
+            out_channels=WAVENET_END_CHANNELS,
             kernel_size=WAVENET_POOLING_KERNEL_SIZE,
             stride=WAVENET_POOLING_STRIDE
         )
