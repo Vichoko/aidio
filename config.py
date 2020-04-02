@@ -124,7 +124,7 @@ WAVENET_CLASSES = 1  # deprecated
 
 # WaveNetTransformer
 # WN
-WNTF_BATCH_SIZE = 12
+WNTF_BATCH_SIZE = 13
 WNTF_WAVENET_LAYERS = 3
 WNTF_WAVENET_BLOCKS = 2
 # Transformer
