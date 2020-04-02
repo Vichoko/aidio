@@ -11,7 +11,7 @@ from torchsummary import summary
 from torchvision.models import resnext50_32x4d
 
 from config import WAVENET_BATCH_SIZE, NUM_WORKERS, RESNET_V2_BATCH_SIZE, WAVENET_LEARNING_RATE, \
-    WAVENET_WEIGHT_DECAY, WNTF_BATCH_SIZE, WNLSTM_BATCH_SIZE, WAVEFORM_MAX_SEQUENCE_LENGTH
+    WAVENET_WEIGHT_DECAY, WNTF_BATCH_SIZE, WNLSTM_BATCH_SIZE, WAVEFORM_MAX_SEQUENCE_LENGTH, GMM_BATCH_SIZE
 from loaders import ClassSampler
 from torch_models import WaveNetTransformerClassifier, GMMClassifier, WaveNetLSTMClassifier, WaveNetClassifier
 
@@ -30,6 +30,7 @@ class L_GMMClassifier(ptl.LightningModule):
         self.model_path = None
         self.num_classes = num_classes
         self.hparams = hparams
+        self.batch_size = hparams.batch_size
         self.loss = torch.nn.CrossEntropyLoss()
         self.train_dataset = train_dataset
         self.eval_dataset = eval_dataset
@@ -60,6 +61,17 @@ class L_GMMClassifier(ptl.LightningModule):
         test_dataloader = self.test_dataloader()[0]
         val_out = []
         for batch_idx, batch in tqdm.tqdm(enumerate(val_dataloader)):
+            val_out.append(self.validation_step(batch, batch_idx))
+        res = self.validation_end(val_out)
+        print(res['log'])
+        print('info: ending evaluation')
+        return 0
+
+    def test(self):
+        print('info: starting evaluation')
+        test_dataloader = self.test_dataloader()[0]
+        val_out = []
+        for batch_idx, batch in tqdm.tqdm(enumerate(test_dataloader)):
             val_out.append(self.validation_step(batch, batch_idx))
         res = self.validation_end(val_out)
         print(res['log'])
@@ -140,21 +152,21 @@ class L_GMMClassifier(ptl.LightningModule):
         x, y = batch['x'], batch['y']
         y_pred = self.forward(x)
         # as torch methods expect first dim to be N, add first dimension to 1
-
         # calculate loss
         loss_val = self.loss(y_pred, y)
-
         # acc
         labels_hat = torch.argmax(y_pred, dim=1)
         val_acc = torch.sum(y == labels_hat).item() / (len(y) * 1.0)
         val_acc = torch.tensor(val_acc)
-
         # if self.on_gpu:
         #     val_acc = val_acc.cuda(loss_val.device.index)
-
         output = OrderedDict({
             'val_loss': loss_val,
             'val_acc': val_acc,
+            'meta_data': {
+                'data_count': len(x),
+                'data_shape': x.shape,
+            }
         })
 
         # can also return just a scalar instead of a dict (return loss_val)
@@ -172,18 +184,23 @@ class L_GMMClassifier(ptl.LightningModule):
 
         val_loss_mean = 0
         val_acc_mean = 0
+        data_count = 0
 
         for output in outputs:
             val_loss = output['val_loss']
             val_acc = output['val_acc']
             val_loss_mean += val_loss
             val_acc_mean += val_acc
+            data_count += outputs['meta_data']['data_count']
 
         val_loss_mean /= len(outputs)
         val_acc_mean /= len(outputs)
         tqdm_dict = {
             'val_loss': val_loss_mean,
-            'val_acc': val_acc_mean
+            'val_acc': val_acc_mean,
+            'total_data_count': data_count,
+            'last_data_count': outputs['meta_data']['data_count'],
+            'last_data_shape': outputs['meta_data']['data_shape'],
         }
         result = {
             'progress_bar': tqdm_dict,
@@ -225,8 +242,8 @@ class L_GMMClassifier(ptl.LightningModule):
         # logging.info('test data loader called')
         return DataLoader(
             self.test_dataset,
-            num_workers=NUM_WORKERS,
-            batch_sampler=ClassSampler(self.num_classes, self.test_dataset.labels),
+            batch_size=self.batch_size,
+            num_workers=NUM_WORKERS
         )
 
     @staticmethod
@@ -238,7 +255,7 @@ class L_GMMClassifier(ptl.LightningModule):
         :return:
         """
         parser = ArgumentParser(parents=[parent_parser])
-        # parser.add_argument('--learning_rate', default=0.001, type=float)
+        parser.add_argument('--batch_size', default=GMM_BATCH_SIZE, type=float)
         return parser
 
 
@@ -257,6 +274,17 @@ class L_WavenetAbstractClassifier(ptl.LightningModule):
         self.train_dataset = train_dataset
         self.eval_dataset = eval_dataset
         self.test_dataset = test_dataset
+
+    def test(self):
+        print('info: starting test')
+        test_dataloader = self.test_dataloader()[0]
+        val_out = []
+        for batch_idx, batch in tqdm.tqdm(enumerate(test_dataloader)):
+            val_out.append(self.validation_step(batch, batch_idx))
+        res = self.validation_end(val_out)
+        print(res['log'])
+        print('info: ending test')
+        return 0
 
     def forward(self, x):
         """
@@ -438,7 +466,7 @@ class L_WavenetLSTMClassifier(L_WavenetAbstractClassifier):
         super().__init__(hparams, num_classes, train_dataset, eval_dataset, test_dataset, *args, **kwargs)
         # build model
         self.model = WaveNetLSTMClassifier(num_classes)
-        #summary(self.model, input_size=(WNLSTM_BATCH_SIZE, 1, WAVEFORM_MAX_SEQUENCE_LENGTH), device="cpu")
+        # summary(self.model, input_size=(WNLSTM_BATCH_SIZE, 1, WAVEFORM_MAX_SEQUENCE_LENGTH), device="cpu")
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr, weight_decay=self.wd)
 
     @staticmethod

@@ -27,7 +27,7 @@ if __name__ == '__main__':
                ]
     elif mode == 'model':
         module = 'helpers.py'
-        model_name, experiment_name, data_path, models_path, label_filename, gpus, dummy_mode = helpers.parse_cli_args(
+        model_name, experiment_name, data_path, models_path, label_filename, gpus, mode = helpers.parse_cli_args(
             args)
 
         cmd = ['python',
@@ -38,11 +38,9 @@ if __name__ == '__main__':
                '--data_path', str(data_path),
                '--model_path', str(models_path),
                '--label_filename', str(label_filename),
-               '--gpus', str(gpus)
+               '--gpus', str(gpus),
+               '--mode', str(mode),
                ]
-        if dummy_mode:
-            cmd.append('--dummy_mode')
-            cmd.append('true')
     else:
         raise NotImplementedError
 

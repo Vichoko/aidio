@@ -192,7 +192,6 @@ class GMMClassifierHelper(AbstractHelper):
         self.module.eval_now()
 
 
-
 class ResNext50Helper(AbstractHelper):
     model_name = 'resnext50'
     dataset = CepstrumDataset
@@ -237,10 +236,9 @@ def add_cli_args(parser):
         default='unnamed_experiment'
     )
     parser.add_argument(
-        '--dummy_mode',
-        help='if something then activate dummy mode to test learning capabilities of the a model. '
-             '2 classes are predicted under a training where training and test sets are the same.',
-        default=False,
+        '--mode',
+        help='can be train, test or dummy (to activate the dummy training).',
+        default='train',
         required=False
     )
     parser.add_argument('--gpus', default='[]', type=str)
@@ -253,8 +251,8 @@ def parse_cli_args(args):
     models_path = pathlib.Path(args.model_path)
     label_filename = args.label_filename
     gpus = json.loads(args.gpus)
-    dummy_mode = True if args.dummy_mode else False
-    return model_name, experiment_name, data_path, models_path, label_filename, gpus, dummy_mode
+    mode = args.mode
+    return model_name, experiment_name, data_path, models_path, label_filename, gpus, mode
 
 
 if __name__ == '__main__':
@@ -264,16 +262,22 @@ if __name__ == '__main__':
     )
     add_cli_args(parser)
     args = parser.parse_args()
-    model_name, experiment_name, data_path, models_path, label_filename, _, dummy_flag = parse_cli_args(args)
-
+    model_name, experiment_name, data_path, models_path, label_filename, _, mode = parse_cli_args(args)
     helper_class = helpers[model_name]
+
     helper = helper_class(
         experiment_name,
         parser,
         data_path,
         label_filename,
         models_path,
-        dummy_mode=dummy_flag
+        dummy_mode=True if mode == 'dummy' else False
     )
-    helper.train()
+    if mode == 'dummy' or mode == 'train':
+        helper.train()
+    elif mode == 'test':
+        helper.module.test()
+    else:
+        raise NotImplementedError('model mode not implemented')
+
     print('helper ended')
