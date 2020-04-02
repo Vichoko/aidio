@@ -6,17 +6,17 @@ import helpers
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Extract features from a data folder to another')
-    parser.add_argument('mode',
+    parser.add_argument('module',
                         help='mode can be features, models)')
     features.add_cli_args(parser)
     helpers.add_cli_args(parser)
 
     args = parser.parse_args()
-    mode = args.mode
+    module = args.module
 
     print(args)
 
-    if mode == 'features':
+    if module == 'features':
         module = 'features.py'
         features_path, raw_path, feature_name = features.parse_cli_args(args)
         cmd = ['python',
@@ -25,7 +25,7 @@ if __name__ == '__main__':
                '--raw_path', str(raw_path),
                '--feature', str(feature_name)
                ]
-    elif mode == 'model':
+    elif module == 'model':
         module = 'helpers.py'
         model_name, experiment_name, data_path, models_path, label_filename, gpus, mode = helpers.parse_cli_args(
             args)
