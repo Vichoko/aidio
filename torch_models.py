@@ -701,14 +701,16 @@ class GMMClassifier(nn.Module):
         :return:
         """
         # sklearn GMM expects (n, n_features)
-        debug = False
+        debug = True
         x = x.permute(0, 2, 1)
         x = x.reshape(-1, 20)
-        print('Debug: y = {}'.format(y)) if debug else None
-        print('Debug: x = {}'.format(x)) if debug else None
-        print('Debug: gmm_list = {}'.format(self.gmm_list)) if debug else None
+        # print('Debug: y = {}'.format(y)) if debug else None
+        # print('Debug: x = {}'.format(x)) if debug else None
+        # print('Debug: gmm_list = {}'.format(self.gmm_list)) if debug else None
         print('info: Fitting GMM...')
-        self.gmm_list[y[0].item()].fit(x[:self.frame_limit, :])
+        data = x[:self.frame_limit, :]
+        print('Debug: Training data have shape {}'.format(data.shape)) if debug else None
+        self.gmm_list[y[0].item()].fit(data)
         print('info: Done!')
 
     def forward_score(self, x):
