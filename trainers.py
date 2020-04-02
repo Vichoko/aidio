@@ -35,7 +35,7 @@ class L_GMMClassifier(ptl.LightningModule):
         self.eval_dataset = eval_dataset
         self.test_dataset = test_dataset
         # build model
-        self.optimizer = DummyOptimizer()
+        self.optimizer = DummyOptimizer(None, None)
         self.trained = False
         self.model = None
         # self.model = self.load_model(self.num_classes)
