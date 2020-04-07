@@ -420,6 +420,8 @@ class L_WavenetAbstractClassifier(ptl.LightningModule):
         self.validation_step(batch, batch_idx)
 
     def test_end(self, outputs):
+        debug = True
+        print('Debug: test_end output is {}'.format(outputs)) if debug else None
         self.validation_end(outputs)
 
     def configure_optimizers(self):
