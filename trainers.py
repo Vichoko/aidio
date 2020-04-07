@@ -67,17 +67,6 @@ class L_GMMClassifier(ptl.LightningModule):
         print('info: ending evaluation')
         return 0
 
-    def test(self):
-        print('info: starting evaluation')
-        test_dataloader = self.test_dataloader()[0]
-        val_out = []
-        for batch_idx, batch in tqdm.tqdm(enumerate(test_dataloader)):
-            val_out.append(self.validation_step(batch, batch_idx))
-        res = self.validation_end(val_out)
-        print(res['log'])
-        print('info: ending evaluation')
-        return 0
-
     def save_model(self, model_path):
         """
         Save the model state with some metrics.

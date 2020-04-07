@@ -5,60 +5,14 @@ import argparse
 import json
 import pathlib
 
-import numpy as np
 import pytorch_lightning as ptl
-import torch
 from pytorch_lightning.callbacks import EarlyStopping
 from pytorch_lightning.logging import TestTubeLogger
-from torch.utils.data import DataLoader
 
 from config import makedirs, MODELS_DATA_PATH, RAW_DATA_PATH, EARLY_STOP_PATIENCE
-from loaders import CepstrumDataset, WaveformDataset, ExperimentDataset, ClassSampler
-from torch_models import GMMClassifier
+from loaders import CepstrumDataset, WaveformDataset, ExperimentDataset
 from trainers import L_ResNext50, L_WavenetTransformerClassifier, L_WavenetLSTMClassifier, L_GMMClassifier, \
     L_WavenetClassifier
-
-
-def mfcc_test(dataset, number_of_classes):
-    """
-
-    :param dataset:
-    :param number_of_classes:
-    :return:
-    """
-    # gmms = [sklearn.mixture.GaussianMixture(n_components=64) for _ in range(number_of_classes)]
-    dataloader = DataLoader(dataset, num_workers=4,
-                            batch_sampler=ClassSampler(number_of_classes, dataset.labels),
-                            collate_fn=ClassSampler.collate_fn
-                            )
-    # load data to ram
-    data = list(dataloader)
-    train_data = [None] * number_of_classes
-    number_of_samples = 65
-    module = GMMClassifier(number_of_classes)
-
-    for class_data in data:
-        class_id = class_data['y']
-        class_mfcc = class_data['x']
-        train_data[class_id] = class_mfcc[:]
-        module.fit(train_data[class_id], class_data['y'])
-
-    accuracy = [[]] * number_of_classes
-    for data_batch in dataset:
-        x = data_batch['x'].squeeze(0).permute(1, 0)
-        label = data_batch['y'].item()
-        y = module.forward(x)
-        sm = torch.nn.Softmax()
-        y = sm.forward(y)
-        predicted_class = y.max(0)[1]
-        if predicted_class == label:
-            # True Positive
-            accuracy[label].append(1)
-        else:
-            # False positive
-            accuracy[label].append(0)
-    for class_idx, accuracies in enumerate(accuracy):
-        print('info: Class {} has {} accuracy'.format(class_idx, np.asarray(accuracies).mean()))
 
 
 class AbstractHelper:
@@ -84,10 +38,6 @@ class AbstractHelper:
             ratio=self.dataset_ratios,
             dummy_mode=dummy_mode
         )
-        #
-        # if dummy_mode:
-        #     mfcc_test(train_dataset, number_of_classes)
-        #     return
         parser = self.lightning_module.add_model_specific_args(parser, None)
         hyperparams = parser.parse_args()
         self.module = self.lightning_module(
@@ -128,6 +78,9 @@ class AbstractHelper:
     def train(self):
         self.trainer.fit(self.module)
 
+    def test(self):
+        self.trainer.run_evaluation(test=True)
+
     def evaluate(self):
         """
         Run a set of evaluations to obtain metrics of SID task.
@@ -141,8 +94,7 @@ class AbstractHelper:
             Error
         :return:
         """
-
-        return
+        self.trainer.run_evaluation(test=False)
 
 
 # folder name of music files after some processing (raw, svs, svd, svs+svd, etc)
@@ -264,7 +216,6 @@ if __name__ == '__main__':
     args = parser.parse_args()
     model_name, experiment_name, data_path, models_path, label_filename, _, mode = parse_cli_args(args)
     helper_class = helpers[model_name]
-
     helper = helper_class(
         experiment_name,
         parser,
@@ -276,8 +227,9 @@ if __name__ == '__main__':
     if mode == 'dummy' or mode == 'train':
         helper.train()
     elif mode == 'test':
-        helper.module.test()
+        helper.test()
+    elif mode == 'evaluation':
+        helper.evaluate()
     else:
         raise NotImplementedError('model mode not implemented')
-
     print('helper ended')
