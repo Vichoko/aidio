@@ -79,7 +79,7 @@ class AbstractHelper:
         self.trainer.fit(self.module)
 
     def test(self):
-        self.trainer.test()
+        self.trainer.test(self.module)
 
     def evaluate(self):
         """
@@ -94,7 +94,8 @@ class AbstractHelper:
             Error
         :return:
         """
-        self.trainer.run_evaluation(test=False)
+        #self.trainer.run_evaluation(test=False)
+        return
 
 
 # folder name of music files after some processing (raw, svs, svd, svs+svd, etc)
