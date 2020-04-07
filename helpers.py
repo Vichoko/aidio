@@ -79,7 +79,7 @@ class AbstractHelper:
         self.trainer.fit(self.module)
 
     def test(self):
-        self.trainer.run_evaluation(test=True)
+        self.trainer.test()
 
     def evaluate(self):
         """

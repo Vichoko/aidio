@@ -157,7 +157,6 @@ class L_GMMClassifier(ptl.LightningModule):
                 'data_shape': x.shape,
             }
         })
-
         # can also return just a scalar instead of a dict (return loss_val)
         return output
 
