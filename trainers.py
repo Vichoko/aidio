@@ -416,6 +416,12 @@ class L_WavenetAbstractClassifier(ptl.LightningModule):
         result = {'progress_bar': tqdm_dict, 'log': tqdm_dict, 'val_loss': val_loss_mean}
         return result
 
+    def test_step(self, batch, batch_idx):
+        self.validation_step(batch, batch_idx)
+
+    def test_end(self, outputs):
+        self.validation_end(outputs)
+
     def configure_optimizers(self):
         """
         return whatever optimizers we want here
