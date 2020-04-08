@@ -18,7 +18,7 @@ from config import SR, MFCC_N_COEF, MFCC_FFT_WINDOW, MFCC_HOP_LENGTH, FEATURE_EX
 MAX_CLASS_NUMBER = 0  # Number of classes; 0 is all possible
 SPLIT_AUDIO_LENGTH = 11  # Second
 OUTPUT = '2d'
-SEQUENTIAL = False
+SEQUENTIAL = True
 
 
 def make_handler(new_labels, new_filenames, data_path, out_path):
@@ -60,7 +60,7 @@ def make_handler(new_labels, new_filenames, data_path, out_path):
             print('info: {} exported successfully.'.format(new_filename))
             new_filenames.append(new_filename)
             new_labels.append(label)
-
+        return
     return handler
 
 
