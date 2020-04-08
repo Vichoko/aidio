@@ -18,7 +18,7 @@ from config import SR, MFCC_N_COEF, MFCC_FFT_WINDOW, MFCC_HOP_LENGTH, FEATURE_EX
 MAX_CLASS_NUMBER = 0  # Number of classes; 0 is all possible
 SPLIT_AUDIO_LENGTH = 11  # Second
 OUTPUT = '2d'
-SEQUENTIAL = True
+SEQUENTIAL = False
 
 
 def make_handler(new_labels, new_filenames, data_path, out_path):
