@@ -18,6 +18,7 @@ from config import SR, MFCC_N_COEF, MFCC_FFT_WINDOW, MFCC_HOP_LENGTH, FEATURE_EX
 MAX_CLASS_NUMBER = 0  # Number of classes; 0 is all possible
 SPLIT_AUDIO_LENGTH = 11  # Second
 OUTPUT = '2d'
+SEQUENTIAL = True
 
 
 def make_handler(new_labels, new_filenames, data_path, out_path):
@@ -89,8 +90,13 @@ def main():
     # class_set = set()
     assert len(filenames) == len(labels)
     handler = make_handler(new_labels, new_filenames, data_path, out_path)
-    with concurrent.futures.ThreadPoolExecutor(max_workers=FEATURE_EXTRACTOR_NUM_WORKERS) as executor:
-        iterator = executor.map(handler, filenames, labels)
+    if SEQUENTIAL:
+        for idx, filename in enumerate(filenames):
+            label = labels[idx]
+            handler(filename, label)
+    else:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=FEATURE_EXTRACTOR_NUM_WORKERS) as executor:
+            iterator = executor.map(handler, filenames, labels)
     list(iterator) # wait to finish
     df = pd.DataFrame(np.asarray([new_filenames, new_labels]).swapaxes(0, 1))
     df.columns = ['filename', 'label']
