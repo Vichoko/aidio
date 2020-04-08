@@ -192,7 +192,7 @@ class L_GMMClassifier(ptl.LightningModule):
             'log': tqdm_dict,
             'hiddens': {
                 'total_data_count': data_count,
-                'last_point_metadata': outputs[-1]['metadata']
+                'last_point_metadata': outputs[-1]['meta_data']
             }
 
         }
