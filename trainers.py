@@ -154,7 +154,6 @@ class L_GMMClassifier(ptl.LightningModule):
             'val_acc': val_acc,
             'meta_data': {
                 'data_count': len(x),
-                'data_shape': x.shape,
             }
         })
         # can also return just a scalar instead of a dict (return loss_val)
@@ -190,9 +189,8 @@ class L_GMMClassifier(ptl.LightningModule):
         result = {
             'progress_bar': tqdm_dict,
             'log': tqdm_dict,
-            'other_metrics': {'total_data_count': data_count,
-                              'last_data_count': outputs[-1]['meta_data']['data_count'],
-                              'last_data_shape': outputs[-1]['meta_data']['data_shape'], }
+            'total_data_count': torch.Tensor(data_count),
+            'last_data_count': torch.Tensor(outputs[-1]['meta_data']['data_count']),
         }
         return result
 
