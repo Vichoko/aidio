@@ -421,7 +421,10 @@ class L_WavenetAbstractClassifier(ptl.LightningModule):
 
     def test_end(self, outputs):
         debug = False
-        print('Debug: test_end output is {}'.format(outputs)) if debug else None
+        print('debug: test_end output is {}'.format(outputs)) if debug else None
+        result = self.validation_end(outputs)
+        print('info: Testing complete.')
+        print('info: {}'.format(result['log']))
         return self.validation_end(outputs)
 
     def configure_optimizers(self):
