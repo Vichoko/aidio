@@ -1,4 +1,5 @@
 import argparse
+import concurrent.futures
 import inspect
 import os
 import pathlib
@@ -12,10 +13,54 @@ import pandas as pd
 current_dir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
 parent_dir = os.path.dirname(current_dir)
 sys.path.insert(0, parent_dir)
-from config import SR
+from config import SR, MFCC_N_COEF, MFCC_FFT_WINDOW, MFCC_HOP_LENGTH, FEATURE_EXTRACTOR_NUM_WORKERS
 
 MAX_CLASS_NUMBER = 0  # Number of classes; 0 is all possible
 SPLIT_AUDIO_LENGTH = 11  # Second
+OUTPUT = '2d'
+
+
+def make_handler(new_labels, new_filenames, data_path, out_path):
+    def handler(filename, label):
+        wav, sr = librosa.load(
+            str(data_path / filename),
+            sr=SR
+        )
+        # channels = wav.shape[0]
+        number_of_samples = wav.shape[0]
+        extension = filename.split('.')[-1]
+        slice_number_of_samples = SPLIT_AUDIO_LENGTH * sr
+        number_of_slices = ceil(number_of_samples / slice_number_of_samples)
+        for slice_idx in range(number_of_slices):
+            first_sample = slice_idx * slice_number_of_samples
+            last_sample = (slice_idx + 1) * slice_number_of_samples
+            new_wav = wav[first_sample: last_sample]
+            if new_wav.shape[0] < slice_number_of_samples:
+                # if new slice is short, discard it to avoid issues
+                print('warning: Slice {} of {} discarded because was too short.'.format(slice_idx, filename))
+                continue
+            if OUTPUT == '1d':
+                new_filename = filename.replace(extension, '{}.npy'.format(slice_idx))
+                data = new_wav
+            elif OUTPUT == '2d':
+                new_filename = filename.replace(extension, 'mfcc.{}.npy'.format(slice_idx))
+                # Normalize audio signal
+                wav = librosa.util.normalize(wav)
+                # Get Mel-Spectrogram
+                mfcc = librosa.feature.mfcc(wav, sr=SR, n_mfcc=MFCC_N_COEF, n_fft=MFCC_FFT_WINDOW,
+                                            hop_length=MFCC_HOP_LENGTH)
+                data = mfcc
+            else:
+                raise NotImplementedError()
+            np.save(
+                out_path / new_filename,
+                data
+            )
+            print('info: {} exported successfully.'.format(new_filename))
+            new_filenames.append(new_filename)
+            new_labels.append(label)
+
+    return handler
 
 
 def main():
@@ -41,48 +86,12 @@ def main():
 
     new_filenames = []
     new_labels = []
-    class_set = set()
+    # class_set = set()
     assert len(filenames) == len(labels)
-    for idx, filename in enumerate(filenames):
-        label = labels[idx]
-        # only accept 10 classes-logic ahead
-        if MAX_CLASS_NUMBER == 0:
-            # if is 0, it means all possible classes
-            pass
-        elif len(class_set) < 10:
-            # if less than 10 classes are seen, pass
-            class_set.add(label)
-        elif len(class_set) >= 10 and label not in class_set:
-            # if set is full and label is not inside, ignore
-            continue
-        else:
-            # if set is full and label is inside
-            pass
-        wav, sr = librosa.load(
-            str(data_path / filename),
-            sr=SR
-        )
-        # channels = wav.shape[0]
-        number_of_samples = wav.shape[0]
-        extension = filename.split('.')[-1]
-        slice_number_of_samples = SPLIT_AUDIO_LENGTH * sr
-        number_of_slices = ceil(number_of_samples / slice_number_of_samples)
-        for slice_idx in range(number_of_slices):
-            first_sample = slice_idx * slice_number_of_samples
-            last_sample = (slice_idx + 1) * slice_number_of_samples
-            new_wav = wav[first_sample: last_sample]
-            if new_wav.shape[0] < slice_number_of_samples:
-                # if new slice is short, discard it to avoid issues
-                print('warning: Slice {} of {} discarded because was too short.'.format(slice_idx, filename))
-                continue
-            new_filename = filename.replace(extension, '{}.npy'.format(slice_idx))
-            np.save(
-                out_path / new_filename,
-                new_wav
-            )
-            print('info: {} exported successfully.'.format(new_filename))
-            new_filenames.append(new_filename)
-            new_labels.append(label)
+    handler = make_handler(new_labels, new_filenames, data_path, out_path)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=FEATURE_EXTRACTOR_NUM_WORKERS) as executor:
+        iterator = executor.map(handler, filenames, labels)
+    list(iterator) # wait to finish
     df = pd.DataFrame(np.asarray([new_filenames, new_labels]).swapaxes(0, 1))
     df.columns = ['filename', 'label']
     df.to_csv(out_path / label_filename, index=False)
