@@ -154,6 +154,7 @@ class L_GMMClassifier(ptl.LightningModule):
             'val_acc': val_acc,
             'meta_data': {
                 'data_count': len(x),
+                'data_shape': x.shape
             }
         })
         # can also return just a scalar instead of a dict (return loss_val)
@@ -189,8 +190,11 @@ class L_GMMClassifier(ptl.LightningModule):
         result = {
             'progress_bar': tqdm_dict,
             'log': tqdm_dict,
-            # 'total_data_count': torch.Tensor(data_count),
-            # 'last_data_count': torch.Tensor(outputs[-1]['meta_data']['data_count']),
+            'hiddens': {
+                'total_data_count': data_count,
+                'last_point_metadata': outputs[-1]['metadata']
+            }
+
         }
         return result
 
@@ -208,7 +212,10 @@ class L_GMMClassifier(ptl.LightningModule):
         :param outputs: list of individual outputs of each validation step
         :return:
         """
-        return self.validation_end(outputs)
+        print('info: Testing complete.')
+        result = self.validation_end(outputs)
+        print('info: {}'.format(result['log']))
+        return result
 
     # ---------------------
     # TRAINING SETUP
