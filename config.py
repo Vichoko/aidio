@@ -1,7 +1,12 @@
 import pathlib
 from os import makedirs as _makedirs
 
+# General Settings
+NUMBER_OF_CLASSES = 2
+RANDOM_SEED = 69
 
+
+# Configuration Settings
 def makedirs(path):
     try:
         _makedirs(path)
@@ -10,7 +15,8 @@ def makedirs(path):
 
 
 AVAIL_MEDIA_TYPES = ['mp3', 'ogg', 'wav', 'flac', ]
-NUM_WORKERS = 4
+FEATURE_EXTRACTOR_NUM_WORKERS = 4
+NUM_WORKERS = 1
 
 SOURCE_DATA_PATH = pathlib.Path('C:\\Users\\Vichoko\\Music\\in')
 RAW_DATA_PATH = pathlib.Path('./data/raw/')
@@ -28,7 +34,6 @@ makedirs(OTHER_DATA_PATH)
 #########################################
 ####    FEATURES
 #########################################
-
 # -- Audio processing parameters --#
 SR = 16000
 
@@ -41,6 +46,12 @@ POWER = 2  # Exponent for the magnitude melspectrogram. e.g., 1 for energy, 2 fo
 N_MELS = 128  # number of Mel bands to generate
 FMIN = 0  # lowest frequency (in Hz)
 FMAX = None  # Highest frequency (in Hz)
+
+# MFCC
+# params from 2011 Tsai et al.
+MFCC_FFT_WINDOW = int(SR * 0.032)  # 32 ms window frame
+MFCC_HOP_LENGTH = int(SR * 0.010)  # 10 ms shifts
+MFCC_N_COEF = 20
 
 # -- sINGING vOICE dETECTION --#
 VOICE_DETECTION_PATH = '/home/voyanedel/data/code/ismir2018-revisiting-svd/'
@@ -57,8 +68,8 @@ N_FFT_HPSS_2 = 512
 N_HOP_HPSS_2 = 256
 
 # -- WINDOW MFCC --
-TOP_DB_WINDOWED_MFCC = 80
-MIN_INTERVAL_LEN_WINDOWED_MFCC = SR
+TOP_DB_WINDOWED_MFCC = 38
+MIN_INTERVAL_LEN_WINDOWED_MFCC = SR / 10
 WINDOW_LEN_WINDOWED_MFCC = SR
 WINDOW_HOP_WINDOWED_MFCC = int(SR / 3)
 
@@ -69,7 +80,6 @@ MAGPHASE_HOP_LENGTH = 768
 MAGPHASE_PATCH_SIZE = 128
 
 # OpenUnmixPytorch
-
 OUNMIX_SAMPLE_RATE = 44100
 OUNMIX_NITER = 1
 OUNMIX_ALPHA = 1
@@ -77,11 +87,64 @@ OUNMIX_TARGETS = ['vocals']
 OUNMIX_SOFTMAX = False
 OUNMIX_RESIDUAL_MODEL = False
 OUNMIX_MODEL = 'umxhq'
+###########################
+## trainer
+# early stop
+EARLY_STOP_PATIENCE = 20
 
 #########################################
 ####    MODELS
 #########################################
+# GMM
+GMM_BATCH_SIZE = 20
+GMM_COMPONENT_NUMBER = 64
+SONG_FRAME_LIMIT = 17 * 1000
+GMM_FRAME_LIMIT = 500 * SONG_FRAME_LIMIT  # 1000 are 1 second; 1000 * 60 is 1 minute
 
+# WaveNet General
+# Wavenet alone Layers
+WAVENET_BATCH_SIZE = 24
+WAVENET_LAYERS = 3
+WAVENET_BLOCKS = 2
+# Downsampling (for sentence encoder aproaches)
+WAVENET_POOLING_KERNEL_SIZE = 32
+WAVENET_POOLING_STRIDE = 32
+# Dimensions
+WAVENET_DILATION_CHANNELS = 32
+WAVENET_RESIDUAL_CHANNELS = 32
+WAVENET_SKIP_CHANNELS = 64
+WAVENET_END_CHANNELS = 256
+WAVENET_OUTPUT_LENGTH = 32
+WAVENET_KERNEL_SIZE = 4
+WAVENET_LEARNING_RATE = 0.0001
+WAVENET_WEIGHT_DECAY = 0.0000001
+WAVENET_USE_AMSGRAD = False  # todo: integrate wavenet and wavenet + lstm
+WAVENET_EPOCHS = 10000  # deprecated
+WAVENET_CLASSES = 1  # deprecated
+
+# WaveNetTransformer
+# WN
+WNTF_BATCH_SIZE = 13
+WNTF_WAVENET_LAYERS = 3
+WNTF_WAVENET_BLOCKS = 2
+# Transformer
+TRANSFORMER_N_HEAD = 1
+TRANSFORMER_D_MODEL = 512
+TRANSFORMER_N_LAYERS = 3
+
+# WaveNetLSTM
+# WN
+WNLSTM_BATCH_SIZE = 16
+WNLSTM_WAVENET_LAYERS = 3
+WNLSTM_WAVENET_BLOCKS = 2
+# LSTM
+LSTM_HIDDEN_SIZE = 1024
+LSTM_NUM_LAYERS = 1
+LSTM_POOL_TYPE = 'max'
+LSTM_DROPOUT_PROB = 0.0
+LSTM_BIDIRECTIONALITY = True
+
+# Un-Used
 #  ResNetV2
 RESNET_V2_VERSION = 2
 RESNET_V2_BATCH_SIZE = 32  # orig paper trained all networks with batch_size=128
@@ -101,35 +164,6 @@ S1DCONV_NUM_WORKERS = 2
 WAVEFORM_MAX_SEQUENCE_LENGTH = SR * 5
 WAVEFORM_NUM_CHANNELS = 1  # can be 1 for mono or 2 for stereo; any other value will be stereo
 S1DCONV_HIDDEN_BLOCKS = 1
-
-TRANSFORMER_N_HEAD = 2
-TRANSFORMER_D_MODEL = 32
-TRANSFORMER_N_LAYERS = 2
-
-
-# WaveNet
-
-WAVENET_LAYERS = 1
-WAVENET_BLOCKS = 1
-WAVENET_DILATION_CHANNELS = 8
-WAVENET_RESIDUAL_CHANNELS = 8
-WAVENET_SKIP_CHANNELS = 16
-WAVENET_END_CHANNELS = 32
-WAVENET_CLASSES = 1
-WAVENET_OUTPUT_LENGTH = 32
-WAVENET_KERNEL_SIZE = 2
-WAVENET_EPOCHS = 1000
-WAVENET_BATCH_SIZE = 1
-WAVENET_POOLING_KERNEL_SIZE = 20
-WAVENET_POOLING_STRIDE = 10
-
-# Infersent
-# BiLSTM w& Max Pooling ecoding
-LSTM_HIDDEN_SIZE = 512
-LSTM_NUM_LAYERS = 1
-LSTM_POOL_TYPE = 'max'
-LSTM_DROPOUT_PROB = 0.0
-
 # ADiSAN
 ADISAN_BATCH_SIZE = 64
 ADISAN_EPOCHS = 200
@@ -146,7 +180,6 @@ ADISAN_LOG_PERIOD = 500  # save tf summary period
 ADISAN_SAVE_PERIOD = 3000
 ADISAN_EVAL_PERIOD = 1000
 ADISAN_GPU_MEM = 0.96  # GPU memoty ratio
-
 # deprecated
 ADISAN_LOAD_PATH = OTHER_DATA_PATH / 'load_model'  # deprecated; for test mode; specify which pre-trianed model to be load
 ADISAN_LOAD_MODEL = False  # force load model from chkp on instance

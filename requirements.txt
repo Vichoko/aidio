@@ -5,6 +5,10 @@ keras
 pydub
 pysoundfile
 ffmpeg
+torchsummary
+pytorch-lightning
+torchsummary
+
 # conda
 # conda install cffi numpy
 norbert

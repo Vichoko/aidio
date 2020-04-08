@@ -25,8 +25,8 @@ from config import SR, RAW_DATA_PATH, FEATURES_DATA_PATH, HOP_LENGTH, N_FFT, N_M
     VOICE_DETECTION_MODEL_NAME, N_FFT_HPSS_1, N_HOP_HPSS_1, N_FFT_HPSS_2, N_HOP_HPSS_2, SR_HPSS, \
     N_MELS_HPSS, MODELS_DATA_PATH, RNN_INPUT_SIZE_VOICE_ACTIVATION, TOP_DB_WINDOWED_MFCC, \
     MIN_INTERVAL_LEN_WINDOWED_MFCC, WINDOW_LEN_WINDOWED_MFCC, WINDOW_HOP_WINDOWED_MFCC, makedirs, AVAIL_MEDIA_TYPES, \
-    NUM_WORKERS, MAGPHASE_WINDOW_SIZE, MAGPHASE_HOP_LENGTH, MAGPHASE_SAMPLE_RATE, MAGPHASE_PATCH_SIZE, \
-    OUNMIX_SAMPLE_RATE
+    MAGPHASE_WINDOW_SIZE, MAGPHASE_HOP_LENGTH, MAGPHASE_SAMPLE_RATE, MAGPHASE_PATCH_SIZE, \
+    OUNMIX_SAMPLE_RATE, MFCC_N_COEF, MFCC_FFT_WINDOW, MFCC_HOP_LENGTH, FEATURE_EXTRACTOR_NUM_WORKERS
 from util.leglaive.audio import ono_hpss, log_melgram
 
 
@@ -262,7 +262,7 @@ class FeatureExtractor:
             existing_labels=self.existing_labels,
             **kwargs)
         try:
-            with concurrent.futures.ThreadPoolExecutor(max_workers=NUM_WORKERS) as executor:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=FEATURE_EXTRACTOR_NUM_WORKERS) as executor:
                 iterator = executor.map(process_element, data)
             list(iterator)
         except KeyboardInterrupt:
@@ -498,8 +498,58 @@ class MelSpectralCoefficientsFeatureExtractor(FeatureExtractor):
         return __process_element
 
 
+class MelCepstralCoefficientsFeatureExtractor(FeatureExtractor):
+    feature_name = 'mfcc'
+
+    @staticmethod
+    def process_element(feature_name, new_labels, out_path, source_path, **kwargs):
+        def __process_element(data):
+            """
+            :param x: filename (str)
+            :param y: label (str)
+            :return:
+            """
+            print('prosessing {}'.format(data))
+            x = data[0]
+            y = data[1]
+
+            file_name = FeatureExtractor.get_file_name(x, feature_name)
+
+            try:
+                # try to load if file already exist
+                np.load(out_path / file_name, allow_pickle=True)
+                print('info: {} loaded from .npy !'.format(file_name))
+                new_labels.append([file_name, y])
+            except FileNotFoundError or OSError or EOFError:
+                source_file_path = str(source_path / x)
+                ext = source_file_path.split('.')[-1]
+                if 'npy' in ext:
+                    wav = np.load(source_file_path)
+                elif ext in AVAIL_MEDIA_TYPES:
+                    wav, _ = librosa.load(source_file_path, sr=SR)
+                else:
+                    raise TypeError('source file ext not recognized ({})'.format(source_file_path))
+                # Normalize audio signal
+                wav = librosa.util.normalize(wav)
+                # Get Mel-Spectrogram
+                mfcc = librosa.feature.mfcc(wav, sr=SR, n_mfcc=MFCC_N_COEF, n_fft=MFCC_FFT_WINDOW,
+                                            hop_length=MFCC_HOP_LENGTH)
+                # this is kind-of standard
+                FeatureExtractor.save_feature(mfcc, feature_name, out_path, x, y, new_labels)
+
+        return __process_element
+
+    def transform(self, parallel=False, **kwargs):
+        if parallel:
+            raise Exception('error: {} cannot be ran in paralel'.format(self.feature_name))
+        return super().transform(parallel, **kwargs)
+
+
 # MFSC
 class WindowedMelSpectralCoefficientsFeatureExtractor(FeatureExtractor):
+    """
+    Do not use.
+    """
     feature_name = 'windowed_spec'
 
     @staticmethod
@@ -813,7 +863,7 @@ class SingingVoiceSeparationOpenUnmixFeatureExtractor(FeatureExtractor):
             y_i,
             new_labels,
             mp3_filename=mp3_file_name
-            )
+        )
         # except RuntimeError as e:
         #     if 'not enough memory' in e.args[0]:
         #         print(e)
@@ -860,30 +910,33 @@ class IntensitySplitterFeatureExtractor(FeatureExtractor):
             :param y: label (str)
             :return:
             """
-            print('prosessing {}'.format(data))
+            print('processing {}'.format(data))
             x = data[0]
             y = data[1]
-
-            # params
-
+            filename = FeatureExtractor.get_file_name(x, feature_name,
+                                                      ext='mp3')
+            if os.path.isfile(out_path / filename):
+                new_labels.append([filename, y])
+                return
             # get song and split
             wav, _ = librosa.load(str(source_path / x), sr=SR)
             intervals = librosa.effects.split(
                 wav,
                 top_db=TOP_DB_WINDOWED_MFCC
             )
+            wav_intervals = []
             # export intervals as new songs (wav)
             for interval_idx, interval in enumerate(intervals):
                 if interval[1] - interval[0] < MIN_INTERVAL_LEN_WINDOWED_MFCC:
                     # if length is lesser that 1 second, discard interval
                     continue
+                print('debug: appending interval {}'.format(interval))
+                wav_intervals.append(wav[interval[0]:interval[1]])
 
-                filename = FeatureExtractor.get_file_name(x, feature_name,
-                                                          ext='{}.mp3'.format(interval_idx))
-                FeatureExtractor.save_mp3(
-                    wav[interval[0]:interval[1]], SR,
-                    feature_name,
-                    out_path, x, y, new_labels, mp3_filename=filename)
+            FeatureExtractor.save_mp3(
+                np.concatenate(wav_intervals), SR,
+                feature_name,
+                out_path, x, y, new_labels, mp3_filename=filename)
 
         return __process_element
 
@@ -1026,9 +1079,11 @@ class VoiceActivationFeatureExtractor(FeatureExtractor):
             from keras import backend
 
             if len(backend.tensorflow_backend._get_available_gpus()) > 0:
+                # This NN use more that 2 GB of VRAM. So i disable GPU for my local environment with
+                # print(backend.tensorflow_backend._get_available_gpus())
                 # set gpu number
-                os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-
+                # os.environ["CUDA_VISIBLE_DEVICES"] = str(len(backend.tensorflow_backend._get_available_gpus()))  # "0"
+                os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
             # load mode
             loaded_model = load_model(str(MODELS_DATA_PATH / 'leglaive' / 'rnn_{}.h5'.format(model_name)))
             print("loaded model")
@@ -1055,7 +1110,7 @@ class VoiceActivationFeatureExtractor(FeatureExtractor):
                     print('info: formatting data')
                     try:
                         print("debug: hpss shape is {}".format(hpss.shape))
-                        print('debug: size of hpss is {}'.format(sys.getsizeof(hpss)))
+                        print('debug: size of hpss is {} KB'.format(sys.getsizeof(hpss) / 1024))
                         padding = RNN_INPUT_SIZE_VOICE_ACTIVATION - hpss.shape[1]
                         if padding > 0:
                             # if hpss is shorter that RNN input shape, then add padding on axis=1
@@ -1198,6 +1253,119 @@ class VoiceActivationSplitFeatureExtractor(FeatureExtractor):
         return __process_element
 
 
+class VoiceActivationFrameSelectionFeatureExtractor(FeatureExtractor):
+    feature_name = 'frame_selection'
+    dependency_feature_name = SingingVoiceSeparationOpenUnmixFeatureExtractor.feature_name
+
+    @staticmethod
+    def process_element(feature_name, new_labels, out_path, source_path, **kwargs):
+        def __process_element(data):
+            """
+            :param x: filename (str)
+            :param y: label (str)
+            :return:
+            """
+            print('prosessing {}'.format(data))
+            x = data[0]
+            y = data[1]
+
+            # params
+            feature_path = kwargs.get('features_path')
+            voice_activation_file_name = x.replace(
+                'mp3',
+                '{}.{}.npy'.format(DoubleHPSSFeatureExtractor.feature_name,
+                                   VoiceActivationFeatureExtractor.feature_name)
+            )
+            voice_activation_path = feature_path / VoiceActivationFeatureExtractor.feature_name
+
+            time, voice_prob = np.load(
+                voice_activation_path / voice_activation_file_name,
+                allow_pickle=True
+            )
+
+            threshold = 0.5
+            binary_mask = np.empty_like(voice_prob)
+            binary_mask[voice_prob > threshold] = 1
+            binary_mask[voice_prob <= threshold] = 0
+
+            """
+            Logic to split audios by voice probability:
+            catch intervals of high activations with short interruptions, ignore
+            sections of contiguous 0 probabilities.
+            """
+
+            contiguous_counter = []
+            past_activation = 0
+            count = 0
+            for activation in binary_mask:
+                if activation == past_activation:
+                    count += 1
+                else:
+                    contiguous_counter.append((past_activation, count))
+                    past_activation = activation
+                    count = 1
+            contiguous_counter.append((past_activation, count))
+            # contiguous_cointer count the sequential repetitions of 1 and 0s
+
+            # heuristically create intervals by detecting silences and sound regions big enough to be
+            # exported
+            activation_sr = 1.0 / (time[1] - time[0])
+            # time_threshold = activation_sr * 3  # at least 3 seconds
+            time_threshold = 0
+            rec = None
+            rec_intervals = []
+            start_idx = 0
+            current_pivot = 0
+            for activation, num_samples in contiguous_counter:
+                if not num_samples:
+                    continue
+                activation = bool(activation)
+                if rec is None:
+                    rec = activation
+                if activation != rec and num_samples > time_threshold:
+                    # if activation changes and the number of samples is big enough,
+                    # switch record mode. If record mode stops, then the interval is saved
+                    if rec:
+                        # if it was recording, stop recording the interval
+                        rec_intervals.append((
+                            time[start_idx],
+                            time[current_pivot - 1]
+                        ))
+                    else:
+                        # if it wasn't recording, start new recording interval
+                        start_idx = current_pivot
+                    current_pivot += num_samples
+                    rec = not rec
+            # get song and split
+            wav, sr = librosa.load(str(source_path / x))
+
+            # stick the itervals and export as a whole
+
+            # export intervals as new songs (mp3)
+            wav_segments = []
+            for interval_idx, interval in enumerate(rec_intervals):
+                first_sample, last_sample = librosa.core.time_to_samples(
+                    np.asarray(interval),
+                    sr
+                )
+                wav_segments.append(wav[first_sample:last_sample])
+
+            cleansed_wav = np.concatenate(wav_segments)
+            filename = FeatureExtractor.get_file_name(
+                x,
+                feature_name,
+                ext='mp3'
+            )
+            FeatureExtractor.save_mp3(
+                cleansed_wav,
+                sr,
+                feature_name,
+                out_path, x, y, new_labels, mp3_filename=filename
+            )
+
+        return __process_element
+
+
 class MeanSVDFeatureExtractor(FeatureExtractor):
     """
     Deprecated because Voice Activation do mean pooling by default.
@@ -1285,22 +1453,49 @@ AVAILABLE_FEATURES = {
     MagPhaseFeatureExtractor.feature_name: MagPhaseFeatureExtractor,
     SingingVoiceSeparationUnetFeatureExtractor.feature_name: SingingVoiceSeparationUnetFeatureExtractor,
     SingingVoiceSeparationOpenUnmixFeatureExtractor.feature_name: SingingVoiceSeparationOpenUnmixFeatureExtractor,
-    VoiceActivationSplitFeatureExtractor.feature_name: VoiceActivationSplitFeatureExtractor
+    VoiceActivationSplitFeatureExtractor.feature_name: VoiceActivationSplitFeatureExtractor,
+    MelCepstralCoefficientsFeatureExtractor.feature_name: MelCepstralCoefficientsFeatureExtractor,
+    VoiceActivationFrameSelectionFeatureExtractor.feature_name: VoiceActivationFrameSelectionFeatureExtractor
 }
+
+
+def add_cli_args(parser):
+    """
+    Add raw_path and features_path arguments to an argparser.
+    :param parser: Parser where this attrobutes are going to be added.
+    :return:
+    """
+    parser.add_argument(
+        '--raw_path',
+        help='Source path where audio data files are stored',
+        default=RAW_DATA_PATH
+    )
+    parser.add_argument(
+        '--features_path',
+        help='Output path where exported data will be placed',
+        default=FEATURES_DATA_PATH
+    )
+    parser.add_argument(
+        '--feature',
+        help='name of the feature to be extracted (options: mfsc, leglaive)',
+        default=VoiceActivationFrameSelectionFeatureExtractor.feature_name
+    )
+
+
+def parse_cli_args(args):
+    features_path = args.features_path
+    raw_path = args.raw_path
+    feature_name = args.feature
+
+    return features_path, raw_path, feature_name
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Extract features from a data folder to another')
-    parser.add_argument('--raw_path', help='Source path where audio data files are stored', default=RAW_DATA_PATH)
-    parser.add_argument('--features_path', help='Output path where exported data will be placed',
-                        default=FEATURES_DATA_PATH)
-    # parser.add_argument('--label_filename', help='Source path where label file is stored', default='labels.csv')
-    parser.add_argument('--feature', help='name of the feature to be extracted (options: mfsc, leglaive)',
-                        default=SingingVoiceSeparationOpenUnmixFeatureExtractor.feature_name)
-
+    add_cli_args(parser)
     args = parser.parse_args()
     raw_path = pathlib.Path(args.raw_path)
     features_path = pathlib.Path(args.features_path)
-    # label_path = raw_path / args.label_filename
     feature_name = args.feature
     print('info: from {} to {}'.format(raw_path, features_path))
     extractor = AVAILABLE_FEATURES[feature_name]

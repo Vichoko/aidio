@@ -1,16 +1,15 @@
 import argparse
 import math
-import os
 import pathlib
 import typing
 from collections import defaultdict
 from math import ceil, floor
 
 import numpy as np
-import pytorch_lightning as ptl
 import torch
 import tqdm
-from sklearn.mixture import GaussianMixture
+from sklearn import mixture
+from sklearn.exceptions import NotFittedError
 from torch import nn as nn
 from torch.nn import functional as F
 from torch.utils.data import DataLoader
@@ -19,12 +18,12 @@ from config import MODELS_DATA_PATH, S1DCONV_EPOCHS, S1DCONV_BATCH_SIZE, WAVENET
     WAVENET_LAYERS, WAVENET_BLOCKS, WAVENET_DILATION_CHANNELS, WAVENET_RESIDUAL_CHANNELS, WAVENET_SKIP_CHANNELS, \
     WAVENET_END_CHANNELS, WAVENET_CLASSES, WAVENET_OUTPUT_LENGTH, WAVENET_KERNEL_SIZE, WAVENET_POOLING_KERNEL_SIZE, \
     WAVENET_POOLING_STRIDE, LSTM_HIDDEN_SIZE, LSTM_NUM_LAYERS, LSTM_DROPOUT_PROB, WAVEFORM_MAX_SEQUENCE_LENGTH, \
-    TRANSFORMER_D_MODEL, TRANSFORMER_N_HEAD, TRANSFORMER_N_LAYERS, NUM_WORKERS, WAVEFORM_NUM_CHANNELS, makedirs, \
-    FEATURES_DATA_PATH
+    TRANSFORMER_D_MODEL, TRANSFORMER_N_HEAD, TRANSFORMER_N_LAYERS, NUM_WORKERS, WAVEFORM_NUM_CHANNELS, \
+    FEATURES_DATA_PATH, GMM_COMPONENT_NUMBER, GMM_FRAME_LIMIT, WNTF_WAVENET_LAYERS, WNTF_WAVENET_BLOCKS, \
+    WNLSTM_WAVENET_LAYERS, WNLSTM_WAVENET_BLOCKS
 from features import SingingVoiceSeparationOpenUnmixFeatureExtractor
 from loaders import WaveformDataset
 from models import ClassificationModel
-from util.gmm_torch.gmm import GaussianMixture
 from util.wavenet.wavenet_model import WaveNetModel
 
 
@@ -289,7 +288,7 @@ class Simple1dConvNet(TorchClassificationModel):
         return x
 
 
-class WaveNetClassifier(TorchClassificationModel):
+class OldWaveNetClassifier(TorchClassificationModel):
     model_name = 'wavenet_classif'
 
     def reset_hyper_parameters(self, model_name, model_type, num_classes, input_shape, initial_epoch,
@@ -338,7 +337,7 @@ class WaveNetClassifier(TorchClassificationModel):
         # reduce dim from 160k to 32k
         pooling_kz = 10
         pooling_stride = 5
-        self.last_pooling = nn.AvgPool1d(kernel_size=10, stride=5)
+        self.last_pooling = nn.AvgPool1d(kernel_size=pooling_kz, stride=pooling_stride)
 
         # for now output length is fixed to 159968
 
@@ -455,7 +454,7 @@ class WaveNetBiLSTMClassifier(TorchClassificationModel):
         x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))
         x = self.fc3(x)
-        x = self.soft_max(x)
+        # x = self.soft_max(x)
         return x
 
 
@@ -512,8 +511,8 @@ class WaveNetTransformerClassifier(nn.Module):
         # neural audio embeddings
         # captures local representations through convolutions
         self.wavenet = WaveNetModel(
-            WAVENET_LAYERS,
-            WAVENET_BLOCKS,
+            WNTF_WAVENET_LAYERS,
+            WNTF_WAVENET_BLOCKS,
             WAVENET_DILATION_CHANNELS,
             WAVENET_RESIDUAL_CHANNELS,
             WAVENET_SKIP_CHANNELS,
@@ -528,38 +527,25 @@ class WaveNetTransformerClassifier(nn.Module):
         num_layers = TRANSFORMER_N_LAYERS
 
         # reduce sample resolution from 160k to 32k
-        # output_length = floor((input_length - stride)/kernel_size + 1)
-        conv_downsampler_stride = 3
-        self.conv_downsampler_1 = nn.Conv1d(
-            in_channels=WAVENET_END_CHANNELS,
-            out_channels=384,
-            kernel_size=4,
-            stride=conv_downsampler_stride,
-            dilation=2
-        )
-        self.conv_downsampler_2 = nn.Conv1d(
-            in_channels=384,
-            out_channels=448,
-            kernel_size=4,
-            stride=conv_downsampler_stride,
-            dilation=2
-        )
-        self.conv_downsampler_3 = nn.Conv1d(
-            in_channels=448,
-            out_channels=d_model,
-            kernel_size=4,
-            stride=conv_downsampler_stride,
-            dilation=2
-        )
+        # output_length = floor(
+        #       (input_length - (kernel_size-1)) / stride + 1
+        #   )
 
+        self.conv_dimension_reshaper = nn.Conv1d(
+            in_channels=WAVENET_END_CHANNELS,
+            out_channels=TRANSFORMER_D_MODEL,
+            kernel_size=WAVENET_POOLING_KERNEL_SIZE,
+            stride=WAVENET_POOLING_STRIDE
+        )
+        max_seq_len = math.floor(
+            (max_raw_sequnece - (WAVENET_POOLING_KERNEL_SIZE - 1)) / WAVENET_POOLING_STRIDE + 1)
         self.positional_encoder = PositionalEncoder(
             d_model,
-            max_seq_len=math.floor(max_raw_sequnece / (conv_downsampler_stride * 3))
+            max_seq_len=max_seq_len
         )
 
         encoder_layer = nn.TransformerEncoderLayer(d_model=d_model, nhead=nhead)
         self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
-
         self.fc1 = nn.Linear(d_model, 120)  # 6*6 from image dimension
         self.fc2 = nn.Linear(120, 84)
         self.fc3 = nn.Linear(84, num_classes)
@@ -574,17 +560,87 @@ class WaveNetTransformerClassifier(nn.Module):
         # print('info: feeding wavenet...')
         x = self.wavenet.forward(x)
         # reduce sequence_length / 10 three times == 16Khz to 10Hz; increase the number of channels
-        x = self.conv_downsampler_1(x)
-        x = self.conv_downsampler_2(x)
-        x = self.conv_downsampler_3(x)
+        # x = self.conv_downsampler_1(x)
+        # x = self.conv_downsampler_2(x)
+        # x = self.conv_downsampler_3(x)
+        # print('info: x before reshape {}'.format(x.size()))
+        x = self.conv_dimension_reshaper(x)
+        # print('info: x after reshape {}'.format(x.size()))
         # x.shape for convs is n_data, n_channels, n_sequence
         # transformer expected input is n_data, n_sequence, wavenet_channels
         x = x.transpose(1, 2)
         # print('info: feeding positional encoder...')
-        x = self.positional_encoder(x)
+        # x = self.positional_encoder(x)
         # print('info: feeding transformer...')
         x = self.transformer_encoder(x)  # shape  n_data, n_sequence, d_model
-        x = x[:, -1, :]  # pick the last vector from the output as the sentence embedding
+        # x = x[:, -1, :]  # pick the last vector from the output as the sentence embedding
+        x, _ = x.max(1)  # max pooling over the sequence dim; drop sequence axis
+        # x = x.mean(1)  # max pooling over the sequence dim; drop sequence axis
+        # print('info. x shape {}'.format(x.shape))
+        # x final shape is n_data, lstm_hidden_size * 2
+        # print('info: feeding fully-connected...')
+        # simple classifier
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
+        x = self.fc3(x)
+        return x
+
+
+class WaveNetLSTMClassifier(nn.Module):
+
+    def __call__(self, *input, **kwargs) -> typing.Any:
+        """
+        Hack to fix '(input: (Any, ...), kwargs: dict) -> Any' warning in PyCharm auto-complete.
+        :param input:
+        :param kwargs:
+        :return:
+        """
+        return super().__call__(*input, **kwargs)
+
+    def __init__(self, num_classes):
+        super(WaveNetLSTMClassifier, self).__init__()
+        # first encoder
+        # neural audio embeddings
+        # captures local representations through convolutions
+        self.wavenet = WaveNetModel(
+            WNLSTM_WAVENET_LAYERS,
+            WNLSTM_WAVENET_BLOCKS,
+            WAVENET_DILATION_CHANNELS,
+            WAVENET_RESIDUAL_CHANNELS,
+            WAVENET_SKIP_CHANNELS,
+            WAVENET_END_CHANNELS,
+            WAVENET_CLASSES,
+            WAVENET_OUTPUT_LENGTH,
+            WAVENET_KERNEL_SIZE)
+        # reduce sample resolution from 160k to 32k
+        # output_length = floor((input_length - (kernel_size - 1))/stride + 1)
+        self.conv_dimension_reshaper = nn.Conv1d(
+            in_channels=WAVENET_END_CHANNELS,
+            out_channels=WAVENET_END_CHANNELS,
+            kernel_size=WAVENET_POOLING_KERNEL_SIZE,
+            stride=WAVENET_POOLING_STRIDE
+        )
+        self.enc_lstm = nn.LSTM(
+            self.wavenet.end_channels,
+            LSTM_HIDDEN_SIZE, LSTM_NUM_LAYERS,
+            bidirectional=True,
+            dropout=LSTM_DROPOUT_PROB)
+        self.fc1 = nn.Linear(LSTM_HIDDEN_SIZE * 2, 120)
+        self.fc2 = nn.Linear(120, 84)
+        self.fc3 = nn.Linear(84, num_classes)
+
+    def forward(self, x):
+        # print('info: feeding wavenet...')
+        x = self.wavenet.forward(x)
+        # reduce sequence_length / 5
+        x = self.conv_dimension_reshaper(x)
+        # x.shape is n_data, n_channels, n_sequence
+        # rnn expected input is n_sequence, n_data, wavenet_channels
+        x = x.transpose(0, 2).transpose(1, 2)
+        # print('info: feeding lstm...')
+        self.enc_lstm.flatten_parameters()
+        x, _ = self.enc_lstm(x)  # shape n_sequence, n_data, lstm_hidden_size * 2
+        x, _ = x.max(0)  # max pooling over the sequence dim; drop sequence axis
         # x final shape is n_data, lstm_hidden_size * 2
         # print('info: feeding fully-connected...')
         # simple classifier
@@ -605,17 +661,61 @@ class GMMClassifier(nn.Module):
         """
         return super().__call__(*input, **kwargs)
 
-    def __init__(self, num_classes):
+    def __init__(self, num_classes, n_components=GMM_COMPONENT_NUMBER, frame_limit=GMM_FRAME_LIMIT):
         super(GMMClassifier, self).__init__()
-        n_features = 128
+        self.frame_limit = frame_limit
+        # n_features = 128
+        # max_class_label = max(num_classes, 50)  # heuristically set because biggest dataset has 50 classes
+        # note: cant remember why i did this
         self.gmm_list = []
-        for _ in num_classes:
+        for _ in range(num_classes):
             # one gmm per singer as stated in Tsai; Fujihara; Mesaros et. al works on SID
-            self.gmm_list.append(GaussianMixture(n_components=64))
+            self.gmm_list.append(
+                mixture.GaussianMixture(n_components=n_components)
+            )
+
+    def forward(self, x):
+        """
+
+        :param x: MFCC of a track with shape (n_element, n_features, n_frames, )
+        :return: The prediction for each track calculated as:
+            Singer_id = arg max_i [1/T sum^T_t=1 [log p(X_t / P_i)]]
+
+            where t is time frame and
+                i is the singer GMM
+        """
+        x = x.permute(0, 2, 1)  # shape is (batch_size, 20, n_frames)
+        x = [self.forward_score(x_i) for x_i in
+             x]  # shape is (batch_size, 20, n_frames) # shape is (batch_size, n_frames, n_features)
+        x = torch.stack(x)
+        # x = x.argmax(dim=0)  # x is numeral index of class
+        # sum the scores over the
+        return x
+
+    def fit(self, x, y):
+        """
+        Fit a sequence of frames of the same class into one of the
+        gmm.
+        :param x: Training data (batch_element, n_features, n_frames)
+        :param y: class id integer singleton tensor
+        :return:
+        """
+        # sklearn GMM expects (n, n_features)
+        debug = True
+        x = x.permute(0, 2, 1)
+        x = x.reshape(-1, 20)
+        # print('Debug: y = {}'.format(y)) if debug else None
+        # print('Debug: x = {}'.format(x)) if debug else None
+        # print('Debug: gmm_list = {}'.format(self.gmm_list)) if debug else None
+        print('info: Fitting GMM...')
+        data = x[:self.frame_limit, :]
+        print('Debug: Training data have shape {}'.format(data.shape)) if debug else None
+        self.gmm_list[y[0].item()].fit(data)
+        print('info: Done!')
 
     def forward_score(self, x):
         """
-        :param x: MFCC of a track with shape (samples, frames, coefficients, )
+        :param x: MFCC of a track with shape (frames, coefficients, )
         :return: The Log Likelihood for each track and frame tested on every GMM (one per singer / class) as:
             log likelihood = log p(X_t / P_i)]
 
@@ -624,45 +724,68 @@ class GMMClassifier(nn.Module):
 
             with shape: (sample, frame, gmm_prediction)
         """
-        n_samples = x.size(0)
         # asume that all the samples has equal frame number
-        n_frames = x.size(1)
-        n_features = x.size(2)
-        score_tensors_per_gmm = []
-        # print('info: feeding gmms...')
+        # n_frames = x.size(0)
+        # n_features = x.size(1)
+        scores = []
+        # print('info: feeditorch.zeros(1, dtype=torch.double) + float('-inf')ng gmms...')
         for gmm in self.gmm_list:
-            # predict each frame for each sampple
-            # optimization: flatten (samples, frames, features) to (samples*frames, features)
-            x = x.reshape(-1, n_features)
-            log_prob = gmm.score(x)  # output shape is (samples*frames, )
-            log_prob = torch.unsqueeze(log_prob, dim=1)  # output shape is (samples*frames, 1) for stacking
-            score_tensors_per_gmm.append(
-                log_prob
-            )
-        score_tensors_per_gmm = torch.stack(score_tensors_per_gmm,
-                                            dim=1)  # output tensor shape is ((samples*frames, gmm)
-        y = score_tensors_per_gmm.reshape(
-            n_samples,
-            n_frames,
-            len(self.gmm_list)
-        )  # reshape to (sample, frame, gmm)
+            # # predict each frame for each sampple
+            # # optimization: flatten (samples, frames, features) to (samples*frames, features)
+            # x = x.reshape(-1, n_features)
+            try:
+                framewise_log_prob = gmm.score_samples(x)  # output is a (n_frames)
+                log_prob = torch.sum(torch.from_numpy(framewise_log_prob))  # when using sklearn's score
+            except NotFittedError:
+                log_prob = torch.sum(torch.zeros(1, dtype=torch.double) + float('-inf'))
+            scores.append(log_prob)
+        y = torch.stack(scores)  # reshape to tensor (n_classes, )
         return y
 
+
+class WaveNetClassifier(nn.Module):
+
+    def __call__(self, *input, **kwargs) -> typing.Any:
+        """
+        Hack to fix '(input: (Any, ...), kwargs: dict) -> Any' warning in PyCharm auto-complete.
+        :param input:
+        :param kwargs:
+        :return:
+        """
+        return super().__call__(*input, **kwargs)
+
+    def __init__(self, num_classes):
+        super(WaveNetClassifier, self).__init__()
+        # first encoder
+        # neural audio embeddings
+        # captures local representations through convolutions
+        self.wavenet = WaveNetModel(
+            WAVENET_LAYERS,
+            WAVENET_BLOCKS,
+            WAVENET_DILATION_CHANNELS,
+            WAVENET_RESIDUAL_CHANNELS,
+            WAVENET_SKIP_CHANNELS,
+            WAVENET_END_CHANNELS,
+            WAVENET_CLASSES,
+            WAVENET_OUTPUT_LENGTH,
+            WAVENET_KERNEL_SIZE)
+        # for now output length is fixed to 159968
+        self.fc1 = nn.Linear(self.wavenet.end_channels,
+                             120)  # 6*6 from image dimension
+        self.fc2 = nn.Linear(120, 84)
+        self.fc3 = nn.Linear(84, num_classes)
+
     def forward(self, x):
-        """
-        :param x: MFCC of a track with shape (samples, frames, coefficients, )
-        :return: The prediction for each track calculated as:
-            Singer_id = arg max_i [1/T sum^T_t=1 [log p(X_t / P_i)]]
-
-            where t is time frame and
-                i is the singer GMM
-
-            with shape: (n_samples, )
-        """
-        x = self.forward_score(x)  # shape is (sample, frame, gmm)
-        x = x.sum(dim=1)  # shape is (sample, gmm)
-        x = x.argmax(dim=1)  # shape is (sample, )
-        # sum the scores over the
+        # Encoder
+        # shape is (batch_size, channel, sequence_number)
+        x = self.wavenet.forward(x)
+        # AvgPooling all the sequences into one Audio Embeding
+        x = torch.mean(x, dim=2)
+        # shape is (batch_size, wavenet_out_channel)
+        # Classifier
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
+        x = self.fc3(x)
         return x
 
 
@@ -676,7 +799,7 @@ if __name__ == '__main__':
     parser.add_argument(
         '--model',
         help='name of the model to be trained (options: ResNetV2, leglaive)',
-        default='waveNetTransformer'
+        default='waveNet'
     )
 
     parser.add_argument('--features_path', help='Path to features folder',
@@ -753,4 +876,3 @@ if __name__ == '__main__':
         model = model.load_checkpoint()
         model.train_now(train_dataset, eval_dataset)
         model.evaluate(test_dataset)
-

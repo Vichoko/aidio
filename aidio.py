@@ -1,40 +1,46 @@
 import argparse
 import subprocess
 
-from config import RAW_DATA_PATH, FEATURES_DATA_PATH
-from features import SingingVoiceSeparationOpenUnmixFeatureExtractor
+import features
+import helpers
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Extract features from a data folder to another')
-    parser.add_argument('mode',
+    parser.add_argument('module',
                         help='mode can be features, models)')
-    parser.add_argument(
-        '--raw_path',
-        help='Source path where audio data files are stored',
-        default=RAW_DATA_PATH
-    )
-    parser.add_argument(
-        '--features_path',
-        help='Output path where exported data will be placed',
-        default=FEATURES_DATA_PATH
-    )
-    # parser.add_argument('--label_filename', help='Source path where label file is stored', default='labels.csv')
-
-    parser.add_argument(
-        '--feature',
-        help='name of the feature to be extracted (options: mfsc, leglaive)',
-        default=SingingVoiceSeparationOpenUnmixFeatureExtractor.feature_name
-    )
+    features.add_cli_args(parser)
+    helpers.add_cli_args(parser)
 
     args = parser.parse_args()
-    mode = args.mode
-    features_path = args.features_path
-    raw_path = args.raw_path
-    feature_name = args.feature
+    module = args.module
+
     print(args)
 
-    if mode == 'features':
+    if module == 'features':
         module = 'features.py'
+        features_path, raw_path, feature_name = features.parse_cli_args(args)
+        cmd = ['python',
+               module,
+               '--features_path', str(features_path),
+               '--raw_path', str(raw_path),
+               '--feature', str(feature_name)
+               ]
+    elif module == 'model':
+        module = 'helpers.py'
+        model_name, experiment_name, data_path, models_path, label_filename, gpus, mode = helpers.parse_cli_args(
+            args)
+
+        cmd = ['python',
+               '-W', 'ignore',  # to suppress userwarnings of librosa
+               module,
+               '--model', str(model_name),
+               '--experiment', str(experiment_name),
+               '--data_path', str(data_path),
+               '--model_path', str(models_path),
+               '--label_filename', str(label_filename),
+               '--gpus', str(gpus),
+               '--mode', str(mode),
+               ]
     else:
         raise NotImplementedError
 
@@ -42,11 +48,5 @@ if __name__ == '__main__':
     errno = -666
     while errno != 0:
         print('info: calling module {}'.format(module))
-        cmd = ['python',
-               module,
-               '--features_path', str(features_path),
-               '--raw_path', str(raw_path),
-               '--feature', str(feature_name)
-               ]
         errno = subprocess.call(cmd)
         print('debug: cmd call ended with errno = {}'.format(errno))
