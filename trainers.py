@@ -179,7 +179,7 @@ class L_GMMClassifier(ptl.LightningModule):
             val_acc = output['val_acc']
             val_loss_mean += val_loss
             val_acc_mean += val_acc
-            data_count += outputs['meta_data']['data_count']
+            data_count += output['meta_data']['data_count']
 
         val_loss_mean /= len(outputs)
         val_acc_mean /= len(outputs)
@@ -187,8 +187,8 @@ class L_GMMClassifier(ptl.LightningModule):
             'val_loss': val_loss_mean,
             'val_acc': val_acc_mean,
             'total_data_count': data_count,
-            'last_data_count': outputs['meta_data']['data_count'],
-            'last_data_shape': outputs['meta_data']['data_shape'],
+            'last_data_count': outputs[-1]['meta_data']['data_count'],
+            'last_data_shape': outputs[-1]['meta_data']['data_shape'],
         }
         result = {
             'progress_bar': tqdm_dict,
@@ -203,27 +203,7 @@ class L_GMMClassifier(ptl.LightningModule):
         :param batch:
         :return:
         """
-        x, y = batch['x'], batch['y']
-        y_pred = self.forward(x)
-        # as torch methods expect first dim to be N, add first dimension to 1
-        # calculate loss
-        loss_val = self.loss(y_pred, y)
-        # acc
-        labels_hat = torch.argmax(y_pred, dim=1)
-        val_acc = torch.sum(y == labels_hat).item() / (len(y) * 1.0)
-        val_acc = torch.tensor(val_acc)
-        # if self.on_gpu:
-        #     val_acc = val_acc.cuda(loss_val.device.index)
-        output = OrderedDict({
-            'test_loss': loss_val,
-            'test_acc': val_acc,
-            'meta_data': {
-                'data_count': len(x),
-                'data_shape': x.shape,
-            }
-        })
-        # can also return just a scalar instead of a dict (return loss_val)
-        return output
+        return self.validation_step(batch, batch_idx)
 
     def test_end(self, outputs):
         """
@@ -231,34 +211,7 @@ class L_GMMClassifier(ptl.LightningModule):
         :param outputs: list of individual outputs of each validation step
         :return:
         """
-        # if returned a scalar from validation_step, outputs is a list of tensor scalars
-        # we return just the average in this case (if we want)
-        # return torch.stack(outputs).mean()
-        test_loss_mean = 0
-        test_acc_mean = 0
-        data_count = 0
-        for output in outputs:
-            test_loss = output['test_loss']
-            test_acc = output['test_acc']
-            test_loss_mean += test_loss
-            test_acc_mean += test_acc
-            data_count += outputs['meta_data']['data_count']
-
-        test_loss_mean /= len(outputs)
-        test_acc_mean /= len(outputs)
-        tqdm_dict = {
-            'test_loss': test_loss_mean,
-            'test_acc': test_acc_mean,
-            'total_data_count': data_count,
-            'last_data_count': outputs['meta_data']['data_count'],
-            'last_data_shape': outputs['meta_data']['data_shape'],
-        }
-        result = {
-            'progress_bar': tqdm_dict,
-            'log': tqdm_dict,
-            # 'val_loss': val_loss_mean
-        }
-        return result
+        return self.validation_end(outputs)
 
     # ---------------------
     # TRAINING SETUP
