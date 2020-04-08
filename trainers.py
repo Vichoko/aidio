@@ -190,7 +190,7 @@ class L_GMMClassifier(ptl.LightningModule):
             'progress_bar': tqdm_dict,
             'log': tqdm_dict,
             'total_data_count': torch.Tensor(data_count),
-            'last_data_count': torch.Tensor(outputs[-1]['meta_data']['data_count']),
+            # 'last_data_count': torch.Tensor(outputs[-1]['meta_data']['data_count']),
         }
         return result
 
