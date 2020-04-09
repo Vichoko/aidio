@@ -2,14 +2,14 @@ import argparse
 import subprocess
 
 import features
-import helpers
+import model_manager
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Extract features from a data folder to another')
     parser.add_argument('module',
                         help='mode can be features, models)')
     features.add_cli_args(parser)
-    helpers.add_cli_args(parser)
+    model_manager.add_cli_args(parser)
 
     args = parser.parse_args()
     module = args.module
@@ -26,8 +26,8 @@ if __name__ == '__main__':
                '--feature', str(feature_name)
                ]
     elif module == 'model':
-        module = 'helpers.py'
-        model_name, experiment_name, data_path, models_path, label_filename, gpus, mode = helpers.parse_cli_args(
+        module = 'model_manager.py'
+        model_name, experiment_name, data_path, models_path, label_filename, gpus, mode = model_manager.parse_cli_args(
             args)
 
         cmd = ['python',

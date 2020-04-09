@@ -1,6 +1,4 @@
-import argparse
 import math
-import pathlib
 import typing
 from collections import defaultdict
 from math import ceil, floor
@@ -21,8 +19,6 @@ from config import MODELS_DATA_PATH, S1DCONV_EPOCHS, S1DCONV_BATCH_SIZE, WAVENET
     TRANSFORMER_D_MODEL, TRANSFORMER_N_HEAD, TRANSFORMER_N_LAYERS, NUM_WORKERS, WAVEFORM_NUM_CHANNELS, \
     FEATURES_DATA_PATH, GMM_COMPONENT_NUMBER, GMM_FRAME_LIMIT, WNTF_WAVENET_LAYERS, WNTF_WAVENET_BLOCKS, \
     WNLSTM_WAVENET_LAYERS, WNLSTM_WAVENET_BLOCKS
-from features import SingingVoiceSeparationOpenUnmixFeatureExtractor
-from loaders import WaveformDataset
 from models import ClassificationModel
 from util.wavenet.wavenet_model import WaveNetModel
 
@@ -790,89 +786,3 @@ class WaveNetClassifier(nn.Module):
 
 
 features_data_path = FEATURES_DATA_PATH
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser(
-        description='Train a model from features from a data folder',
-        add_help=False
-    )
-
-    parser.add_argument(
-        '--model',
-        help='name of the model to be trained (options: ResNetV2, leglaive)',
-        default='waveNet'
-    )
-
-    parser.add_argument('--features_path', help='Path to features folder',
-                        default=features_data_path)
-
-    parser.add_argument(
-        '--experiment',
-        default='unnamed_experiment',
-        help='Name of the experiment. affects checkpoint names')
-
-    parser.add_argument(
-        '--gpus',
-        type=int,
-        default=0,
-        help='how many gpus'
-    )
-
-    parser.add_argument(
-        '--distributed_backend',
-        type=str,
-        default='dp',
-        help='supports three options dp, ddp, ddp2'
-    )
-
-    args = parser.parse_args()
-    model = args.model
-    features_path = pathlib.Path(args.features_path)
-    experiment_name = args.experiment
-
-    print('info: feature_path is {}'.format(features_path))
-    print('info: experiment_name is {}'.format(experiment_name))
-
-    if model == 'Simple1dConvNet':
-        train_dataset, test_dataset, eval_dataset = WaveformDataset.init_sets(
-            SingingVoiceSeparationOpenUnmixFeatureExtractor.feature_name,
-            features_path,
-            ratio=(0.5, 0.25, 0.25)
-        )
-
-        train_dataloader = DataLoader(train_dataset, batch_size=S1DCONV_BATCH_SIZE, shuffle=True,
-                                      num_workers=NUM_WORKERS)
-        test_dataloader = DataLoader(test_dataset, batch_size=S1DCONV_BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
-        val_dataloader = DataLoader(eval_dataset, batch_size=S1DCONV_BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
-
-        # model hyper parameters should be modified in config file
-        input_shape = (S1DCONV_BATCH_SIZE, WAVEFORM_NUM_CHANNELS, WAVEFORM_MAX_SEQUENCE_LENGTH)
-        model = Simple1dConvNet(
-            'faith_tull_binary2',
-            num_classes=2,
-            input_shape=input_shape
-        )
-        model = model.load_checkpoint()
-        model.train_now(train_dataset, eval_dataset)
-        model.evaluate(test_dataset)
-    elif model == 'waveNet':
-        train_dataset, test_dataset, eval_dataset = WaveformDataset.init_sets(
-            SingingVoiceSeparationOpenUnmixFeatureExtractor.feature_name,
-            features_path,
-            ratio=(0.5, 0.25, 0.25)
-        )
-
-        train_dataloader = DataLoader(train_dataset, batch_size=S1DCONV_BATCH_SIZE, shuffle=True,
-                                      num_workers=NUM_WORKERS)
-        test_dataloader = DataLoader(test_dataset, batch_size=S1DCONV_BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
-        val_dataloader = DataLoader(eval_dataset, batch_size=S1DCONV_BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
-
-        # model hyper parameters should be modified in config file
-        input_shape = (S1DCONV_BATCH_SIZE, WAVEFORM_NUM_CHANNELS, WAVEFORM_MAX_SEQUENCE_LENGTH)
-        model = WaveNetClassifier(
-            'faith_tull_binary2',
-            num_classes=2,
-            input_shape=input_shape
-        )
-        model = model.load_checkpoint()
-        model.train_now(train_dataset, eval_dataset)
-        model.evaluate(test_dataset)

@@ -45,6 +45,9 @@ def make_handler(new_labels, new_filenames, data_path, out_path):
                 data = new_wav
             elif OUTPUT == '2d':
                 new_filename = filename.replace(extension, 'mfcc.{}.npy'.format(slice_idx))
+                if os.path.isfile(out_path / new_filename):
+                    print('{} already exists skipping...'.format(new_filename))
+                    continue
                 # Normalize audio signal
                 wav = librosa.util.normalize(wav)
                 # Get Mel-Spectrogram
