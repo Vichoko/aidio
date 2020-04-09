@@ -35,7 +35,7 @@ if __name__ == '__main__':
     parser.add_argument('--src_path', help='Parent directory path where source label files are stored', )
     parser.add_argument('--dest_path', help='Directory path where label files are going to be stored', )
     parser.add_argument('--src_label_prefix', help='file name of feature label file', default='labels')
-    parser.add_argument('--dest_label_prefix', help='file name of feature label file', default='labels.mfcc')
+    parser.add_argument('--dest_label_prefix', help='file name of feature label file', default='labels')
     # arg parsing
     args = parser.parse_args()
     src_path = Path(args.src_path)

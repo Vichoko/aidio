@@ -68,6 +68,7 @@ def make_handler(new_labels, new_filenames, data_path, out_path):
 
 
 def main():
+    debug = True
     parser = argparse.ArgumentParser()
     parser.add_argument('data_path',
                         help='Path to the folder where the songs are stored')
@@ -97,6 +98,7 @@ def main():
         for idx, filename in enumerate(filenames):
             label = labels[idx]
             handler(filename, label)
+            print('debug: new_labels has {} elements.'.format(new_labels)) if debug else None
     else:
         with concurrent.futures.ThreadPoolExecutor(max_workers=FEATURE_EXTRACTOR_NUM_WORKERS) as executor:
             iterator = executor.map(handler, filenames, labels)
