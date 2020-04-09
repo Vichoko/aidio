@@ -100,7 +100,7 @@ def main():
     else:
         with concurrent.futures.ThreadPoolExecutor(max_workers=FEATURE_EXTRACTOR_NUM_WORKERS) as executor:
             iterator = executor.map(handler, filenames, labels)
-    list(iterator) # wait to finish
+        list(iterator) # wait to finish
     df = pd.DataFrame(np.asarray([new_filenames, new_labels]).swapaxes(0, 1))
     df.columns = ['filename', 'label']
     df.to_csv(out_path / label_filename, index=False)
