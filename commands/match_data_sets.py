@@ -122,36 +122,10 @@ if __name__ == '__main__':
         print('info: LABEL EXTRACTED FILENAMES')
         compare_filenames(filenames1, filenames2)
 
-        ls1 = os.listdir(path1)
-        ls2 = os.listdir(path2)
-        filenames1 = [filename if 'mp3' in filename or 'npy' in filename else None for filename in ls1]
-        filenames2 = [filename if 'mp3' in filename or 'npy' in filename else None for filename in ls2]
-        print('info: LS EXTRACTED FILENAMES')
-        compare_filenames(filenames1, filenames2)
-        #
-        # print('info: Song pieces test')
-        # # load dest metadata from csv
-        # label_filename = '{}.csv'.format(dest_label_prefix)
-        # filenames, labels = load_csv(dest_path, label_filename)
-        # # shuffle data elements
-        # indices = np.arange(len(filenames))
-        # np.random.seed(RANDOM_SEED)
-        # np.random.shuffle(indices)
-        # filenames = np.asarray(filenames[indices])
-        # labels = np.asarray(labels[indices])
-        # # filter only the songs in the source metadata
-        # out_indices = []
-        # for data_idx, filename in enumerate(filenames):
-        #     label = labels[data_idx]
-        #     song_name = filename.split('.')[0]
-        #     if song_name in songs:
-        #         # if song name is in selected song set, append the index for further filtering
-        #         out_indices.append(data_idx)
-        # # export filtered filenames and labels to CSV
-        # label_filename = '{}.{}.{}.csv'.format(dest_label_prefix, NUMBER_OF_CLASSES, set_name)
-        # pd.DataFrame(
-        #     {
-        #         'filename': filenames[out_indices],
-        #         'label': labels[out_indices],
-        #     }
-        # ).to_csv(dest_path / label_filename)
+    ls1 = os.listdir(path1)
+    ls2 = os.listdir(path2)
+    filenames1 = [filename if 'mp3' in filename or 'npy' in filename else None for filename in ls1]
+    filenames2 = [filename if 'mp3' in filename or 'npy' in filename else None for filename in ls2]
+    print('info: LS EXTRACTED FILENAMES')
+    compare_filenames(filenames1, filenames2)
+
