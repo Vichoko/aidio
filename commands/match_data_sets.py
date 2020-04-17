@@ -12,7 +12,6 @@ from pathlib import Path
 
 import numpy as np
 
-
 current_dir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
 parent_dir = os.path.dirname(current_dir)
 sys.path.insert(0, parent_dir)
@@ -59,19 +58,23 @@ def compare_filenames(filenames1, filenames2):
     print('dir2 has {} filenames.'.format(len(filenames2)))
 
     def equal_comparator(conditionals, verbose=True):
-
+        flag = True
         for idx, conditional in enumerate(conditionals):
             cond1 = conditional[0]
             cond2 = conditional[1]
             title = conditional[2]
             value = cond1 == cond2
+            flag = flag & value
             if verbose:
                 print('info: {}'.format(title))
                 print('info [{}]: check!'.format(idx)) if value else print(
                     'warning [{}]: FAILED. {} != {}.'.format(idx, cond1, cond2))
+        return flag
 
     print('info: SONG TESTS')
-    equal_comparator(comparative_conditionals)
+    flag = equal_comparator(comparative_conditionals)
+    print('info [SONG TEST]: check!') if flag else print('warning [SONG TEST]: FAILED!')
+
     # here we assume then both song sets are the same
     print('info: PIECES TESTS')
     flag = True
@@ -124,4 +127,3 @@ if __name__ == '__main__':
     filenames2 = [filename if 'mp3' in filename or 'npy' in filename else None for filename in ls2]
     print('info: LS EXTRACTED FILENAMES')
     compare_filenames(filenames1, filenames2)
-
