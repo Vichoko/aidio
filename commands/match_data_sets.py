@@ -59,24 +59,19 @@ def compare_filenames(filenames1, filenames2):
     print('dir2 has {} filenames.'.format(len(filenames2)))
 
     def equal_comparator(conditionals, verbose=True):
-        debug = True
-        print('debug: calling equal_comparator') if debug else None
+
         for idx, conditional in enumerate(conditionals):
             cond1 = conditional[0]
             cond2 = conditional[1]
             title = conditionals[2]
             value = cond1 == cond2
-            print('debug: value is {}'.format(value)) if debug else None
             if verbose:
                 print('info: {}'.format(title))
                 print('info []: check!'.format(idx)) if value else print(
                     'warning []: FAILED. {} != {}.'.format(cond1, cond2))
 
     print('info: SONG TESTS')
-    debug = True
-    print('debug: calling equal_comparator') if debug else None
     equal_comparator(comparative_conditionals)
-    print('debug: equal_comparator done') if debug else None
     # here we assume then both song sets are the same
     for song in songs1:
         pieces1 = sets1[song]['pieces']
