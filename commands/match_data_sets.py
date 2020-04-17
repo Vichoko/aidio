@@ -68,7 +68,7 @@ def compare_filenames(filenames1, filenames2):
             if verbose:
                 print('info: {}'.format(title))
                 print('info [{}]: check!'.format(idx)) if value else print(
-                    'warning [{}]: FAILED. {} != {}.'.format(idx, cond1, cond2))
+                    'warning [{}]: FAILED.')
         return flag
 
     print('info: SONG TESTS')
