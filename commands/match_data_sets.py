@@ -52,10 +52,10 @@ def compare_filenames(filenames1, filenames2):
         (songs2.intersection(songs1), songs2, 'EQUALITY TEST 2'),
         (songs1, songs2, 'EQUALITY TEST 3'),
     ]
-    print('dir1 has {} songs.'.format(len(songs1)))
-    print('dir2 has {} songs.'.format(len(songs2)))
-    print('dir1 has {} filenames.'.format(len(filenames1)))
-    print('dir2 has {} filenames.'.format(len(filenames2)))
+    print('info: dir1 has {} songs.'.format(len(songs1)))
+    print('info: dir2 has {} songs.'.format(len(songs2)))
+    print('info: dir1 has {} filenames.'.format(len(filenames1)))
+    print('info: dir2 has {} filenames.'.format(len(filenames2)))
 
     def equal_comparator(conditionals, verbose=True):
         flag = True
