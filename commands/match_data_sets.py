@@ -12,11 +12,11 @@ from pathlib import Path
 
 import numpy as np
 
-from config import NUMBER_OF_CLASSES
 
 current_dir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
 parent_dir = os.path.dirname(current_dir)
 sys.path.insert(0, parent_dir)
+from config import NUMBER_OF_CLASSES
 
 import pandas as pd
 
