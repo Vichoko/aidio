@@ -71,7 +71,6 @@ def compare_filenames(filenames1, filenames2):
                 print('info: {}'.format(title))
                 print('info []: check!'.format(idx)) if value else print(
                     'warning []: FAILED. {} != {}.'.format(cond1, cond2))
-            yield value
 
     print('info: SONG TESTS')
     debug = True
