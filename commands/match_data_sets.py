@@ -53,6 +53,11 @@ def compare_filenames(filenames1, filenames2):
         (songs2.intersection(songs1), songs2, 'EQUALITY TEST 2'),
         (songs1, songs2, 'EQUALITY TEST 3'),
     ]
+    print('dir1 has {} songs.'.format(len(songs1)))
+    print('dir2 has {} songs.'.format(len(songs2)))
+    print()
+    print('dir1 has {} filenames.'.format(len(filenames1)))
+    print('dir2 has {} filenames.'.format(len(filenames2)))
 
     def equal_comparator(conditionals, verbose=True):
         for idx, conditional in enumerate(conditionals):
@@ -66,7 +71,7 @@ def compare_filenames(filenames1, filenames2):
                     'warning []: FAILED. {} != {}.'.format(cond1, cond2))
             yield value
 
-    print('info: Song tests')
+    print('info: SONG TESTS')
     equal_comparator(comparative_conditionals)
     # here we assume then both song sets are the same
     for song in songs1:
@@ -107,7 +112,7 @@ if __name__ == '__main__':
                   'test': {'song_ratio': 0.87},
                   'val': {'song_ratio': 1.0}
                   }
-    print('info: If a test fail, probably this program will crash in further tests')    
+    print('info: If a test fail, probably this program will crash in further tests')
     for set_name in set_names:
         print('info: TESTS FOR SET = {}'.format(set_name))
         # load source metadata from csv
@@ -115,14 +120,14 @@ if __name__ == '__main__':
         path2_filename = '{}.{}.{}.csv'.format(path2_label_prefix, NUMBER_OF_CLASSES, set_name)
         filenames1, labels1 = load_csv(path1, path1_filename)
         filenames2, labels2 = load_csv(path2, path2_filename)
-        print('info: comparing label extracted filenames')
+        print('info: LABEL EXTRACTED FILENAMES')
         compare_filenames(filenames1, filenames2)
 
         ls1 = os.listdir(path1)
         ls2 = os.listdir(path2)
         filenames1 = [filename if 'mp3' in filename or 'npy' in filename else None for filename in ls1]
         filenames2 = [filename if 'mp3' in filename or 'npy' in filename else None for filename in ls2]
-        print('info: comparing list dir extracted filenames')
+        print('info: LS EXTRACTED FILENAMES')
         compare_filenames(filenames1, filenames2)
         #
         # print('info: Song pieces test')
