@@ -81,7 +81,7 @@ def compare_filenames(filenames1, filenames2):
     for song in songs1:
         pieces1 = sets1[song]['pieces']
         pieces2 = sets2[song]['pieces']
-        print('info: song {} has inconsitent pieces') if pieces1 != pieces2 else None
+        print('info: song {} has inconsitent pieces'.format(song)) if pieces1 != pieces2 else None
         flag = flag & (pieces1 == pieces2)
     print('info [PIECES TEST]: check!') if flag else print('warning [PIECES TEST]: FAILED!')
 
