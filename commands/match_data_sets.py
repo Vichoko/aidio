@@ -80,7 +80,7 @@ def compare_filenames(filenames1, filenames2):
             (pieces1, pieces2, 'EQUALITY TEST 2'),
         ]
         results = equal_comparator(comparative_conditionals, False)
-        [print('warning: {}').format(data) if not data else None for data in results]
+        # [print('warning: {}'.format(data)) if not data else None for data in results]
 
 
 if __name__ == '__main__':
@@ -107,14 +107,14 @@ if __name__ == '__main__':
                   'test': {'song_ratio': 0.87},
                   'val': {'song_ratio': 1.0}
                   }
-
+    print('info: If a test fail, probably this program will crash in further tests')    
     for set_name in set_names:
+        print('info: TESTS FOR SET = {}'.format(set_name))
         # load source metadata from csv
         path1_filename = '{}.{}.{}.csv'.format(path1_label_prefix, NUMBER_OF_CLASSES, set_name)
         path2_filename = '{}.{}.{}.csv'.format(path2_label_prefix, NUMBER_OF_CLASSES, set_name)
         filenames1, labels1 = load_csv(path1, path1_filename)
         filenames2, labels2 = load_csv(path2, path2_filename)
-        print('info: If a test fail, probably this program will crash in further tests')
         print('info: comparing label extracted filenames')
         compare_filenames(filenames1, filenames2)
 
