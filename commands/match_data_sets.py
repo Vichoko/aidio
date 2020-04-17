@@ -67,8 +67,8 @@ def compare_filenames(filenames1, filenames2):
             value = cond1 == cond2
             if verbose:
                 print('info: {}'.format(title))
-                print('info []: check!'.format(idx)) if value else print(
-                    'warning []: FAILED. {} != {}.'.format(cond1, cond2))
+                print('info [{}]: check!'.format(idx)) if value else print(
+                    'warning [{}]: FAILED. {} != {}.'.format(idx, cond1, cond2))
 
     print('info: SONG TESTS')
     equal_comparator(comparative_conditionals)
@@ -76,15 +76,16 @@ def compare_filenames(filenames1, filenames2):
     for song in songs1:
         pieces1 = sets1[song]['pieces']
         pieces2 = sets2[song]['pieces']
-        comparative_conditionals = [
-            (len(pieces1), len(pieces2), 'COUNT TEST'),
-            (pieces1.intersection(pieces2), songs1, 'EQUALITY TEST 1'),
-            (pieces1.intersection(pieces2), songs2, 'EQUALITY TEST 2'),
-            (pieces1.intersection(pieces2), pieces2.intersection(pieces1), 'EQUALITY TEST 2'),
-            (pieces1, pieces2, 'EQUALITY TEST 2'),
-        ]
-        results = equal_comparator(comparative_conditionals, False)
-        # [print('warning: {}'.format(data)) if not data else None for data in results]
+        print('info: song {} has inconsitent pieces') if pieces1 != pieces2 else None
+        # comparative_conditionals = [
+        #     (len(pieces1), len(pieces2), 'COUNT TEST'),
+        #     (pieces1.intersection(pieces2), songs1, 'EQUALITY TEST 1'),
+        #     (pieces1.intersection(pieces2), songs2, 'EQUALITY TEST 2'),
+        #     (pieces1.intersection(pieces2), pieces2.intersection(pieces1), 'EQUALITY TEST 2'),
+        #     (pieces1, pieces2, 'EQUALITY TEST 2'),
+        # ]
+        # results = equal_comparator(comparative_conditionals, False)
+        # # [print('warning: {}'.format(data)) if not data else None for data in results]
 
 
 if __name__ == '__main__':
