@@ -63,7 +63,7 @@ def compare_filenames(filenames1, filenames2):
         for idx, conditional in enumerate(conditionals):
             cond1 = conditional[0]
             cond2 = conditional[1]
-            title = conditionals[2]
+            title = conditional[2]
             value = cond1 == cond2
             if verbose:
                 print('info: {}'.format(title))
