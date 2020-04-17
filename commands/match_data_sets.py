@@ -55,7 +55,6 @@ def compare_filenames(filenames1, filenames2):
     ]
     print('dir1 has {} songs.'.format(len(songs1)))
     print('dir2 has {} songs.'.format(len(songs2)))
-    print()
     print('dir1 has {} filenames.'.format(len(filenames1)))
     print('dir2 has {} filenames.'.format(len(filenames2)))
 
