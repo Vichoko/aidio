@@ -74,7 +74,10 @@ def compare_filenames(filenames1, filenames2):
             yield value
 
     print('info: SONG TESTS')
+    debug = True
+    print('debug: calling equal_comparator') if debug else None
     equal_comparator(comparative_conditionals)
+    print('debug: equal_comparator done') if debug else None
     # here we assume then both song sets are the same
     for song in songs1:
         pieces1 = sets1[song]['pieces']
