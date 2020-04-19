@@ -2,7 +2,7 @@ import pathlib
 from os import makedirs as _makedirs
 
 # General Settings
-NUMBER_OF_CLASSES = 2
+NUMBER_OF_CLASSES = 4
 RANDOM_SEED = 69
 
 

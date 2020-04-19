@@ -48,7 +48,7 @@ if __name__ == '__main__':
     # open source already splitted label files according to the format: <label_prefix>.<n_classes>.<set_name>.csv
     set_names = ['train', 'test', 'val']
     set_config = {'train': {'song_ratio': 1.0},
-                  'test': {'song_ratio': 0.87},
+                  'test': {'song_ratio': 1.0},
                   'val': {'song_ratio': 1.0}
                   }
 
