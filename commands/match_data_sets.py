@@ -81,7 +81,7 @@ def compare_filenames(filenames1, filenames2):
     for song in songs1:
         pieces1 = sets1[song]['pieces']
         pieces2 = sets2[song]['pieces']
-        print('info: song {} has inconsitent pieces'.format(song)) if pieces1 != pieces2 else None
+        print('info: song {} has different pieces. {} vs {}'.format(song, len(pieces1), len(pieces2))) if pieces1 != pieces2 else None
         flag = flag & (pieces1 == pieces2)
     print('info [PIECES TEST]: check!') if flag else print('warning [PIECES TEST]: FAILED!')
 
@@ -107,7 +107,7 @@ if __name__ == '__main__':
     # open source already splitted label files according to the format: <label_prefix>.<n_classes>.<set_name>.csv
     set_names = ['train', 'test', 'val']
     set_config = {'train': {'song_ratio': 1.0},
-                  'test': {'song_ratio': 0.87},
+                  'test': {'song_ratio': 1.0},
                   'val': {'song_ratio': 1.0}
                   }
     print('info: If a test fail, probably this program will crash in further tests')

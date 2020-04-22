@@ -11,7 +11,8 @@ from torchsummary import summary
 from torchvision.models import resnext50_32x4d
 
 from config import WAVENET_BATCH_SIZE, NUM_WORKERS, RESNET_V2_BATCH_SIZE, WAVENET_LEARNING_RATE, \
-    WAVENET_WEIGHT_DECAY, WNTF_BATCH_SIZE, WNLSTM_BATCH_SIZE, WAVEFORM_MAX_SEQUENCE_LENGTH, GMM_BATCH_SIZE
+    WAVENET_WEIGHT_DECAY, WNTF_BATCH_SIZE, WNLSTM_BATCH_SIZE, WAVEFORM_MAX_SEQUENCE_LENGTH, GMM_PREDICT_BATCH_SIZE, \
+    GMM_TRAIN_BATCH_SIZE
 from loaders import ClassSampler
 from torch_models import WaveNetTransformerClassifier, GMMClassifier, WaveNetLSTMClassifier, WaveNetClassifier
 
@@ -30,7 +31,8 @@ class L_GMMClassifier(ptl.LightningModule):
         self.model_path = None
         self.num_classes = num_classes
         self.hparams = hparams
-        self.batch_size = hparams.batch_size
+        self.predict_batch_size = hparams.predict_batch_size
+        self.train_batch_size = hparams.train_batch_size
         self.loss = torch.nn.CrossEntropyLoss()
         self.train_dataset = train_dataset
         self.eval_dataset = eval_dataset
@@ -233,7 +235,7 @@ class L_GMMClassifier(ptl.LightningModule):
         return DataLoader(
             self.train_dataset,
             num_workers=NUM_WORKERS,
-            batch_sampler=ClassSampler(self.num_classes, self.train_dataset.labels),
+            batch_sampler=ClassSampler(self.num_classes, self.train_dataset.labels, self.train_batch_size),
         )
 
     @ptl.data_loader
@@ -241,8 +243,8 @@ class L_GMMClassifier(ptl.LightningModule):
         # logging.info('val data loader called')
         return DataLoader(
             self.eval_dataset,
+            batch_size=self.predict_batch_size,
             num_workers=NUM_WORKERS,
-            batch_sampler=ClassSampler(self.num_classes, self.eval_dataset.labels),
         )
 
     @ptl.data_loader
@@ -250,7 +252,7 @@ class L_GMMClassifier(ptl.LightningModule):
         # logging.info('test data loader called')
         return DataLoader(
             self.test_dataset,
-            batch_size=self.batch_size,
+            batch_size=self.predict_batch_size,
             num_workers=NUM_WORKERS
         )
 
@@ -263,7 +265,8 @@ class L_GMMClassifier(ptl.LightningModule):
         :return:
         """
         parser = ArgumentParser(parents=[parent_parser])
-        parser.add_argument('--batch_size', default=GMM_BATCH_SIZE, type=float)
+        parser.add_argument('--predict_batch_size', default=GMM_PREDICT_BATCH_SIZE, type=float)
+        parser.add_argument('--train_batch_size', default=GMM_TRAIN_BATCH_SIZE, type=float)
         return parser
 
 
