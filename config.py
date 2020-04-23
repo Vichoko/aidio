@@ -99,8 +99,8 @@ EARLY_STOP_PATIENCE = 20
 GMM_PREDICT_BATCH_SIZE = 20
 GMM_TRAIN_BATCH_SIZE = 500  # used in data sampler of data loader
 GMM_COMPONENT_NUMBER = 64
-SONG_FRAME_LIMIT = 17 * 1000  # 1000 are 1 second; used on data loader
-GMM_FRAME_LIMIT = 1000000 * SONG_FRAME_LIMIT  # 1000 are 1 second; 1000 * 60 is 1 minute; The frame limit is per-class as the fit is class-wise
+GMM_RANDOM_CROM_FRAME_LENGTH = 17 * 1000  # 1000 are 1 second; used on data loader
+GMM_FIT_FRAME_LIMIT = 1000000 * GMM_RANDOM_CROM_FRAME_LENGTH  # 1000 are 1 second; 1000 * 60 is 1 minute; The frame limit is per-class as the fit is class-wise
 
 # WaveNet General
 # Wavenet alone Layers

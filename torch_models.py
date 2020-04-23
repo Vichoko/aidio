@@ -16,8 +16,8 @@ from config import MODELS_DATA_PATH, S1DCONV_EPOCHS, S1DCONV_BATCH_SIZE, WAVENET
     WAVENET_LAYERS, WAVENET_BLOCKS, WAVENET_DILATION_CHANNELS, WAVENET_RESIDUAL_CHANNELS, WAVENET_SKIP_CHANNELS, \
     WAVENET_END_CHANNELS, WAVENET_CLASSES, WAVENET_OUTPUT_LENGTH, WAVENET_KERNEL_SIZE, WAVENET_POOLING_KERNEL_SIZE, \
     WAVENET_POOLING_STRIDE, LSTM_HIDDEN_SIZE, LSTM_NUM_LAYERS, LSTM_DROPOUT_PROB, WAVEFORM_MAX_SEQUENCE_LENGTH, \
-    TRANSFORMER_D_MODEL, TRANSFORMER_N_HEAD, TRANSFORMER_N_LAYERS, NUM_WORKERS, WAVEFORM_NUM_CHANNELS, \
-    FEATURES_DATA_PATH, GMM_COMPONENT_NUMBER, GMM_FRAME_LIMIT, WNTF_WAVENET_LAYERS, WNTF_WAVENET_BLOCKS, \
+    TRANSFORMER_D_MODEL, TRANSFORMER_N_HEAD, TRANSFORMER_N_LAYERS, FEATURES_DATA_PATH, GMM_COMPONENT_NUMBER, \
+    GMM_FIT_FRAME_LIMIT, WNTF_WAVENET_LAYERS, WNTF_WAVENET_BLOCKS, \
     WNLSTM_WAVENET_LAYERS, WNLSTM_WAVENET_BLOCKS
 from models import ClassificationModel
 from util.wavenet.wavenet_model import WaveNetModel
@@ -657,12 +657,9 @@ class GMMClassifier(nn.Module):
         """
         return super().__call__(*input, **kwargs)
 
-    def __init__(self, num_classes, n_components=GMM_COMPONENT_NUMBER, frame_limit=GMM_FRAME_LIMIT):
+    def __init__(self, num_classes, n_components=GMM_COMPONENT_NUMBER, fit_frame_limit=GMM_FIT_FRAME_LIMIT):
         super(GMMClassifier, self).__init__()
-        self.frame_limit = frame_limit
-        # n_features = 128
-        # max_class_label = max(num_classes, 50)  # heuristically set because biggest dataset has 50 classes
-        # note: cant remember why i did this
+        self.fit_frame_limit = fit_frame_limit
         self.gmm_list = []
         for _ in range(num_classes):
             # one gmm per singer as stated in Tsai; Fujihara; Mesaros et. al works on SID
@@ -672,20 +669,28 @@ class GMMClassifier(nn.Module):
 
     def forward(self, x):
         """
-
-        :param x: MFCC of a track with shape (n_element, n_features, n_frames, )
-        :return: The prediction for each track calculated as:
+        Do a forward pass obtaining de score for each element.
+        If all elements are of the same length (same n_frames), the process is optimized by doing a flatten.
+        :param x: torch.Tensor MFCC of a track with shape (n_element, n_features, n_frames, )
+        :return: torch.Tensor The prediction for each track calculated as:
             Singer_id = arg max_i [1/T sum^T_t=1 [log p(X_t / P_i)]]
 
             where t is time frame and
                 i is the singer GMM
+                shape is (batch_size, n_classes)
         """
-        x = x.permute(0, 2, 1)  # shape is (batch_size, 20, n_frames)
-        x = [self.forward_score(x_i) for x_i in
-             x]  # shape is (batch_size, 20, n_frames) # shape is (batch_size, n_frames, n_features)
-        x = torch.stack(x)
-        # x = x.argmax(dim=0)  # x is numeral index of class
-        # sum the scores over the
+        # asume that all the samples has equal frame number
+        x = x.permute(0, 2, 1)  # shape (batch_size, n_features, n_frames) to (batch_size, n_frames, n_features)
+        batch_size = x.size(0)
+        n_frames = x.size(1)
+        n_features = x.size(2)
+        x = x.reshape(batch_size * n_frames,
+                      n_features)  # flatten 2 first dimensions into one (n_total_frames, n_features)
+        x = self.forward_score(x)  # output shape is (n_classes, n_total_frames)
+        n_classes = x.size(0)
+        x = x.view(n_classes, batch_size, n_frames)  # un_flatten to recover elementwise frames
+        x = torch.sum(x, dim=2)  # sum the probability of each element's frames; shape is (n_classes, batch_size)
+        x = x.permute(1, 0)  # swap axes to match signature
         return x
 
     def fit(self, x, y):
@@ -704,7 +709,7 @@ class GMMClassifier(nn.Module):
         # print('Debug: x = {}'.format(x)) if debug else None
         # print('Debug: gmm_list = {}'.format(self.gmm_list)) if debug else None
         print('info: Fitting GMM...')
-        data = x[:self.frame_limit, :]
+        data = x[:self.fit_frame_limit, :]
         print('Debug: Training data have shape {}'.format(data.shape)) if debug else None
         self.gmm_list[y[0].item()].fit(data)
         print('info: Done!')
@@ -718,24 +723,19 @@ class GMMClassifier(nn.Module):
             where t is time frame and
                 i is the singer GMM
 
-            with shape: (sample, frame, gmm_prediction)
+            with shape: (n_classes/n_gmm, n_frames)
         """
-        # asume that all the samples has equal frame number
-        # n_frames = x.size(0)
+        n_frames = x.size(0)
         # n_features = x.size(1)
-        scores = []
-        # print('info: feeditorch.zeros(1, dtype=torch.double) + float('-inf')ng gmms...')
-        for gmm in self.gmm_list:
-            # # predict each frame for each sampple
-            # # optimization: flatten (samples, frames, features) to (samples*frames, features)
-            # x = x.reshape(-1, n_features)
+        framewise_scores = []
+        for gmm in self.gmm_list:  # PARALELISM
             try:
-                framewise_log_prob = gmm.score_samples(x)  # output is a (n_frames)
-                log_prob = torch.sum(torch.from_numpy(framewise_log_prob))  # when using sklearn's score
+                framewise_log_prob = torch.from_numpy(gmm.score_samples(x))  # output is a (n_frames)
+                # log_prob = torch.sum(torch.from_numpy(framewise_log_prob))  # when using sklearn's score
             except NotFittedError:
-                log_prob = torch.sum(torch.zeros(1, dtype=torch.double) + float('-inf'))
-            scores.append(log_prob)
-        y = torch.stack(scores)  # reshape to tensor (n_classes, )
+                framewise_log_prob = torch.zeros(n_frames, dtype=torch.double) + float('-inf')
+            framewise_scores.append(framewise_log_prob)
+        y = torch.stack(framewise_scores)  # reshape to tensor (n_classes, n_frames)
         return y
 
 
