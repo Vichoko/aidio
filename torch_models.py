@@ -547,8 +547,6 @@ class WaveNetTransformerClassifier(nn.Module):
         self.fc2 = nn.Linear(120, 84)
         self.fc3 = nn.Linear(84, num_classes)
 
-
-
     def forward(self, x):
         # print('info: feeding wavenet...')
         x = self.wavenet.forward(x)
@@ -717,11 +715,13 @@ class GMMClassifier(nn.Module):
 
             with shape: (n_classes/n_gmm, n_frames)
         """
+
         def get_scores_from_gmm(gmm):
             try:
-                return torch.from_numpy(gmm.score_samples(x))# output is a (n_frames)
+                return torch.from_numpy(gmm.score_samples(x))  # output is a (n_frames)
             except NotFittedError:
                 return torch.zeros(n_frames, dtype=torch.double) + float('-inf')
+
         n_frames = x.size(0)
         # n_features = x.size(1)
         with ThreadPoolExecutor(CPU_NUM_WORKERS) as e:
