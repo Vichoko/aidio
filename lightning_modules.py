@@ -10,7 +10,7 @@ from torch.utils.data import DataLoader
 from torchsummary import summary
 from torchvision.models import resnext50_32x4d
 
-from config import WAVENET_BATCH_SIZE, NUM_WORKERS, RESNET_V2_BATCH_SIZE, WAVENET_LEARNING_RATE, \
+from config import WAVENET_BATCH_SIZE, DATA_LOADER_NUM_WORKERS, RESNET_V2_BATCH_SIZE, WAVENET_LEARNING_RATE, \
     WAVENET_WEIGHT_DECAY, WNTF_BATCH_SIZE, WNLSTM_BATCH_SIZE, WAVEFORM_MAX_SEQUENCE_LENGTH, GMM_PREDICT_BATCH_SIZE, \
     GMM_TRAIN_BATCH_SIZE
 from loaders import ClassSampler
@@ -234,7 +234,7 @@ class L_GMMClassifier(ptl.LightningModule):
         # logging.info('training data loader called')
         return DataLoader(
             self.train_dataset,
-            num_workers=NUM_WORKERS,
+            num_workers=DATA_LOADER_NUM_WORKERS,
             batch_sampler=ClassSampler(self.num_classes, self.train_dataset.labels, self.train_batch_size),
         )
 
@@ -244,7 +244,7 @@ class L_GMMClassifier(ptl.LightningModule):
         return DataLoader(
             self.eval_dataset,
             batch_size=self.predict_batch_size,
-            num_workers=NUM_WORKERS,
+            num_workers=DATA_LOADER_NUM_WORKERS,
         )
 
     @ptl.data_loader
@@ -253,7 +253,7 @@ class L_GMMClassifier(ptl.LightningModule):
         return DataLoader(
             self.test_dataset,
             batch_size=self.predict_batch_size,
-            num_workers=NUM_WORKERS
+            num_workers=DATA_LOADER_NUM_WORKERS
         )
 
     @staticmethod
@@ -396,15 +396,15 @@ class L_WavenetAbstractClassifier(ptl.LightningModule):
 
     @ptl.data_loader
     def train_dataloader(self):
-        return DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=True, num_workers=NUM_WORKERS)
+        return DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=True, num_workers=DATA_LOADER_NUM_WORKERS)
 
     @ptl.data_loader
     def val_dataloader(self):
-        return DataLoader(self.eval_dataset, batch_size=self.batch_size, shuffle=True, num_workers=NUM_WORKERS)
+        return DataLoader(self.eval_dataset, batch_size=self.batch_size, shuffle=True, num_workers=DATA_LOADER_NUM_WORKERS)
 
     @ptl.data_loader
     def test_dataloader(self):
-        return DataLoader(self.test_dataset, batch_size=self.batch_size, shuffle=True, num_workers=NUM_WORKERS)
+        return DataLoader(self.test_dataset, batch_size=self.batch_size, shuffle=True, num_workers=DATA_LOADER_NUM_WORKERS)
 
 
 class L_WavenetClassifier(L_WavenetAbstractClassifier):
@@ -641,17 +641,17 @@ class L_ResNext50(ptl.LightningModule):
     def train_dataloader(self):
         # logging.info('training data loader called')
         return DataLoader(self.train_dataset, batch_size=WAVENET_BATCH_SIZE, shuffle=True,
-                          num_workers=NUM_WORKERS)
+                          num_workers=DATA_LOADER_NUM_WORKERS)
 
     @ptl.data_loader
     def val_dataloader(self):
         # logging.info('val data loader called')
-        return DataLoader(self.eval_dataset, batch_size=WAVENET_BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
+        return DataLoader(self.eval_dataset, batch_size=WAVENET_BATCH_SIZE, shuffle=True, num_workers=DATA_LOADER_NUM_WORKERS)
 
     @ptl.data_loader
     def test_dataloader(self):
         # logging.info('test data loader called')
-        return DataLoader(self.test_dataset, batch_size=WAVENET_BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
+        return DataLoader(self.test_dataset, batch_size=WAVENET_BATCH_SIZE, shuffle=True, num_workers=DATA_LOADER_NUM_WORKERS)
 
     @staticmethod
     def add_model_specific_args(parent_parser, root_dir):  # pragma: no cover

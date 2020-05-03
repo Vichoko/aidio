@@ -1,6 +1,7 @@
 import math
 import typing
 from collections import defaultdict
+from concurrent.futures.thread import ThreadPoolExecutor
 from math import ceil, floor
 
 import numpy as np
@@ -18,7 +19,7 @@ from config import MODELS_DATA_PATH, S1DCONV_EPOCHS, S1DCONV_BATCH_SIZE, WAVENET
     WAVENET_POOLING_STRIDE, LSTM_HIDDEN_SIZE, LSTM_NUM_LAYERS, LSTM_DROPOUT_PROB, WAVEFORM_MAX_SEQUENCE_LENGTH, \
     TRANSFORMER_D_MODEL, TRANSFORMER_N_HEAD, TRANSFORMER_N_LAYERS, FEATURES_DATA_PATH, GMM_COMPONENT_NUMBER, \
     GMM_FIT_FRAME_LIMIT, WNTF_WAVENET_LAYERS, WNTF_WAVENET_BLOCKS, \
-    WNLSTM_WAVENET_LAYERS, WNLSTM_WAVENET_BLOCKS
+    WNLSTM_WAVENET_LAYERS, WNLSTM_WAVENET_BLOCKS, CPU_NUM_WORKERS
 from models import ClassificationModel
 from util.wavenet.wavenet_model import WaveNetModel
 
@@ -546,20 +547,11 @@ class WaveNetTransformerClassifier(nn.Module):
         self.fc2 = nn.Linear(120, 84)
         self.fc3 = nn.Linear(84, num_classes)
 
-        # self.to(self.device)
-        # self.wavenet.to(self.device)
-        # self.positional_encoder.to(self.device)
-        # encoder_layer.to(self.device)
-        # self.transformer_encoder.to(self.device)
+
 
     def forward(self, x):
         # print('info: feeding wavenet...')
         x = self.wavenet.forward(x)
-        # reduce sequence_length / 10 three times == 16Khz to 10Hz; increase the number of channels
-        # x = self.conv_downsampler_1(x)
-        # x = self.conv_downsampler_2(x)
-        # x = self.conv_downsampler_3(x)
-        # print('info: x before reshape {}'.format(x.size()))
         x = self.conv_dimension_reshaper(x)
         # print('info: x after reshape {}'.format(x.size()))
         # x.shape for convs is n_data, n_channels, n_sequence
@@ -725,17 +717,16 @@ class GMMClassifier(nn.Module):
 
             with shape: (n_classes/n_gmm, n_frames)
         """
+        def get_scores_from_gmm(gmm):
+            try:
+                return torch.from_numpy(gmm.score_samples(x))# output is a (n_frames)
+            except NotFittedError:
+                return torch.zeros(n_frames, dtype=torch.double) + float('-inf')
         n_frames = x.size(0)
         # n_features = x.size(1)
-        framewise_scores = []
-        for gmm in self.gmm_list:  # PARALELISM
-            try:
-                framewise_log_prob = torch.from_numpy(gmm.score_samples(x))  # output is a (n_frames)
-                # log_prob = torch.sum(torch.from_numpy(framewise_log_prob))  # when using sklearn's score
-            except NotFittedError:
-                framewise_log_prob = torch.zeros(n_frames, dtype=torch.double) + float('-inf')
-            framewise_scores.append(framewise_log_prob)
-        y = torch.stack(framewise_scores)  # reshape to tensor (n_classes, n_frames)
+        with ThreadPoolExecutor(CPU_NUM_WORKERS) as e:
+            framewise_scores = e.map(get_scores_from_gmm, self.gmm_list)
+        y = torch.stack(list(framewise_scores))  # reshape to tensor (n_classes, n_frames)
         return y
 
 
@@ -770,13 +761,19 @@ class WaveNetClassifier(nn.Module):
                              120)  # 6*6 from image dimension
         self.fc2 = nn.Linear(120, 84)
         self.fc3 = nn.Linear(84, num_classes)
+        self.wavenet_pooling = 'max'
 
     def forward(self, x):
         # Encoder
         # shape is (batch_size, channel, sequence_number)
         x = self.wavenet.forward(x)
         # AvgPooling all the sequences into one Audio Embeding
-        x = torch.mean(x, dim=2)
+        if self.wavenet_pooling == 'mean':
+            x = torch.mean(x, dim=2)
+        elif self.wavenet_pooling == 'max':
+            x, _ = torch.max(x, dim=2)
+        else:
+            raise NotImplementedError()
         # shape is (batch_size, wavenet_out_channel)
         # Classifier
         x = F.relu(self.fc1(x))

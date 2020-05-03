@@ -2,7 +2,7 @@ import pathlib
 from os import makedirs as _makedirs
 
 # General Settings
-NUMBER_OF_CLASSES = 4
+NUMBER_OF_CLASSES = 8
 RANDOM_SEED = 69
 
 
@@ -16,7 +16,8 @@ def makedirs(path):
 
 AVAIL_MEDIA_TYPES = ['mp3', 'ogg', 'wav', 'flac', ]
 FEATURE_EXTRACTOR_NUM_WORKERS = 4
-NUM_WORKERS = 1
+DATA_LOADER_NUM_WORKERS = 1
+CPU_NUM_WORKERS = 4
 
 SOURCE_DATA_PATH = pathlib.Path('C:\\Users\\Vichoko\\Music\\in')
 RAW_DATA_PATH = pathlib.Path('./data/raw/')
