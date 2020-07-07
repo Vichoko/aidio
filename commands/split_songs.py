@@ -45,6 +45,11 @@ def make_handler(new_labels, new_filenames, data_path, out_path):
                 data = new_wav
             elif OUTPUT == '2d':
                 new_filename = filename.replace(extension, 'mfcc.{}.npy'.format(slice_idx))
+                if os.path.isfile(out_path / new_filename):
+                    print('{} already exists skipping...'.format(new_filename))
+                    new_filenames.append(new_filename)
+                    new_labels.append(label)
+                    continue
                 # Normalize audio signal
                 wav = librosa.util.normalize(wav)
                 # Get Mel-Spectrogram
@@ -65,6 +70,7 @@ def make_handler(new_labels, new_filenames, data_path, out_path):
 
 
 def main():
+    debug = False
     parser = argparse.ArgumentParser()
     parser.add_argument('data_path',
                         help='Path to the folder where the songs are stored')
@@ -84,7 +90,6 @@ def main():
     df = pd.read_csv(data_path / label_filename)
     filenames = df['filename']
     labels = df['label']
-
     new_filenames = []
     new_labels = []
     # class_set = set()
@@ -94,10 +99,11 @@ def main():
         for idx, filename in enumerate(filenames):
             label = labels[idx]
             handler(filename, label)
+            print('debug: new_labels has {} elements.'.format(len(new_labels))) if debug else None
     else:
         with concurrent.futures.ThreadPoolExecutor(max_workers=FEATURE_EXTRACTOR_NUM_WORKERS) as executor:
             iterator = executor.map(handler, filenames, labels)
-    list(iterator) # wait to finish
+        list(iterator)  # wait to finish
     df = pd.DataFrame(np.asarray([new_filenames, new_labels]).swapaxes(0, 1))
     df.columns = ['filename', 'label']
     df.to_csv(out_path / label_filename, index=False)

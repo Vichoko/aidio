@@ -14,7 +14,7 @@ from torch.utils.data.dataloader import DataLoader
 
 from config import MODELS_DATA_PATH, RESNET_V2_BATCH_SIZE, RESNET_V2_EPOCHS, RESNET_V2_DEPTH, \
     RESNET_V2_VERSION, SIMPLECONV_BATCH_SIZE, SIMPLECONV_EPOCHS, makedirs, FEATURES_DATA_PATH, WAVEFORM_NUM_CHANNELS, \
-    WAVEFORM_MAX_SEQUENCE_LENGTH, S1DCONV_BATCH_SIZE, WAVENET_BATCH_SIZE, NUM_WORKERS
+    WAVEFORM_MAX_SEQUENCE_LENGTH, S1DCONV_BATCH_SIZE, WAVENET_BATCH_SIZE, DATA_LOADER_NUM_WORKERS
 from features import WindowedMelSpectralCoefficientsFeatureExtractor, SingingVoiceSeparationOpenUnmixFeatureExtractor
 from loaders import ResnetDataManager, TorchVisionDataManager, WaveformDataset
 

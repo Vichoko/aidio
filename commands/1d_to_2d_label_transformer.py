@@ -5,6 +5,7 @@ Supports mainly already splited label files.
 import argparse
 import inspect
 # empirically defined 20 MB .mp3 file is big enough to crash feature extractors
+import math
 import os
 import sys
 from pathlib import Path
@@ -35,7 +36,7 @@ if __name__ == '__main__':
     parser.add_argument('--src_path', help='Parent directory path where source label files are stored', )
     parser.add_argument('--dest_path', help='Directory path where label files are going to be stored', )
     parser.add_argument('--src_label_prefix', help='file name of feature label file', default='labels')
-    parser.add_argument('--dest_label_prefix', help='file name of feature label file', default='labels.mfcc')
+    parser.add_argument('--dest_label_prefix', help='file name of feature label file', default='labels')
     # arg parsing
     args = parser.parse_args()
     src_path = Path(args.src_path)
@@ -46,6 +47,10 @@ if __name__ == '__main__':
     # real logic
     # open source already splitted label files according to the format: <label_prefix>.<n_classes>.<set_name>.csv
     set_names = ['train', 'test', 'val']
+    set_config = {'train': {'song_ratio': 1.0},
+                  'test': {'song_ratio': 1.0},
+                  'val': {'song_ratio': 1.0}
+                  }
 
     for set_name in set_names:
         # load source metadata from csv
@@ -58,6 +63,9 @@ if __name__ == '__main__':
             song_name = filename.split('.')[0]
             songs.add(song_name)
 
+        songs = set(
+            list(songs)[:math.floor(set_config[set_name]['song_ratio'] * len(songs))]
+        )
         # load dest metadata from csv
         label_filename = '{}.csv'.format(dest_label_prefix)
         filenames, labels = load_csv(dest_path, label_filename)
