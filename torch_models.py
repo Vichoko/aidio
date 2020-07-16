@@ -549,6 +549,7 @@ class WaveNetTransformerClassifier(nn.Module):
 
     def forward(self, x):
         # print('info: feeding wavenet...')
+        # todo: check input and outpit shapes of wavenet are OK
         x = self.wavenet.forward(x)
         x = self.conv_dimension_reshaper(x)
         # print('info: x after reshape {}'.format(x.size()))
@@ -558,6 +559,7 @@ class WaveNetTransformerClassifier(nn.Module):
         # print('info: feeding positional encoder...')
         # x = self.positional_encoder(x)
         # print('info: feeding transformer...')
+        # todo: check input and output shapes of t_e are OK
         x = self.transformer_encoder(x)  # shape  n_data, n_sequence, d_model
         # x = x[:, -1, :]  # pick the last vector from the output as the sentence embedding
         x, _ = x.max(1)  # max pooling over the sequence dim; drop sequence axis
@@ -566,6 +568,53 @@ class WaveNetTransformerClassifier(nn.Module):
         # x final shape is n_data, lstm_hidden_size * 2
         # print('info: feeding fully-connected...')
         # simple classifier
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
+        x = self.fc3(x)
+        return x
+
+
+class Conv1DClassifier(nn.Module):
+    def __call__(self, *input, **kwargs) -> typing.Any:
+        """
+        Hack to fix '(input: (Any, ...), kwargs: dict) -> Any' warning in PyCharm auto-complete.
+        :param input:
+        :param kwargs:
+        :return:
+        """
+        return super().__call__(*input, **kwargs)
+
+    def __init__(self, num_classes):
+        super(Conv1DClassifier, self).__init__()
+        # first encoder
+        # neural audio embeddings
+        # captures local representations through convolutions
+        encoder_out_channels = 256
+        encoder_kernel_size = 64
+        encoder_stride = 64
+        n_layers = int(math.log2(encoder_out_channels))
+        self.conv_layers = []
+        for layer_idx in range(n_layers):
+            self.conv_layers.append(
+                nn.Conv1d(
+                    in_channels=2 ** layer_idx,
+                    out_channels=2 ** (layer_idx + 1),
+                    kernel_size=encoder_kernel_size,
+                    stride=encoder_stride
+                )
+            )
+        self.fc1 = nn.Linear(encoder_out_channels, 128)  # 6*6 from image dimension
+        self.fc2 = nn.Linear(128, 64)
+        self.fc3 = nn.Linear(64, num_classes)
+
+    def forward(self, x):
+        # assert x.shape is (BS, In_CHNL, Sequence_L)
+        # assert In_CHNL is 1 or 2
+        # nn.Conv1D: (N, Cin, Lin) -> (N, Cout, Lout)
+        for conv_layer in self.conv_layers:
+            x = conv_layer(x)
+        ## x.max(2): (N, Cout, Lout) -> (N, Cout)
+        x, _ = x.max(2)  # max pooling over the sequence dim; drop sequence axis
         x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))
         x = self.fc3(x)

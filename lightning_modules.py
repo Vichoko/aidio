@@ -12,9 +12,10 @@ from torchvision.models import resnext50_32x4d
 
 from config import WAVENET_BATCH_SIZE, DATA_LOADER_NUM_WORKERS, RESNET_V2_BATCH_SIZE, WAVENET_LEARNING_RATE, \
     WAVENET_WEIGHT_DECAY, WNTF_BATCH_SIZE, WNLSTM_BATCH_SIZE, WAVEFORM_MAX_SEQUENCE_LENGTH, GMM_PREDICT_BATCH_SIZE, \
-    GMM_TRAIN_BATCH_SIZE
+    GMM_TRAIN_BATCH_SIZE, CONV1D_LEARNING_RATE, CONV1D_WEIGHT_DECAY, CONV1D_BATCH_SIZE
 from loaders import ClassSampler
-from torch_models import WaveNetTransformerClassifier, GMMClassifier, WaveNetLSTMClassifier, WaveNetClassifier
+from torch_models import WaveNetTransformerClassifier, GMMClassifier, WaveNetLSTMClassifier, WaveNetClassifier, \
+    Conv1DClassifier
 
 
 class DummyOptimizer(torch.optim.Optimizer):
@@ -432,6 +433,38 @@ class L_WavenetClassifier(L_WavenetAbstractClassifier):
         parser.add_argument('--learning_rate', default=WAVENET_LEARNING_RATE, type=float)
         parser.add_argument('--weight_decay', default=WAVENET_WEIGHT_DECAY, type=float)
         parser.add_argument('--batch_size', default=WAVENET_BATCH_SIZE, type=int)
+        parser.add_argument(
+            '--distributed_backend',
+            type=str,
+            default='dp',
+            help='supports three options dp, ddp, ddp2'
+        )
+        return parser
+
+class L_Conv1dClassifier(L_WavenetAbstractClassifier):
+    """
+    Sample model to show how to define a template
+    """
+
+    def __init__(self, hparams, num_classes, train_dataset, eval_dataset, test_dataset, *args, **kwargs):
+        super().__init__(hparams, num_classes, train_dataset, eval_dataset, test_dataset, *args, **kwargs)
+        # build model
+        self.model = Conv1DClassifier(num_classes)
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr,
+                                          weight_decay=self.wd)
+
+    @staticmethod
+    def add_model_specific_args(parent_parser, root_dir):  # pragma: no cover
+        """
+        Parameters you define here will be available to your model through self.hparams
+        :param parent_parser:
+        :param root_dir:
+        :return:
+        """
+        parser = ArgumentParser(parents=[parent_parser])
+        parser.add_argument('--learning_rate', default=CONV1D_LEARNING_RATE, type=float)
+        parser.add_argument('--weight_decay', default=CONV1D_WEIGHT_DECAY, type=float)
+        parser.add_argument('--batch_size', default=CONV1D_BATCH_SIZE, type=int)
         parser.add_argument(
             '--distributed_backend',
             type=str,

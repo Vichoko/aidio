@@ -10,9 +10,9 @@ from pytorch_lightning.callbacks import EarlyStopping
 from pytorch_lightning.logging import TestTubeLogger
 
 from config import makedirs, MODELS_DATA_PATH, RAW_DATA_PATH, EARLY_STOP_PATIENCE
-from loaders import CepstrumDataset, WaveformDataset, ExperimentDataset
 from lightning_modules import L_ResNext50, L_WavenetTransformerClassifier, L_WavenetLSTMClassifier, L_GMMClassifier, \
-    L_WavenetClassifier
+    L_WavenetClassifier, L_Conv1dClassifier
+from loaders import CepstrumDataset, WaveformDataset, ExperimentDataset
 
 
 class AbstractHelper:
@@ -94,7 +94,7 @@ class AbstractHelper:
             Error
         :return:
         """
-        #self.trainer.run_evaluation(test=False)
+        # self.trainer.run_evaluation(test=False)
         return
 
 
@@ -121,6 +121,13 @@ class WavenetHelper(AbstractHelper):
     dataset = WaveformDataset
     # source_feature_name = SingingVoiceSeparationOpenUnmixFeatureExtractor.feature_name
     lightning_module = L_WavenetClassifier
+
+
+class Conv1dHelper(AbstractHelper):
+    model_name = 'conv1d'
+    dataset = WaveformDataset
+    # source_feature_name = SingingVoiceSeparationOpenUnmixFeatureExtractor.feature_name
+    lightning_module = L_Conv1dClassifier
 
 
 class GMMClassifierHelper(AbstractHelper):
@@ -157,7 +164,8 @@ helpers = {
     WavenetTransformerHelper.model_name: WavenetTransformerHelper,
     WavenetLSTMHelper.model_name: WavenetLSTMHelper,
     GMMClassifierHelper.model_name: GMMClassifierHelper,
-    WavenetHelper.model_name: WavenetHelper
+    WavenetHelper.model_name: WavenetHelper,
+    Conv1dHelper.model_name: Conv1dHelper,
 }
 
 
