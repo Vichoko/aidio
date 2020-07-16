@@ -589,21 +589,39 @@ class Conv1DClassifier(nn.Module):
         # first encoder
         # neural audio embeddings
         # captures local representations through convolutions
-        encoder_out_channels = 256
         encoder_kernel_size = 64
         encoder_stride = 64
-        n_layers = int(math.log2(encoder_out_channels))
-        self.conv_layers = []
-        for layer_idx in range(n_layers):
-            self.conv_layers.append(
-                nn.Conv1d(
-                    in_channels=2 ** layer_idx,
-                    out_channels=2 ** (layer_idx + 1),
-                    kernel_size=encoder_kernel_size,
-                    stride=encoder_stride
-                )
-            )
-        self.fc1 = nn.Linear(encoder_out_channels, 128)  # 6*6 from image dimension
+        self.c1 = nn.Conv1d(
+            in_channels=2 ** 0,
+            out_channels=2 ** 2,
+            kernel_size=encoder_kernel_size,
+            stride=encoder_stride
+        )
+        self.c2 = nn.Conv1d(
+            in_channels=2 ** 2,
+            out_channels=2 ** 3,
+            kernel_size=encoder_kernel_size,
+            stride=encoder_stride
+        )
+        self.c3 = nn.Conv1d(
+            in_channels=2 ** 3,
+            out_channels=2 ** 4,
+            kernel_size=encoder_kernel_size,
+            stride=encoder_stride
+        )
+        self.c4 = nn.Conv1d(
+            in_channels=2 ** 4,
+            out_channels=2 ** 5,
+            kernel_size=encoder_kernel_size,
+            stride=encoder_stride
+        )
+        self.c5 = nn.Conv1d(
+            in_channels=2 ** 5,
+            out_channels=2 ** 6,
+            kernel_size=encoder_kernel_size,
+            stride=encoder_stride
+        )
+        self.fc1 = nn.Linear(2 ** 6, 128)  # 6*6 from image dimension
         self.fc2 = nn.Linear(128, 64)
         self.fc3 = nn.Linear(64, num_classes)
 
@@ -611,8 +629,12 @@ class Conv1DClassifier(nn.Module):
         # assert x.shape is (BS, In_CHNL, Sequence_L)
         # assert In_CHNL is 1 or 2
         # nn.Conv1D: (N, Cin, Lin) -> (N, Cout, Lout)
-        for conv_layer in self.conv_layers:
-            x = conv_layer(x)
+        x = self.c1(x)
+        x = self.c2(x)
+        x = self.c3(x)
+        x = self.c4(x)
+        x = self.c5(x)
+
         ## x.max(2): (N, Cout, Lout) -> (N, Cout)
         x, _ = x.max(2)  # max pooling over the sequence dim; drop sequence axis
         x = F.relu(self.fc1(x))
