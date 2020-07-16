@@ -615,13 +615,10 @@ class Conv1DClassifier(nn.Module):
         for conv_layer in self.conv_layers:
             x = conv_layer(x)
         ## x.max(2): (N, Cout, Lout) -> (N, Cout)
-        print(x.shape)
         x, _ = x.max(2)  # max pooling over the sequence dim; drop sequence axis
-        print(x.shape)
         x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))
         x = self.fc3(x)
-        print(x.shape)
         return x
 
 
