@@ -626,17 +626,20 @@ class Conv1DClassifier(nn.Module):
         self.fc3 = nn.Linear(64, num_classes)
 
     def forward(self, x):
-        # assert x.shape is (BS, In_CHNL, Sequence_L)
-        print('info: x.shape is')
-        print(x.shape)
-        # assert In_CHNL is 1 or 2
+        # assert x.shape is (BS, In_CHNL, Sequence_L) --> It is! (Sequence_L) is 80,000
+        # assert In_CHNL is 1 or 2 -- it is 1
         # nn.Conv1D: (N, Cin, Lin) -> (N, Cout, Lout)
+        print(x.shape)
         x = self.c1(x)
+        print(x.shape)
         x = self.c2(x)
+        print(x.shape)
         x = self.c3(x)
+        print(x.shape)
         x = self.c4(x)
+        print(x.shape)
         x = self.c5(x)
-
+        print(x.shape)
         ## x.max(2): (N, Cout, Lout) -> (N, Cout)
         x, _ = x.max(2)  # max pooling over the sequence dim; drop sequence axis
         x = F.relu(self.fc1(x))
