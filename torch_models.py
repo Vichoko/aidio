@@ -627,6 +627,8 @@ class Conv1DClassifier(nn.Module):
 
     def forward(self, x):
         # assert x.shape is (BS, In_CHNL, Sequence_L)
+        print('info: x.shape is')
+        print(x.shape)
         # assert In_CHNL is 1 or 2
         # nn.Conv1D: (N, Cin, Lin) -> (N, Cout, Lout)
         x = self.c1(x)
