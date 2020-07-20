@@ -12,7 +12,8 @@ from torchvision.models import resnext50_32x4d
 
 from config import WAVENET_BATCH_SIZE, DATA_LOADER_NUM_WORKERS, RESNET_V2_BATCH_SIZE, WAVENET_LEARNING_RATE, \
     WAVENET_WEIGHT_DECAY, WNTF_BATCH_SIZE, WNLSTM_BATCH_SIZE, WAVEFORM_MAX_SEQUENCE_LENGTH, GMM_PREDICT_BATCH_SIZE, \
-    GMM_TRAIN_BATCH_SIZE, CONV1D_LEARNING_RATE, CONV1D_WEIGHT_DECAY, CONV1D_BATCH_SIZE
+    GMM_TRAIN_BATCH_SIZE, CONV1D_LEARNING_RATE, CONV1D_WEIGHT_DECAY, CONV1D_BATCH_SIZE, WNTF_LEARNING_RATE, \
+    WNTF_WEIGHT_DECAY, WNLSTM_LEARNING_RATE, WNLSTM_WEIGHT_DECAY
 from loaders import ClassSampler
 from torch_models import WaveNetTransformerClassifier, GMMClassifier, WaveNetLSTMClassifier, WaveNetClassifier, \
     Conv1DClassifier
@@ -500,8 +501,8 @@ class L_WavenetTransformerClassifier(L_WavenetAbstractClassifier):
         :return:
         """
         parser = ArgumentParser(parents=[parent_parser])
-        parser.add_argument('--learning_rate', default=WAVENET_LEARNING_RATE, type=float)
-        parser.add_argument('--weight_decay', default=WAVENET_WEIGHT_DECAY, type=float)
+        parser.add_argument('--learning_rate', default=WNTF_LEARNING_RATE, type=float)
+        parser.add_argument('--weight_decay', default=WNTF_WEIGHT_DECAY, type=float)
         parser.add_argument('--batch_size', default=WNTF_BATCH_SIZE, type=int)
         parser.add_argument(
             '--distributed_backend',
@@ -533,9 +534,9 @@ class L_WavenetLSTMClassifier(L_WavenetAbstractClassifier):
         :return:
         """
         parser = ArgumentParser(parents=[parent_parser])
-        parser.add_argument('--learning_rate', default=WAVENET_LEARNING_RATE, type=float)
+        parser.add_argument('--learning_rate', default=WNLSTM_LEARNING_RATE, type=float)
         parser.add_argument('--batch_size', default=WNLSTM_BATCH_SIZE, type=int)
-        parser.add_argument('--weight_decay', default=WAVENET_WEIGHT_DECAY, type=float)
+        parser.add_argument('--weight_decay', default=WNLSTM_WEIGHT_DECAY, type=float)
         parser.add_argument(
             '--distributed_backend',
             type=str,

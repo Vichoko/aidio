@@ -19,7 +19,7 @@ from config import MODELS_DATA_PATH, S1DCONV_EPOCHS, S1DCONV_BATCH_SIZE, WAVENET
     WAVENET_POOLING_STRIDE, LSTM_HIDDEN_SIZE, LSTM_NUM_LAYERS, LSTM_DROPOUT_PROB, WAVEFORM_MAX_SEQUENCE_LENGTH, \
     TRANSFORMER_D_MODEL, TRANSFORMER_N_HEAD, TRANSFORMER_N_LAYERS, FEATURES_DATA_PATH, GMM_COMPONENT_NUMBER, \
     GMM_FIT_FRAME_LIMIT, WNTF_WAVENET_LAYERS, WNTF_WAVENET_BLOCKS, \
-    WNLSTM_WAVENET_LAYERS, WNLSTM_WAVENET_BLOCKS, CPU_NUM_WORKERS
+    WNLSTM_WAVENET_LAYERS, WNLSTM_WAVENET_BLOCKS, CPU_NUM_WORKERS, CONV1D_FEATURE_DIM
 from models import ClassificationModel
 from util.wavenet.wavenet_model import WaveNetModel
 
@@ -590,7 +590,7 @@ class Conv1DClassifier(nn.Module):
         # neural audio embeddings
         # captures local representations through convolutions
         # note: x.shape is (bs, 1, ~80000)
-        encoder_out_channels = 512
+        encoder_out_channels = CONV1D_FEATURE_DIM
         encoder_kernel_size = 64
         encoder_stride = 2
         n_layers = int(math.log2(encoder_out_channels))
@@ -604,9 +604,9 @@ class Conv1DClassifier(nn.Module):
                     stride=encoder_stride
                 )
             )
-        self.fc1 = nn.Linear(encoder_out_channels, 128)  # 6*6 from image dimension
-        self.fc2 = nn.Linear(128, 64)
-        self.fc3 = nn.Linear(64, num_classes)
+        self.fc1 = nn.Linear(encoder_out_channels, 256)  # 6*6 from image dimension
+        self.fc2 = nn.Linear(256, 128)
+        self.fc3 = nn.Linear(128, num_classes)
 
     def forward(self, x):
         # assert x.shape is (BS, In_CHNL, ~80000) --> it is!
