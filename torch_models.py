@@ -17,11 +17,14 @@ from config import MODELS_DATA_PATH, S1DCONV_EPOCHS, S1DCONV_BATCH_SIZE, WAVENET
     WAVENET_LAYERS, WAVENET_BLOCKS, WAVENET_DILATION_CHANNELS, WAVENET_RESIDUAL_CHANNELS, WAVENET_SKIP_CHANNELS, \
     WAVENET_END_CHANNELS, WAVENET_CLASSES, WAVENET_OUTPUT_LENGTH, WAVENET_KERNEL_SIZE, WAVENET_POOLING_KERNEL_SIZE, \
     WAVENET_POOLING_STRIDE, LSTM_HIDDEN_SIZE, LSTM_NUM_LAYERS, LSTM_DROPOUT_PROB, WAVEFORM_MAX_SEQUENCE_LENGTH, \
-    TRANSFORMER_D_MODEL, TRANSFORMER_N_HEAD, TRANSFORMER_N_LAYERS, FEATURES_DATA_PATH, GMM_COMPONENT_NUMBER, \
+    WNTF_TRANSFORMER_D_MODEL, WNTF_TRANSFORMER_N_HEAD, WNTF_TRANSFORMER_N_LAYERS, FEATURES_DATA_PATH, \
+    GMM_COMPONENT_NUMBER, \
     GMM_FIT_FRAME_LIMIT, WNTF_WAVENET_LAYERS, WNTF_WAVENET_BLOCKS, \
     WNLSTM_WAVENET_LAYERS, WNLSTM_WAVENET_BLOCKS, CPU_NUM_WORKERS, CONV1D_FEATURE_DIM, RNN1D_DOWNSAMPLER_OUT_CHANNELS, \
     RNN1D_DROPOUT_PROB, RNN1D_HIDDEN_SIZE, RNN1D_LSTM_LAYERS, RNN1D_BIDIRECTIONAL, RNN1D_DOWNSAMPLER_STRIDE, \
-    RNN1D_DOWNSAMPLER_KERNEL_SIZE, RNN1D_DOWNSAMPLER_DILATION
+    RNN1D_DOWNSAMPLER_KERNEL_SIZE, RNN1D_DOWNSAMPLER_DILATION, CONV1D_KERNEL_SIZE, CONV1D_STRIDE, CONV1D_DILATION, \
+    LSTM_FC1_OUTPUT_DIM, LSTM_FC2_OUTPUT_DIM, CONV1D_FC1_OUTPUT_DIM, CONV1D_FC2_OUTPUT_DIM, WNTF_FC1_OUTPUT_DIM, \
+    WNTF_FC2_OUTPUT_DIM
 from models import ClassificationModel
 from util.wavenet.wavenet_model import WaveNetModel
 
@@ -519,35 +522,33 @@ class WaveNetTransformerClassifier(nn.Module):
             WAVENET_CLASSES,
             WAVENET_OUTPUT_LENGTH,
             WAVENET_KERNEL_SIZE)
-
-        max_raw_sequnece = WAVEFORM_MAX_SEQUENCE_LENGTH
-        d_model = TRANSFORMER_D_MODEL
-        nhead = TRANSFORMER_N_HEAD
-        num_layers = TRANSFORMER_N_LAYERS
-
         # reduce sample resolution from 160k to 32k
         # output_length = floor(
         #       (input_length - (kernel_size-1)) / stride + 1
         #   )
-
         self.conv_dimension_reshaper = nn.Conv1d(
             in_channels=WAVENET_END_CHANNELS,
-            out_channels=TRANSFORMER_D_MODEL,
+            out_channels=WNTF_TRANSFORMER_D_MODEL,
             kernel_size=WAVENET_POOLING_KERNEL_SIZE,
             stride=WAVENET_POOLING_STRIDE
         )
         max_seq_len = math.floor(
-            (max_raw_sequnece - (WAVENET_POOLING_KERNEL_SIZE - 1)) / WAVENET_POOLING_STRIDE + 1)
+            (WAVEFORM_MAX_SEQUENCE_LENGTH - (WAVENET_POOLING_KERNEL_SIZE - 1)) / WAVENET_POOLING_STRIDE + 1)
         self.positional_encoder = PositionalEncoder(
-            d_model,
+            WNTF_TRANSFORMER_D_MODEL,
             max_seq_len=max_seq_len
         )
-
-        encoder_layer = nn.TransformerEncoderLayer(d_model=d_model, nhead=nhead)
-        self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
-        self.fc1 = nn.Linear(d_model, 120)  # 6*6 from image dimension
-        self.fc2 = nn.Linear(120, 84)
-        self.fc3 = nn.Linear(84, num_classes)
+        self.transformer_encoder = nn.TransformerEncoder(
+            nn.TransformerEncoderLayer(
+                d_model=WNTF_TRANSFORMER_D_MODEL,
+                nhead=WNTF_TRANSFORMER_N_HEAD
+            )
+            ,
+            num_layers=WNTF_TRANSFORMER_N_LAYERS
+        )
+        self.fc1 = nn.Linear(WNTF_TRANSFORMER_D_MODEL, WNTF_FC1_OUTPUT_DIM)
+        self.fc2 = nn.Linear(WNTF_FC1_OUTPUT_DIM, WNTF_FC2_OUTPUT_DIM)
+        self.fc3 = nn.Linear(WNTF_FC2_OUTPUT_DIM, num_classes)
 
     def forward(self, x):
         # print('info: feeding wavenet...')
@@ -592,23 +593,21 @@ class Conv1DClassifier(nn.Module):
         # neural audio embeddings
         # captures local representations through convolutions
         # note: x.shape is (bs, 1, ~80000)
-        encoder_out_channels = CONV1D_FEATURE_DIM
-        encoder_kernel_size = 64
-        encoder_stride = 2
-        n_layers = int(math.log2(encoder_out_channels))
+        n_layers = int(math.log2(CONV1D_FEATURE_DIM))
         self.conv_layers = nn.ModuleList()
         for layer_idx in range(n_layers):
             self.conv_layers.append(
                 nn.Conv1d(
                     in_channels=2 ** layer_idx,
                     out_channels=2 ** (layer_idx + 1),
-                    kernel_size=encoder_kernel_size,
-                    stride=encoder_stride
+                    kernel_size=CONV1D_KERNEL_SIZE,
+                    stride=CONV1D_STRIDE,
+                    dilation=CONV1D_DILATION,
                 )
             )
-        self.fc1 = nn.Linear(encoder_out_channels, 256)  # 6*6 from image dimension
-        self.fc2 = nn.Linear(256, 128)
-        self.fc3 = nn.Linear(128, num_classes)
+        self.fc1 = nn.Linear(CONV1D_FEATURE_DIM, CONV1D_FC1_OUTPUT_DIM)
+        self.fc2 = nn.Linear(CONV1D_FC1_OUTPUT_DIM, CONV1D_FC2_OUTPUT_DIM)
+        self.fc3 = nn.Linear(CONV1D_FC2_OUTPUT_DIM, num_classes)
 
     def forward(self, x):
         # assert x.shape is (BS, In_CHNL, ~80000) --> it is!
@@ -653,7 +652,6 @@ class RNNClassifier(nn.Module):
                     dilation=RNN1D_DOWNSAMPLER_DILATION
                 )
             )
-
         self.rnn = nn.LSTM(
             input_size=RNN1D_DOWNSAMPLER_OUT_CHANNELS,
             hidden_size=RNN1D_HIDDEN_SIZE,
@@ -722,9 +720,9 @@ class WaveNetLSTMClassifier(nn.Module):
             LSTM_HIDDEN_SIZE, LSTM_NUM_LAYERS,
             bidirectional=True,
             dropout=LSTM_DROPOUT_PROB)
-        self.fc1 = nn.Linear(LSTM_HIDDEN_SIZE * 2, 120)
-        self.fc2 = nn.Linear(120, 84)
-        self.fc3 = nn.Linear(84, num_classes)
+        self.fc1 = nn.Linear(LSTM_HIDDEN_SIZE * 2, LSTM_FC1_OUTPUT_DIM)
+        self.fc2 = nn.Linear(LSTM_FC1_OUTPUT_DIM, LSTM_FC2_OUTPUT_DIM)
+        self.fc3 = nn.Linear(LSTM_FC2_OUTPUT_DIM, num_classes)
 
     def forward(self, x):
         # print('info: feeding wavenet...')

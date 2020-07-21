@@ -13,10 +13,11 @@ from torchvision.models import resnext50_32x4d
 from config import WAVENET_BATCH_SIZE, DATA_LOADER_NUM_WORKERS, RESNET_V2_BATCH_SIZE, WAVENET_LEARNING_RATE, \
     WAVENET_WEIGHT_DECAY, WNTF_BATCH_SIZE, WNLSTM_BATCH_SIZE, WAVEFORM_MAX_SEQUENCE_LENGTH, GMM_PREDICT_BATCH_SIZE, \
     GMM_TRAIN_BATCH_SIZE, CONV1D_LEARNING_RATE, CONV1D_WEIGHT_DECAY, CONV1D_BATCH_SIZE, WNTF_LEARNING_RATE, \
-    WNTF_WEIGHT_DECAY, WNLSTM_LEARNING_RATE, WNLSTM_WEIGHT_DECAY
+    WNTF_WEIGHT_DECAY, WNLSTM_LEARNING_RATE, WNLSTM_WEIGHT_DECAY, RNN1D_BATCH_SIZE, RNN1D_LEARNING_RATE, \
+    RNN1D_WEIGHT_DECAY
 from loaders import ClassSampler
-from torch_models import WaveNetTransformerClassifier, GMMClassifier, WaveNetLSTMClassifier, WaveNetClassifier, \
-    Conv1DClassifier
+from torch_models import WaveNetTransformerClassifier, GMMClassifier, WaveNetClassifier, \
+    Conv1DClassifier, RNNClassifier, WaveNetLSTMClassifier
 
 
 class DummyOptimizer(torch.optim.Optimizer):
@@ -398,15 +399,18 @@ class L_WavenetAbstractClassifier(ptl.LightningModule):
 
     @ptl.data_loader
     def train_dataloader(self):
-        return DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=True, num_workers=DATA_LOADER_NUM_WORKERS)
+        return DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=True,
+                          num_workers=DATA_LOADER_NUM_WORKERS)
 
     @ptl.data_loader
     def val_dataloader(self):
-        return DataLoader(self.eval_dataset, batch_size=self.batch_size, shuffle=True, num_workers=DATA_LOADER_NUM_WORKERS)
+        return DataLoader(self.eval_dataset, batch_size=self.batch_size, shuffle=True,
+                          num_workers=DATA_LOADER_NUM_WORKERS)
 
     @ptl.data_loader
     def test_dataloader(self):
-        return DataLoader(self.test_dataset, batch_size=self.batch_size, shuffle=True, num_workers=DATA_LOADER_NUM_WORKERS)
+        return DataLoader(self.test_dataset, batch_size=self.batch_size, shuffle=True,
+                          num_workers=DATA_LOADER_NUM_WORKERS)
 
 
 class L_WavenetClassifier(L_WavenetAbstractClassifier):
@@ -442,7 +446,8 @@ class L_WavenetClassifier(L_WavenetAbstractClassifier):
         )
         return parser
 
-class L_Conv1dClassifier(L_WavenetAbstractClassifier):
+
+class L_Conv1DClassifier(L_WavenetAbstractClassifier):
     """
     Sample model to show how to define a template
     """
@@ -537,6 +542,39 @@ class L_WavenetLSTMClassifier(L_WavenetAbstractClassifier):
         parser.add_argument('--learning_rate', default=WNLSTM_LEARNING_RATE, type=float)
         parser.add_argument('--batch_size', default=WNLSTM_BATCH_SIZE, type=int)
         parser.add_argument('--weight_decay', default=WNLSTM_WEIGHT_DECAY, type=float)
+        parser.add_argument(
+            '--distributed_backend',
+            type=str,
+            default='dp',
+            help='supports three options dp, ddp, ddp2'
+        )
+        return parser
+
+
+class L_RNNClassifier(L_WavenetAbstractClassifier):
+    """
+    Sample model to show how to define a template
+    """
+
+    def __init__(self, hparams, num_classes, train_dataset, eval_dataset, test_dataset, *args, **kwargs):
+        super().__init__(hparams, num_classes, train_dataset, eval_dataset, test_dataset, *args, **kwargs)
+        # build model
+        self.model = RNNClassifier(num_classes)
+        summary(self.model, input_size=(RNN1D_BATCH_SIZE, 1, WAVEFORM_MAX_SEQUENCE_LENGTH), device="cpu")
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr, weight_decay=self.wd)
+
+    @staticmethod
+    def add_model_specific_args(parent_parser, root_dir):  # pragma: no cover
+        """
+        Parameters you define here will be available to your model through self.hparams
+        :param parent_parser:
+        :param root_dir:
+        :return:
+        """
+        parser = ArgumentParser(parents=[parent_parser])
+        parser.add_argument('--learning_rate', default=RNN1D_LEARNING_RATE, type=float)
+        parser.add_argument('--batch_size', default=RNN1D_BATCH_SIZE, type=int)
+        parser.add_argument('--weight_decay', default=RNN1D_WEIGHT_DECAY, type=float)
         parser.add_argument(
             '--distributed_backend',
             type=str,
@@ -680,12 +718,14 @@ class L_ResNext50(ptl.LightningModule):
     @ptl.data_loader
     def val_dataloader(self):
         # logging.info('val data loader called')
-        return DataLoader(self.eval_dataset, batch_size=WAVENET_BATCH_SIZE, shuffle=True, num_workers=DATA_LOADER_NUM_WORKERS)
+        return DataLoader(self.eval_dataset, batch_size=WAVENET_BATCH_SIZE, shuffle=True,
+                          num_workers=DATA_LOADER_NUM_WORKERS)
 
     @ptl.data_loader
     def test_dataloader(self):
         # logging.info('test data loader called')
-        return DataLoader(self.test_dataset, batch_size=WAVENET_BATCH_SIZE, shuffle=True, num_workers=DATA_LOADER_NUM_WORKERS)
+        return DataLoader(self.test_dataset, batch_size=WAVENET_BATCH_SIZE, shuffle=True,
+                          num_workers=DATA_LOADER_NUM_WORKERS)
 
     @staticmethod
     def add_model_specific_args(parent_parser, root_dir):  # pragma: no cover

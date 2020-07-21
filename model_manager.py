@@ -11,7 +11,7 @@ from pytorch_lightning.logging import TestTubeLogger
 
 from config import makedirs, MODELS_DATA_PATH, RAW_DATA_PATH, EARLY_STOP_PATIENCE
 from lightning_modules import L_ResNext50, L_WavenetTransformerClassifier, L_WavenetLSTMClassifier, L_GMMClassifier, \
-    L_WavenetClassifier, L_Conv1dClassifier
+    L_WavenetClassifier, L_Conv1DClassifier, L_RNNClassifier
 from loaders import CepstrumDataset, WaveformDataset, ExperimentDataset
 
 
@@ -127,7 +127,14 @@ class Conv1dHelper(AbstractHelper):
     model_name = 'conv1d'
     dataset = WaveformDataset
     # source_feature_name = SingingVoiceSeparationOpenUnmixFeatureExtractor.feature_name
-    lightning_module = L_Conv1dClassifier
+    lightning_module = L_Conv1DClassifier
+
+
+class RNNHelper(AbstractHelper):
+    model_name = 'rnn'
+    dataset = WaveformDataset
+    # source_feature_name = SingingVoiceSeparationOpenUnmixFeatureExtractor.feature_name
+    lightning_module = L_RNNClassifier
 
 
 class GMMClassifierHelper(AbstractHelper):
@@ -166,6 +173,7 @@ helpers = {
     GMMClassifierHelper.model_name: GMMClassifierHelper,
     WavenetHelper.model_name: WavenetHelper,
     Conv1dHelper.model_name: Conv1dHelper,
+    RNNHelper.model_name: RNNHelper,
 }
 
 
