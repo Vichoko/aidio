@@ -19,7 +19,9 @@ from config import MODELS_DATA_PATH, S1DCONV_EPOCHS, S1DCONV_BATCH_SIZE, WAVENET
     WAVENET_POOLING_STRIDE, LSTM_HIDDEN_SIZE, LSTM_NUM_LAYERS, LSTM_DROPOUT_PROB, WAVEFORM_MAX_SEQUENCE_LENGTH, \
     TRANSFORMER_D_MODEL, TRANSFORMER_N_HEAD, TRANSFORMER_N_LAYERS, FEATURES_DATA_PATH, GMM_COMPONENT_NUMBER, \
     GMM_FIT_FRAME_LIMIT, WNTF_WAVENET_LAYERS, WNTF_WAVENET_BLOCKS, \
-    WNLSTM_WAVENET_LAYERS, WNLSTM_WAVENET_BLOCKS, CPU_NUM_WORKERS, CONV1D_FEATURE_DIM
+    WNLSTM_WAVENET_LAYERS, WNLSTM_WAVENET_BLOCKS, CPU_NUM_WORKERS, CONV1D_FEATURE_DIM, RNN1D_DOWNSAMPLER_OUT_CHANNELS, \
+    RNN1D_DROPOUT_PROB, RNN1D_HIDDEN_SIZE, RNN1D_LSTM_LAYERS, RNN1D_BIDIRECTIONAL, RNN1D_DOWNSAMPLER_STRIDE, \
+    RNN1D_DOWNSAMPLER_KERNEL_SIZE, RNN1D_DOWNSAMPLER_DILATION
 from models import ClassificationModel
 from util.wavenet.wavenet_model import WaveNetModel
 
@@ -616,6 +618,65 @@ class Conv1DClassifier(nn.Module):
             x = conv_layer(x)
         ## x.max(2): (N, Cout, Lout) -> (N, Cout)
         x, _ = x.max(2)  # max pooling over the sequence dim; drop sequence axis
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
+        x = self.fc3(x)
+        return x
+
+
+class RNNClassifier(nn.Module):
+    def __call__(self, *input, **kwargs) -> typing.Any:
+        """
+        Hack to fix '(input: (Any, ...), kwargs: dict) -> Any' warning in PyCharm auto-complete.
+        :param input:
+        :param kwargs:
+        :return:
+        """
+        return super().__call__(*input, **kwargs)
+
+    def __init__(self, num_classes):
+        super(RNNClassifier, self).__init__()
+        # first encoder
+        # neural audio embeddings
+        # captures local representations through convolutions
+        # note: x.shape is (bs, 1, ~80000)
+        n_layers = int(math.log2(RNN1D_DOWNSAMPLER_OUT_CHANNELS))
+        self.conv_layers = nn.ModuleList()
+        for layer_idx in range(n_layers):
+            # assumes input is monoaural i.e. shape is (bs, 1, len)
+            self.conv_layers.append(
+                nn.Conv1d(
+                    in_channels=2 ** layer_idx,
+                    out_channels=2 ** (layer_idx + 1),
+                    kernel_size=RNN1D_DOWNSAMPLER_KERNEL_SIZE,
+                    stride=RNN1D_DOWNSAMPLER_STRIDE,
+                    dilation=RNN1D_DOWNSAMPLER_DILATION
+                )
+            )
+
+        self.rnn = nn.LSTM(
+            input_size=RNN1D_DOWNSAMPLER_OUT_CHANNELS,
+            hidden_size=RNN1D_HIDDEN_SIZE,
+            num_layers=RNN1D_LSTM_LAYERS,
+            dropout=RNN1D_DROPOUT_PROB,
+            bidirectional=RNN1D_BIDIRECTIONAL
+        )
+        self.fc1 = nn.Linear(RNN1D_DOWNSAMPLER_OUT_CHANNELS * 2, 256) if RNN1D_BIDIRECTIONAL else nn.Linear(
+            RNN1D_DOWNSAMPLER_OUT_CHANNELS, 256)
+        self.fc2 = nn.Linear(256, 128)
+        self.fc3 = nn.Linear(128, num_classes)
+
+    def forward(self, x):
+        # assert x.shape is (BS, In_CHNL, ~80000) --> it is!
+        # assert In_CHNL is 1 or 2 --> it is 1.
+        # nn.Conv1D: (N, Cin, Lin) -> (N, Cout, Lout)
+        for conv_layer in self.conv_layers:
+            x = conv_layer(x)
+        # question for the reader: Why PyTorch have different input shape for CNNs (N, Cin, Lin) compared to RNNs (Lin, N, Cin)
+        x = x.transpose(0, 2).transpose(1, 2)
+        self.enc_lstm.flatten_parameters()
+        x, _ = self.rnn(x)  # shape n_sequence, n_data, lstm_hidden_size (dropped _ is (h_n, c_n))
+        x, _ = x.max(0)  # max pooling over the sequence dim; drop sequence axis
         x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))
         x = self.fc3(x)
