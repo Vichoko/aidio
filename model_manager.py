@@ -9,7 +9,7 @@ import pytorch_lightning as ptl
 from pytorch_lightning.callbacks import EarlyStopping
 from pytorch_lightning.logging import TestTubeLogger
 
-from config import makedirs, MODELS_DATA_PATH, RAW_DATA_PATH, EARLY_STOP_PATIENCE
+from config import makedirs, MODELS_DATA_PATH, RAW_DATA_PATH, EARLY_STOP_PATIENCE, EARLY_STOP_MONITOR
 from lightning_modules import L_ResNext50, L_WavenetTransformerClassifier, L_WavenetLSTMClassifier, L_GMMClassifier, \
     L_WavenetClassifier, L_Conv1DClassifier, L_RNNClassifier
 from loaders import CepstrumDataset, WaveformDataset, ExperimentDataset
@@ -58,7 +58,7 @@ class AbstractHelper:
             hyperparams.distributed_backend = 'dp'
 
         early_stop_callback = EarlyStopping(
-            monitor='train_loss',
+            monitor=EARLY_STOP_MONITOR,
             min_delta=0.00,
             patience=EARLY_STOP_PATIENCE,
             verbose=False,

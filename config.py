@@ -92,6 +92,7 @@ OUNMIX_MODEL = 'umxhq'
 ## trainer
 # early stop
 EARLY_STOP_PATIENCE = 100
+EARLY_STOP_MONITOR = 'val_loss'
 
 #########################################
 ####    MODELS
