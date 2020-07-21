@@ -91,7 +91,7 @@ OUNMIX_MODEL = 'umxhq'
 ###########################
 ## trainer
 # early stop
-EARLY_STOP_PATIENCE = 20
+EARLY_STOP_PATIENCE = 100
 
 #########################################
 ####    MODELS
@@ -154,7 +154,7 @@ WAVENET_CLASSES = 1  # deprecated
 WNTF_BATCH_SIZE = 13
 WNTF_WAVENET_LAYERS = 4
 WNTF_WAVENET_BLOCKS = 3
-WNTF_LEARNING_RATE = 0.0001
+WNTF_LEARNING_RATE = 0.001
 WNTF_WEIGHT_DECAY = 0.0000001
 # Transformer
 WNTF_TRANSFORMER_N_HEAD = 2

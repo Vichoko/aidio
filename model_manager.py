@@ -58,7 +58,7 @@ class AbstractHelper:
             hyperparams.distributed_backend = 'dp'
 
         early_stop_callback = EarlyStopping(
-            monitor='val_loss',
+            monitor='train_loss',
             min_delta=0.00,
             patience=EARLY_STOP_PATIENCE,
             verbose=False,
