@@ -24,7 +24,7 @@ from config import MODELS_DATA_PATH, S1DCONV_EPOCHS, S1DCONV_BATCH_SIZE, WAVENET
     RNN1D_DROPOUT_PROB, RNN1D_HIDDEN_SIZE, RNN1D_LSTM_LAYERS, RNN1D_BIDIRECTIONAL, RNN1D_DOWNSAMPLER_STRIDE, \
     RNN1D_DOWNSAMPLER_KERNEL_SIZE, RNN1D_DOWNSAMPLER_DILATION, CONV1D_KERNEL_SIZE, CONV1D_STRIDE, CONV1D_DILATION, \
     LSTM_FC1_OUTPUT_DIM, LSTM_FC2_OUTPUT_DIM, CONV1D_FC1_OUTPUT_DIM, CONV1D_FC2_OUTPUT_DIM, WNTF_FC1_OUTPUT_DIM, \
-    WNTF_FC2_OUTPUT_DIM
+    WNTF_FC2_OUTPUT_DIM, WNTF_TRANSFORMER_DIM_FEEDFORWARD
 from models import ClassificationModel
 from util.wavenet.wavenet_model import WaveNetModel
 
@@ -541,7 +541,8 @@ class WaveNetTransformerClassifier(nn.Module):
         self.transformer_encoder = nn.TransformerEncoder(
             nn.TransformerEncoderLayer(
                 d_model=WNTF_TRANSFORMER_D_MODEL,
-                nhead=WNTF_TRANSFORMER_N_HEAD
+                nhead=WNTF_TRANSFORMER_N_HEAD,
+                dim_feedforward=WNTF_TRANSFORMER_DIM_FEEDFORWARD,
             )
             ,
             num_layers=WNTF_TRANSFORMER_N_LAYERS
@@ -672,7 +673,7 @@ class RNNClassifier(nn.Module):
             x = conv_layer(x)
         # question for the reader: Why PyTorch have different input shape for CNNs (N, Cin, Lin) compared to RNNs (Lin, N, Cin)
         x = x.transpose(0, 2).transpose(1, 2)
-        self.enc_lstm.flatten_parameters()
+        self.rnn.flatten_parameters()
         x, _ = self.rnn(x)  # shape n_sequence, n_data, lstm_hidden_size (dropped _ is (h_n, c_n))
         x, _ = x.max(0)  # max pooling over the sequence dim; drop sequence axis
         x = F.relu(self.fc1(x))
