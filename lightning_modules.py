@@ -560,7 +560,7 @@ class L_RNNClassifier(L_WavenetAbstractClassifier):
         super().__init__(hparams, num_classes, train_dataset, eval_dataset, test_dataset, *args, **kwargs)
         # build model
         self.model = RNNClassifier(num_classes)
-        summary(self.model, input_size=(RNN1D_BATCH_SIZE, 1, WAVEFORM_MAX_SEQUENCE_LENGTH), device="cpu")
+        # summary(self.model, input_size=(RNN1D_BATCH_SIZE, 1, WAVEFORM_MAX_SEQUENCE_LENGTH), device="cpu")
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr, weight_decay=self.wd)
 
     @staticmethod
