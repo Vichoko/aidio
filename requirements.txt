@@ -1,3 +1,6 @@
+# conda install pytorch torchvision cudatoolkit=10.2 -c pytorch
+# conda install cffi numpy
+
 numpy
 pandas
 librosa
@@ -8,8 +11,7 @@ ffmpeg
 torchsummary
 pytorch-lightning
 torchsummary
-
-# conda
-# conda install cffi numpy
 norbert
 tqdm
+
+
