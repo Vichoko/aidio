@@ -750,7 +750,8 @@ class WaveNetLSTMClassifier(nn.Module):
         # print('info: feeding lstm...')
         self.enc_lstm.flatten_parameters()
         x, _ = self.enc_lstm(x)  # shape n_sequence, n_data, lstm_hidden_size * 2
-        x = x.transpose(1, 2)
+        x = x.transpose(0, 1)
+        # transformer expected input is n_data, n_sequence, wavenet_channels
         x = self.self_attention_pooling(x)
         x = x[:, -1, :]
         # pick the last vector from the output as the sentence embedding
