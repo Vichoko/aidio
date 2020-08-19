@@ -24,7 +24,7 @@ from config import MODELS_DATA_PATH, S1DCONV_EPOCHS, S1DCONV_BATCH_SIZE, WAVENET
     RNN1D_DROPOUT_PROB, RNN1D_HIDDEN_SIZE, RNN1D_LSTM_LAYERS, RNN1D_BIDIRECTIONAL, RNN1D_DOWNSAMPLER_STRIDE, \
     RNN1D_DOWNSAMPLER_KERNEL_SIZE, RNN1D_DOWNSAMPLER_DILATION, CONV1D_KERNEL_SIZE, CONV1D_STRIDE, CONV1D_DILATION, \
     LSTM_FC1_OUTPUT_DIM, LSTM_FC2_OUTPUT_DIM, CONV1D_FC1_OUTPUT_DIM, CONV1D_FC2_OUTPUT_DIM, WNTF_FC1_OUTPUT_DIM, \
-    WNTF_FC2_OUTPUT_DIM, WNTF_TRANSFORMER_DIM_FEEDFORWARD
+    WNTF_FC2_OUTPUT_DIM, WNTF_TRANSFORMER_DIM_FEEDFORWARD, LSTM_BIDIRECTIONALITY
 from models import ClassificationModel
 from util.wavenet.wavenet_model import WaveNetModel
 
@@ -532,8 +532,8 @@ class WaveNetTransformerClassifier(nn.Module):
             kernel_size=WAVENET_POOLING_KERNEL_SIZE,
             stride=WAVENET_POOLING_STRIDE
         )
-        max_seq_len = math.floor(
-            (WAVEFORM_MAX_SEQUENCE_LENGTH - (WAVENET_POOLING_KERNEL_SIZE - 1)) / WAVENET_POOLING_STRIDE + 1)
+        max_seq_len = int(math.floor(
+            (WAVEFORM_MAX_SEQUENCE_LENGTH - (WAVENET_POOLING_KERNEL_SIZE - 1)) / WAVENET_POOLING_STRIDE + 1))
         self.positional_encoder = PositionalEncoder(
             WNTF_TRANSFORMER_D_MODEL,
             max_seq_len=max_seq_len
@@ -719,9 +719,23 @@ class WaveNetLSTMClassifier(nn.Module):
         self.enc_lstm = nn.LSTM(
             self.wavenet.end_channels,
             LSTM_HIDDEN_SIZE, LSTM_NUM_LAYERS,
-            bidirectional=True,
+            bidirectional=LSTM_BIDIRECTIONALITY,
             dropout=LSTM_DROPOUT_PROB)
-        self.fc1 = nn.Linear(LSTM_HIDDEN_SIZE * 2, LSTM_FC1_OUTPUT_DIM)
+
+        self.self_attention_pooling = nn.TransformerEncoder(
+            nn.TransformerEncoderLayer(
+                d_model=LSTM_HIDDEN_SIZE * 2 if LSTM_BIDIRECTIONALITY else LSTM_HIDDEN_SIZE,
+                nhead=1,
+                dim_feedforward=WNTF_TRANSFORMER_DIM_FEEDFORWARD,
+            )
+            ,
+            num_layers=1
+        )  # take the last vector of the attention to the FC
+
+        self.fc1 = nn.Linear(
+            LSTM_HIDDEN_SIZE * 2 if LSTM_BIDIRECTIONALITY else LSTM_HIDDEN_SIZE,
+            LSTM_FC1_OUTPUT_DIM
+        )
         self.fc2 = nn.Linear(LSTM_FC1_OUTPUT_DIM, LSTM_FC2_OUTPUT_DIM)
         self.fc3 = nn.Linear(LSTM_FC2_OUTPUT_DIM, num_classes)
 
@@ -736,7 +750,9 @@ class WaveNetLSTMClassifier(nn.Module):
         # print('info: feeding lstm...')
         self.enc_lstm.flatten_parameters()
         x, _ = self.enc_lstm(x)  # shape n_sequence, n_data, lstm_hidden_size * 2
-        x, _ = x.max(0)  # max pooling over the sequence dim; drop sequence axis
+        x = self.self_attention_pooling(x)
+        x = x[:, -1, :]
+        # pick the last vector from the output as the sentence embedding
         # x final shape is n_data, lstm_hidden_size * 2
         # print('info: feeding fully-connected...')
         # simple classifier
