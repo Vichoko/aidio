@@ -54,7 +54,7 @@
         * 5-5 256-11-6  (32 32) svs_svd_2_4 val_a=0.481  test_a=    conc=11 capas lstm es mucho
         * 4-3 256-12-10  (64 64) svs_svd_2_5 val_a=0.48@29  test_a=
         * 5-5 256-7-12  (32 32) svs_svd_2_6 val_a=  test_a=    conc=
-        * 4=3 256-2-23  (32 32) svs_svd_2_7 val_a@3=0.656   val_a@62=0.698  val_a@63=0.733  val_a@64=0.745
+        * 4=3 256-2-23  (32 32) svs_svd_2_7 val_a@3=0.656   val_a@62=0.698  val_a@63=0.733  val_a@64=0.745  val_a@70=0.777
 
     
     * Conv1d
