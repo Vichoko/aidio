@@ -56,18 +56,16 @@ class AbstractHelper:
         if 'distributed_backend' not in hyperparams:
             hyperparams.distributed_backend = 'dp'
 
-        early_stop_callback = EarlyStopping(
-            monitor=EARLY_STOP_MONITOR,
-            min_delta=0.00,
-            patience=EARLY_STOP_PATIENCE,
-            verbose=False,
-            mode='min'
-        )
+        # todo: connect ddp, fix gpu specification
+        # trainer with some optimizations
         self.trainer = ptl.Trainer(
             gpus=gpus if len(gpus) else 0,
-            distributed_backend=hyperparams.distributed_backend,
-            # early_stop_callback=early_stop_callback,
-            amp_level='O2',
+            auto_scale_batch_size='binsearch',
+            auto_lr_find=True,
+            distributed_backend='ddp',
+            precision=16,
+            profiler=True,
+            default_root_dir=self.save_dir,
         )
 
     def train(self):
