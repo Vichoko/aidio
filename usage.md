@@ -44,3 +44,15 @@ python commands\clean_dataset.py --src_path E:\aidio_data\features\svs_openunmix
 ```
 python commands\optimize_dataset.py --raw_path E:\parsed_singers.v2
 ```
+
+# Known Errors
+
+If you get
+```
+Error: mkl-service + Intel(R) MKL: MKL_THREADING_LAYER=INTEL is incompatible with %s library."
+                            "\n\tTry to import numpy first or set the threading layer accordingly.
+```
+Then export this variable
+```
+MKL_THREADING_LAYER=GNU
+```
