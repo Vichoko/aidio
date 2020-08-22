@@ -6,9 +6,8 @@ import json
 import pathlib
 
 import pytorch_lightning as ptl
-from pytorch_lightning.callbacks import EarlyStopping
 
-from config import makedirs, MODELS_DATA_PATH, RAW_DATA_PATH, EARLY_STOP_PATIENCE, EARLY_STOP_MONITOR
+from config import makedirs, MODELS_DATA_PATH, RAW_DATA_PATH
 from lightning_modules import L_ResNext50, L_WavenetTransformerClassifier, L_WavenetLSTMClassifier, L_GMMClassifier, \
     L_WavenetClassifier, L_Conv1DClassifier, L_RNNClassifier
 from loaders import CepstrumDataset, WaveformDataset, ExperimentDataset
@@ -60,12 +59,12 @@ class AbstractHelper:
         # trainer with some optimizations
         self.trainer = ptl.Trainer(
             gpus=gpus if len(gpus) else 0,
-            auto_scale_batch_size='binsearch',
-            auto_lr_find=True,
-            distributed_backend='ddp',
-            precision=16,
-            profiler=True,
-            default_root_dir=self.save_dir,
+            profiler=False,  # for once is good
+            auto_scale_batch_size=False,  # i prefer manually
+            auto_lr_find=False,  # mostly diverges
+            distributed_backend='dp',  # doesnt fill on ddp
+            precision=32,  # throws error on 16
+            default_root_dir=self.save_dir
         )
 
     def train(self):
