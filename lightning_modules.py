@@ -232,7 +232,6 @@ class L_GMMClassifier(ptl.LightningModule):
         """
         return [self.optimizer]
 
-    @ptl.data_loader
     def train_dataloader(self):
         # logging.info('training data loader called')
         return DataLoader(
@@ -241,7 +240,6 @@ class L_GMMClassifier(ptl.LightningModule):
             batch_sampler=ClassSampler(self.num_classes, self.train_dataset.labels, self.train_batch_size),
         )
 
-    @ptl.data_loader
     def val_dataloader(self):
         # logging.info('val data loader called')
         return DataLoader(
@@ -250,7 +248,6 @@ class L_GMMClassifier(ptl.LightningModule):
             num_workers=DATA_LOADER_NUM_WORKERS,
         )
 
-    @ptl.data_loader
     def test_dataloader(self):
         # logging.info('test data loader called')
         return DataLoader(
@@ -686,19 +683,16 @@ class L_ResNext50(ptl.LightningModule):
         """
         return [self.optimizer]
 
-    @ptl.data_loader
     def train_dataloader(self):
         # logging.info('training data loader called')
         return DataLoader(self.train_dataset, batch_size=WAVENET_BATCH_SIZE, shuffle=True,
                           num_workers=DATA_LOADER_NUM_WORKERS)
 
-    @ptl.data_loader
     def val_dataloader(self):
         # logging.info('val data loader called')
         return DataLoader(self.eval_dataset, batch_size=WAVENET_BATCH_SIZE, shuffle=True,
                           num_workers=DATA_LOADER_NUM_WORKERS)
 
-    @ptl.data_loader
     def test_dataloader(self):
         # logging.info('test data loader called')
         return DataLoader(self.test_dataset, batch_size=WAVENET_BATCH_SIZE, shuffle=True,
