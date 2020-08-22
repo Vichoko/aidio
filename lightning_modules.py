@@ -338,8 +338,8 @@ class L_WavenetAbstractClassifier(ptl.LightningModule):
             accuracy = accuracy.cuda(loss.device.index)
         # Checkpoint model based on validation loss
         result = ptl.EvalResult(early_stop_on=None, checkpoint_on=loss)
-        result.log('val_loss', loss)
-        result.log('val_acc', accuracy)
+        result.log('val_loss', loss, prog_bar=True)
+        result.log('val_acc', accuracy, prog_bar=True)
         return result
 
     def test_step(self, batch, batch_idx):
