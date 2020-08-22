@@ -318,15 +318,10 @@ class L_WavenetAbstractClassifier(ptl.LightningModule):
         x, y = batch['x'], batch['y']
         y_pred = self.forward(x)
         # calculate loss
-        loss_val = self.loss(y_pred, y)
-        tqdm_dict = {'train_loss': loss_val}
-        output = OrderedDict({
-            'loss': loss_val,
-            'progress_bar': tqdm_dict,
-            'log': tqdm_dict
-        })
-        # can also return just a scalar instead of a dict (return loss_val)
-        return output
+        loss = self.loss(y_pred, y)
+        result = ptl.TrainResult(loss)
+        result.log('train_loss', loss, prog_bar=True)
+        return result
 
     def validation_step(self, batch, batch_idx):
         """
@@ -337,57 +332,42 @@ class L_WavenetAbstractClassifier(ptl.LightningModule):
         x, y = batch['x'], batch['y']
         y_pred = self.forward(x)
         # calculate loss
-        loss_val = self.loss(y_pred, y)
-        # acc
+        loss = self.loss(y_pred, y)
+        # calculate accurracy
         labels_hat = torch.argmax(y_pred, dim=1)
-        val_acc = torch.sum(y == labels_hat).item() / (len(y) * 1.0)
-        val_acc = torch.tensor(val_acc)
+        accuracy = torch.sum(y == labels_hat).item() / (len(y) * 1.0)
+        accuracy = torch.tensor(accuracy)
         if self.on_gpu:
-            val_acc = val_acc.cuda(loss_val.device.index)
-        output = OrderedDict({
-            'val_loss': loss_val,
-            'val_acc': val_acc,
-        })
-        # can also return just a scalar instead of a dict (return loss_val)
-        return output
-
-    def validation_end(self, outputs):
-        """
-        Called at the end of validation to aggregate outputs
-        :param outputs: list of individual outputs of each validation step
-        :return:
-        """
-        # if returned a scalar from validation_step, outputs is a list of tensor scalars
-        # we return just the average in this case (if we want)
-        # return torch.stack(outputs).mean()
-        val_loss_mean = 0
-        val_acc_mean = 0
-        for output in outputs:
-            val_loss = output['val_loss']
-            # reduce manually when using dp
-            if self.trainer.use_dp or self.trainer.use_ddp2:
-                val_loss = torch.mean(val_loss)
-            val_loss_mean += val_loss
-            # reduce manually when using dp
-            val_acc = output['val_acc']
-            if self.trainer.use_dp or self.trainer.use_ddp2:
-                val_acc = torch.mean(val_acc)
-            val_acc_mean += val_acc
-        val_loss_mean /= len(outputs)
-        val_acc_mean /= len(outputs)
-        tqdm_dict = {'val_loss': val_loss_mean, 'val_acc': val_acc_mean}
-        result = {'progress_bar': tqdm_dict, 'log': tqdm_dict, 'val_loss': val_loss_mean}
+            accuracy = accuracy.cuda(loss.device.index)
+        # Checkpoint model based on validation loss
+        result = ptl.EvalResult(early_stop_on=None, checkpoint_on=loss)
+        result.log('val_loss', loss)
+        result.log('val_acc', accuracy)
         return result
 
     def test_step(self, batch, batch_idx):
-        return self.validation_step(batch, batch_idx)
+        x, y = batch['x'], batch['y']
+        y_pred = self.forward(x)
+        # calculate loss
+        loss = self.loss(y_pred, y)
+        # calculate accurracy
+        labels_hat = torch.argmax(y_pred, dim=1)
+        accuracy = torch.sum(y == labels_hat).item() / (len(y) * 1.0)
+        accuracy = torch.tensor(accuracy)
+        if self.on_gpu:
+            accuracy = accuracy.cuda(loss.device.index)
+        # Checkpoint model based on validation loss
+        result = ptl.EvalResult()
+        result.log('test_loss', loss, prog_bar=True)
+        result.log('test_acc', accuracy, prog_bar=True)
+        return result
 
     def test_end(self, outputs):
         debug = False
         print('debug: test_end output is {}'.format(outputs)) if debug else None
         result = self.validation_end(outputs)
         print('info: Testing complete.')
-        print('info: {}'.format(result['log']))
+        print('info: {}'.format(result))
         return self.validation_end(outputs)
 
     def configure_optimizers(self):
@@ -397,17 +377,14 @@ class L_WavenetAbstractClassifier(ptl.LightningModule):
         """
         return [self.optimizer]
 
-    @ptl.data_loader
     def train_dataloader(self):
         return DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=True,
                           num_workers=DATA_LOADER_NUM_WORKERS)
 
-    @ptl.data_loader
     def val_dataloader(self):
         return DataLoader(self.eval_dataset, batch_size=self.batch_size, shuffle=True,
                           num_workers=DATA_LOADER_NUM_WORKERS)
 
-    @ptl.data_loader
     def test_dataloader(self):
         return DataLoader(self.test_dataset, batch_size=self.batch_size, shuffle=True,
                           num_workers=DATA_LOADER_NUM_WORKERS)

@@ -47,14 +47,19 @@
         * 2-2 128-1-20  svs_svd_4   val_a=0.73@12   
         * 2-2 128-2-23  svs_svd_5   val_a=0.841@96;0.859@101
         * 3-2 512-1-15 (16 16)  svs_svd_6   val_a=0.862@59
-        * 3-2 1024-1-16 (32 32) svs_svd_7   val_a=0.86@69   test_a=0.8506
-        * 4-3 256-2-16  (32 32) svs_svd_2_1 val_a=0.862 test_a=0.8670**
-        * 4-3 256-4-13  (16 16) svs_svd_2_2 val_a=0.853 test_a=0.8394
-        * 5-5 256-3-6   (16 16) svs_svd_2_3 val_a=0.858 test_a=0.8379
-        * 5-5 256-11-6  (32 32) svs_svd_2_4 val_a=0.481  test_a=    conc=11 capas lstm es mucho
+        * 3-2 1024-1-16 (32 32) svs_svd_7   val_a=0.86@69   test_a=0.851
+        * 4-3 256-2-16  (32 32) svs_svd_2_1 val_a=0.862 test_a=0.867**
+        * 4-3 256-4-13  (16 16) svs_svd_2_2 val_a=0.853 test_a=0.839
+        * 5-5 256-3-6   (16 16) svs_svd_2_3 val_a=0.858 test_a=0.838
+        * 5-5 256-11-6  (32 32) svs_svd_2_4 val_a=0.481  test_a=
+            conc=11 capas lstm es mucho
         * 4-3 256-12-10  (64 64) svs_svd_2_5 val_a=0.48@29  test_a=
         * 5-5 256-7-12  (32 32) svs_svd_2_6 val_a=  test_a=    conc=
-        * 4=3 256-2-23  (32 32) svs_svd_2_7 val_a@3=0.656   val_a@62=0.698  val_a@63=0.733  val_a@64=0.745  val_a@70=0.777
+        * 4=3 256-2-23  (32 32) att_pool svs_svd_2_7 val_a@3=0.656
+            val_a@62=0.698  val_a@63=0.733  val_a@64=0.745
+            val_a@276=0.8742 val_a@362=0.882 test_a@276=0.857
+
+
 
     
     * Conv1d

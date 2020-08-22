@@ -7,7 +7,6 @@ import pathlib
 
 import pytorch_lightning as ptl
 from pytorch_lightning.callbacks import EarlyStopping
-from pytorch_lightning.logging import TestTubeLogger
 
 from config import makedirs, MODELS_DATA_PATH, RAW_DATA_PATH, EARLY_STOP_PATIENCE, EARLY_STOP_MONITOR
 from lightning_modules import L_ResNext50, L_WavenetTransformerClassifier, L_WavenetLSTMClassifier, L_GMMClassifier, \
@@ -50,10 +49,10 @@ class AbstractHelper:
         gpus = json.loads(hyperparams.gpus)
         self.save_dir = models_path / model_name / experiment_name
         makedirs(self.save_dir)
-        logger = TestTubeLogger(
-            save_dir=self.save_dir,
-            version=1  # An existing version with a saved checkpoint
-        )
+        # logger = TestTubeLogger(
+        #     save_dir=self.save_dir,
+        #     version=1  # An existing version with a saved checkpoint
+        # )
         if 'distributed_backend' not in hyperparams:
             hyperparams.distributed_backend = 'dp'
 
@@ -67,12 +66,8 @@ class AbstractHelper:
         self.trainer = ptl.Trainer(
             gpus=gpus if len(gpus) else 0,
             distributed_backend=hyperparams.distributed_backend,
-            logger=logger,
-            default_save_path=self.save_dir,
-            early_stop_callback=early_stop_callback,
-            nb_sanity_val_steps=0,
+            # early_stop_callback=early_stop_callback,
             amp_level='O2',
-            use_amp=False
         )
 
     def train(self):

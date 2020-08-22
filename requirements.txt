@@ -1,7 +1,6 @@
 # conda install pytorch torchvision cudatoolkit=10.2 -c pytorch
-# conda install cffi numpy
+# conda install cffi
 
-numpy
 pandas
 librosa
 keras
@@ -9,9 +8,7 @@ pydub
 pysoundfile
 ffmpeg
 torchsummary
-pytorch-lightning
-torchsummary
 norbert
 tqdm
-
+pytorch-lightning==0.9.0
 
