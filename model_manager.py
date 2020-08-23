@@ -6,6 +6,7 @@ import json
 import pathlib
 
 import pytorch_lightning as ptl
+from pytorch_lightning.loggers import TestTubeLogger
 
 from config import makedirs, MODELS_DATA_PATH, RAW_DATA_PATH
 from lightning_modules import L_ResNext50, L_WavenetTransformerClassifier, L_WavenetLSTMClassifier, L_GMMClassifier, \
@@ -64,7 +65,10 @@ class AbstractHelper:
             auto_lr_find=False,  # mostly diverges
             distributed_backend='dp',  # doesnt fill on ddp
             precision=32,  # throws error on 16
-            default_root_dir=self.save_dir
+            logger=TestTubeLogger(
+                save_dir=self.save_dir,
+                version=1  # fixed to one to ensure checkpoint load
+            )
         )
 
     def train(self):
