@@ -6,6 +6,7 @@ import json
 import pathlib
 
 import pytorch_lightning as ptl
+from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import TestTubeLogger
 
 from config import makedirs, MODELS_DATA_PATH, RAW_DATA_PATH
@@ -66,6 +67,14 @@ class AbstractHelper:
             logger=TestTubeLogger(
                 save_dir=self.save_dir,
                 version=1  # fixed to one to ensure checkpoint load
+            ),
+            checkpoint_callback=ModelCheckpoint(
+                filepath=self.save_dir,
+                save_top_k=True,
+                verbose=True,
+                monitor='val_loss',
+                mode='min',
+                prefix=''
             )
         )
 
