@@ -49,10 +49,7 @@ class AbstractHelper:
         gpus = json.loads(hyperparams.gpus)
         self.save_dir = models_path / model_name / experiment_name
         makedirs(self.save_dir)
-        # logger = TestTubeLogger(
-        #     save_dir=self.save_dir,
-        #     version=1  # An existing version with a saved checkpoint
-        # )
+
         if 'distributed_backend' not in hyperparams:
             hyperparams.distributed_backend = 'dp'
 
@@ -65,6 +62,7 @@ class AbstractHelper:
             auto_lr_find=False,  # mostly diverges
             distributed_backend='dp',  # doesnt fill on ddp
             precision=32,  # throws error on 16
+            default_root_dir=self.save_dir,
             logger=TestTubeLogger(
                 save_dir=self.save_dir,
                 version=1  # fixed to one to ensure checkpoint load
