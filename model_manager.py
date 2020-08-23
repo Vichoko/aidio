@@ -68,14 +68,6 @@ class AbstractHelper:
                 save_dir=self.save_dir,
                 version=1  # fixed to one to ensure checkpoint load
             ),
-            checkpoint_callback=ModelCheckpoint(
-                filepath=self.save_dir,
-                save_top_k=True,
-                verbose=True,
-                monitor='val_loss',
-                mode='min',
-                prefix=''
-            )
         )
 
     def train(self):
