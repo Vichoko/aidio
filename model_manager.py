@@ -61,7 +61,7 @@ class AbstractHelper:
             version=version  # fixed to one to ensure checkpoint load
         )
         ckpt_folder = self.save_dir / 'default' / 'version_{}'.format(version) / 'checkpoints'
-        best_epoch = self.find_best_epoch(ckpt_folder)
+        resume_from_checkpoint = self.find_best_epoch(ckpt_folder)
         # trainer with some optimizations
         self.trainer = ptl.Trainer(
             gpus=gpus if len(gpus) else 0,
@@ -72,7 +72,7 @@ class AbstractHelper:
             precision=32,  # throws error on 16
             default_root_dir=self.save_dir,
             logger=logger,
-            resume_from_checkpoint=str(ckpt_folder / 'epoch={}.ckpt'.format(best_epoch)),
+            resume_from_checkpoint=resume_from_checkpoint
         )
 
     @staticmethod
@@ -81,11 +81,17 @@ class AbstractHelper:
         Find the highest epoch in the Test Tube file structure.
         Assumes 'epoch={int}.ckpt' format on files.
         :param ckpt_folder: dir where the checpoints are being saved.
-        :return: Integer of the highest epoch reached by the checkpoints.
+        :return: string of the path to the checkpoint. Or None if no checkpoints found.
         """
-        ckpt_files = listdir(ckpt_folder)  # list of strings
-        epochs = [int(filename[6:-5]) for filename in ckpt_files]  # 'epoch={int}.ckpt' filename format
-        return max(epochs)
+        try:
+            ckpt_files = listdir(ckpt_folder)  # list of strings
+            epochs = [int(filename[6:-5]) for filename in ckpt_files]  # 'epoch={int}.ckpt' filename format
+            resume_from_checkpoint = str(ckpt_folder / 'epoch={}.ckpt'.format(max(epochs)))
+        except FileNotFoundError:
+            resume_from_checkpoint = None
+        except ValueError:
+            resume_from_checkpoint = None
+        return resume_from_checkpoint
 
     def train(self):
         self.trainer.fit(self.module)
