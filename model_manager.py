@@ -85,7 +85,7 @@ class AbstractHelper:
         """
         ckpt_files = listdir(ckpt_folder)  # list of strings
         epochs = [int(filename[6:-5]) for filename in ckpt_files]  # 'epoch={int}.ckpt' filename format
-        return ckpt_files[epochs.index(max(epochs))]
+        return max(epochs)
 
     def train(self):
         self.trainer.fit(self.module)
