@@ -308,13 +308,13 @@ class RNNClassifier(nn.Module):
         )
         self.self_attention_pooling = nn.TransformerEncoder(
             nn.TransformerEncoderLayer(
-                d_model=LSTM_HIDDEN_SIZE * 2 if LSTM_BIDIRECTIONALITY else LSTM_HIDDEN_SIZE,
+                d_model=RNN1D_HIDDEN_SIZE * 2 if RNN1D_BIDIRECTIONAL else RNN1D_HIDDEN_SIZE,
                 nhead=1,
             ),
             num_layers=1
         )  # take the last vector of the attention to the FC
-        self.fc1 = nn.Linear(RNN1D_DOWNSAMPLER_OUT_CHANNELS * 2, 256) if RNN1D_BIDIRECTIONAL else nn.Linear(
-            RNN1D_DOWNSAMPLER_OUT_CHANNELS, 256)
+        self.fc1 = nn.Linear(RNN1D_HIDDEN_SIZE * 2, 256) if RNN1D_BIDIRECTIONAL else nn.Linear(
+            RNN1D_HIDDEN_SIZE, 256)
         self.fc2 = nn.Linear(256, 128)
         self.fc3 = nn.Linear(128, num_classes)
 
