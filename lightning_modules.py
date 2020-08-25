@@ -359,13 +359,13 @@ class L_WavenetAbstractClassifier(ptl.LightningModule):
         result.log('test_acc', accuracy, prog_bar=True)
         return result
 
-    def test_end(self, outputs):
+    def test_epoch_end(self, outputs):
+        result = self.validation_epoch_end(outputs)
         debug = False
         print('debug: test_end output is {}'.format(outputs)) if debug else None
-        result = self.validation_end(outputs)
         print('info: Testing complete.')
-        print('info: {}'.format(result))
-        return self.validation_end(outputs)
+        print(result)
+        return result
 
     def configure_optimizers(self):
         """

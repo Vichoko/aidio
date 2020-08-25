@@ -50,10 +50,8 @@ class AbstractHelper:
         gpus = json.loads(hyperparams.gpus)
         self.save_dir = models_path / model_name / experiment_name
         makedirs(self.save_dir)
-
         if 'distributed_backend' not in hyperparams:
             hyperparams.distributed_backend = 'dp'
-
         # todo: connect ddp, fix gpu specification
         # trainer with some optimizations
         self.trainer = ptl.Trainer(
