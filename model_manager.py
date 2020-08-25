@@ -4,9 +4,9 @@ A helper is a wrapper that joins a DataSet with a Trainer in a more compact way.
 import argparse
 import json
 import pathlib
+from os import listdir
 
 import pytorch_lightning as ptl
-from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import TestTubeLogger
 
 from config import makedirs, MODELS_DATA_PATH, RAW_DATA_PATH
@@ -53,6 +53,15 @@ class AbstractHelper:
         if 'distributed_backend' not in hyperparams:
             hyperparams.distributed_backend = 'dp'
         # todo: connect ddp, fix gpu specification
+        # Logger Specification
+        # We use TubeLogger for nicer structure
+        version = 1
+        logger = TestTubeLogger(
+            save_dir=self.save_dir,
+            version=version  # fixed to one to ensure checkpoint load
+        )
+        ckpt_folder = self.save_dir / 'default' / 'version_{}'.format(version) / 'checkpoints'
+        best_epoch = self.find_best_epoch(ckpt_folder)
         # trainer with some optimizations
         self.trainer = ptl.Trainer(
             gpus=gpus if len(gpus) else 0,
@@ -62,11 +71,26 @@ class AbstractHelper:
             distributed_backend='dp',  # doesnt fill on ddp
             precision=32,  # throws error on 16
             default_root_dir=self.save_dir,
-            logger=TestTubeLogger(
-                save_dir=self.save_dir,
-                version=1  # fixed to one to ensure checkpoint load
-            ),
+            logger=logger,
+            resume_from_checkpoint=str(ckpt_folder / 'epoch={}.ckpt'.format(best_epoch)),
         )
+
+    @staticmethod
+    def find_best_epoch(ckpt_folder):
+        """
+        Find the highest epoch in the Test Tube file structure.
+        Assumes 'epoch={int}.ckpt' format on files.
+        :param ckpt_folder: dir where the checpoints are being saved.
+        :return: Integer of the best_epoch
+        """
+        # Best Model Checkpoint
+        ckpt_files = listdir(ckpt_folder)  # list of strings
+        best_epoch = None
+        for filename in ckpt_files:
+            best_epoch = 0 if not best_epoch else best_epoch
+            current_epoch = int(filename[6:-5])  # based on current format: 'epoch={int}.ckpt'
+            best_epoch = current_epoch if current_epoch > best_epoch else best_epoch
+        return best_epoch
 
     def train(self):
         self.trainer.fit(self.module)
