@@ -286,15 +286,6 @@ class L_WavenetAbstractClassifier(ptl.LightningModule):
         self.eval_dataset = eval_dataset
         self.test_dataset = test_dataset
 
-    def test(self):
-        print('info: starting test')
-        test_dataloader = self.test_dataloader()[0]
-        outputs = []
-        for batch_idx, batch in tqdm.tqdm(enumerate(test_dataloader)):
-            outputs.append(self.test_step(batch, batch_idx))
-        self.test_epoch_end(outputs)
-        print('info: ending test')
-
     def forward(self, x):
         """
         No special modification required for lightning, define as you normally would
@@ -355,14 +346,6 @@ class L_WavenetAbstractClassifier(ptl.LightningModule):
         result = ptl.EvalResult()
         result.log('test_loss', loss, prog_bar=True)
         result.log('test_acc', accuracy, prog_bar=True)
-        return result
-
-    def test_epoch_end(self, outputs):
-        result = self.validation_epoch_end(outputs)
-        debug = False
-        print('debug: test_end output is {}'.format(outputs)) if debug else None
-        print('info: Testing complete.')
-        print(result)
         return result
 
     def configure_optimizers(self):
