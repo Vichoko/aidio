@@ -289,13 +289,11 @@ class L_WavenetAbstractClassifier(ptl.LightningModule):
     def test(self):
         print('info: starting test')
         test_dataloader = self.test_dataloader()[0]
-        val_out = []
+        outputs = []
         for batch_idx, batch in tqdm.tqdm(enumerate(test_dataloader)):
-            val_out.append(self.validation_step(batch, batch_idx))
-        res = self.validation_end(val_out)
-        print(res['log'])
+            outputs.append(self.test_step(batch, batch_idx))
+        self.test_epoch_end(outputs)
         print('info: ending test')
-        return 0
 
     def forward(self, x):
         """
