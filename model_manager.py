@@ -84,8 +84,8 @@ class AbstractHelper:
         :return: Integer of the highest epoch reached by the checkpoints.
         """
         ckpt_files = listdir(ckpt_folder)  # list of strings
-        epochs = [int(filename[6:-5]) for filename in ckpt_files]
-        return epochs.index(max(epochs))
+        epochs = [int(filename[6:-5]) for filename in ckpt_files]  # 'epoch={int}.ckpt' filename format
+        return ckpt_files[epochs.index(max(epochs))]
 
     def train(self):
         self.trainer.fit(self.module)
