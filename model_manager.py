@@ -81,16 +81,11 @@ class AbstractHelper:
         Find the highest epoch in the Test Tube file structure.
         Assumes 'epoch={int}.ckpt' format on files.
         :param ckpt_folder: dir where the checpoints are being saved.
-        :return: Integer of the best_epoch
+        :return: Integer of the highest epoch reached by the checkpoints.
         """
-        # Best Model Checkpoint
         ckpt_files = listdir(ckpt_folder)  # list of strings
-        best_epoch = None
-        for filename in ckpt_files:
-            best_epoch = 0 if not best_epoch else best_epoch
-            current_epoch = int(filename[6:-5])  # based on current format: 'epoch={int}.ckpt'
-            best_epoch = current_epoch if current_epoch > best_epoch else best_epoch
-        return best_epoch
+        epochs = [int(filename[6:-5]) for filename in ckpt_files]
+        return epochs.index(max(epochs))
 
     def train(self):
         self.trainer.fit(self.module)
