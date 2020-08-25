@@ -252,6 +252,13 @@ class Conv1DClassifier(nn.Module):
                     dilation=CONV1D_DILATION,
                 )
             )
+        self.self_attention_pooling = nn.TransformerEncoder(
+            nn.TransformerEncoderLayer(
+                d_model=CONV1D_FEATURE_DIM,
+                nhead=1,
+            ),
+            num_layers=1
+        )  # take the last vector of the attention to the FC
         self.fc1 = nn.Linear(CONV1D_FEATURE_DIM, CONV1D_FC1_OUTPUT_DIM)
         self.fc2 = nn.Linear(CONV1D_FC1_OUTPUT_DIM, CONV1D_FC2_OUTPUT_DIM)
         self.fc3 = nn.Linear(CONV1D_FC2_OUTPUT_DIM, num_classes)
@@ -262,8 +269,10 @@ class Conv1DClassifier(nn.Module):
         # nn.Conv1D: (N, Cin, Lin) -> (N, Cout, Lout)
         for conv_layer in self.conv_layers:
             x = conv_layer(x)
-        ## x.max(2): (N, Cout, Lout) -> (N, Cout)
-        x, _ = x.max(2)  # max pooling over the sequence dim; drop sequence axis
+        x = x.transpose(1, 2)  # (N, Cout, Lout) -> (N, Lout, Cout)
+        # transformer expected input is n_data, n_sequence, wavenet_channels
+        x = self.self_attention_pooling(x)
+        x = x[:, -1, :]
         x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))
         x = self.fc3(x)
