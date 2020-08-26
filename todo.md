@@ -62,10 +62,12 @@
     
     * Conv1d
         * 256-4000-0.1   svs_svd_2_2    val_a=0.57
+        * 2048-3000-0.1 svs_svd_2_4 val_a=0.487
         
     * Conv1d + LSTM
         * 768-512-8-2-2-4   svs_svd_2_4 val_a=0.48
         * svs_svd_2_10    val_a=0.48
+        * svs_svd_2_3   val_a=0.48
         
 * Correr LSTM para ver como funciona
     * Disminuir algo para que quepa en VRAM

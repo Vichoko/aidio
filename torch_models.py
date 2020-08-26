@@ -204,6 +204,13 @@ class WaveNetTransformerClassifier(nn.Module):
             ,
             num_layers=WNTF_TRANSFORMER_N_LAYERS
         )
+        self.self_attention_pooling = nn.TransformerEncoder(
+            nn.TransformerEncoderLayer(
+                d_model=WNTF_TRANSFORMER_D_MODEL,
+                nhead=1,
+            ),
+            num_layers=1
+        )  # take the last vector of the attention to the FC
         self.fc1 = nn.Linear(WNTF_TRANSFORMER_D_MODEL, WNTF_FC1_OUTPUT_DIM)
         self.fc2 = nn.Linear(WNTF_FC1_OUTPUT_DIM, WNTF_FC2_OUTPUT_DIM)
         self.fc3 = nn.Linear(WNTF_FC2_OUTPUT_DIM, num_classes)
@@ -216,8 +223,9 @@ class WaveNetTransformerClassifier(nn.Module):
         x = x.transpose(1, 2)
         x = self.positional_encoder(x)
         x = self.transformer_encoder(x)  # shape  n_data, n_sequence, d_model
-        # x = x[:, -1, :]  # pick the last vector from the output as the sentence embedding
-        x, _ = x.max(1)  # max pooling over the sequence dim; drop sequence axis
+        x = self.self_attention_pooling(x)
+        x = x[:, -1, :]  # pick the last vector from the output as the sentence embedding
+        # x, _ = x.max(1)  # max pooling over the sequence dim; drop sequence axis
         x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))
         x = self.fc3(x)
