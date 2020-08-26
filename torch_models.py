@@ -19,7 +19,8 @@ from config import WAVENET_LAYERS, WAVENET_BLOCKS, WAVENET_DILATION_CHANNELS, WA
     RNN1D_DROPOUT_PROB, RNN1D_HIDDEN_SIZE, RNN1D_LSTM_LAYERS, RNN1D_BIDIRECTIONAL, RNN1D_DOWNSAMPLER_STRIDE, \
     RNN1D_DOWNSAMPLER_KERNEL_SIZE, RNN1D_DOWNSAMPLER_DILATION, CONV1D_KERNEL_SIZE, CONV1D_STRIDE, CONV1D_DILATION, \
     LSTM_FC1_OUTPUT_DIM, LSTM_FC2_OUTPUT_DIM, CONV1D_FC1_OUTPUT_DIM, CONV1D_FC2_OUTPUT_DIM, WNTF_FC1_OUTPUT_DIM, \
-    WNTF_FC2_OUTPUT_DIM, WNTF_TRANSFORMER_DIM_FEEDFORWARD, LSTM_BIDIRECTIONALITY
+    WNTF_FC2_OUTPUT_DIM, WNTF_TRANSFORMER_DIM_FEEDFORWARD, LSTM_BIDIRECTIONALITY, WAVENET_FC1_OUTPUT_DIM, \
+    WAVENET_FC2_OUTPUT_DIM
 from util.wavenet.wavenet_model import WaveNetModel
 
 
@@ -287,6 +288,61 @@ class Conv1DClassifier(nn.Module):
         return x
 
 
+class Conv2DClassifier(nn.Module):
+    def __call__(self, *input, **kwargs) -> typing.Any:
+        """
+        Hack to fix '(input: (Any, ...), kwargs: dict) -> Any' warning in PyCharm auto-complete.
+        :param input:
+        :param kwargs:
+        :return:
+        """
+        return super().__call__(*input, **kwargs)
+
+    def __init__(self, num_classes):
+        super(Conv2DClassifier, self).__init__()
+        # first encoder
+        # neural audio embeddings
+        # captures local representations through convolutions
+        # note: x.shape is (bs, 1, ~80000)
+        n_layers = int(math.log2(CONV1D_FEATURE_DIM))
+        self.conv_layers = nn.ModuleList()
+        for layer_idx in range(n_layers):
+            self.conv_layers.append(
+                nn.Conv1d(
+                    in_channels=2 ** layer_idx,
+                    out_channels=2 ** (layer_idx + 1),
+                    kernel_size=CONV1D_KERNEL_SIZE,
+                    stride=CONV1D_STRIDE,
+                    dilation=CONV1D_DILATION,
+                )
+            )
+        self.self_attention_pooling = nn.TransformerEncoder(
+            nn.TransformerEncoderLayer(
+                d_model=CONV1D_FEATURE_DIM,
+                nhead=1,
+            ),
+            num_layers=1
+        )  # take the last vector of the attention to the FC
+        self.fc1 = nn.Linear(CONV1D_FEATURE_DIM, CONV1D_FC1_OUTPUT_DIM)
+        self.fc2 = nn.Linear(CONV1D_FC1_OUTPUT_DIM, CONV1D_FC2_OUTPUT_DIM)
+        self.fc3 = nn.Linear(CONV1D_FC2_OUTPUT_DIM, num_classes)
+
+    def forward(self, x):
+        # assert x.shape is (BS, In_CHNL, ~80000) --> it is!
+        # assert In_CHNL is 1 or 2 --> it is 1.
+        # nn.Conv1D: (N, Cin, Lin) -> (N, Cout, Lout)
+        for conv_layer in self.conv_layers:
+            x = conv_layer(x)
+        x = x.transpose(1, 2)  # (N, Cout, Lout) -> (N, Lout, Cout)
+        # transformer expected input is n_data, n_sequence, wavenet_channels
+        x = self.self_attention_pooling(x)
+        x = x[:, -1, :]
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
+        x = self.fc3(x)
+        return x
+
+
 class RNNClassifier(nn.Module):
     def __call__(self, *input, **kwargs) -> typing.Any:
         """
@@ -465,11 +521,18 @@ class WaveNetClassifier(nn.Module):
             WAVENET_OUTPUT_LENGTH,
             WAVENET_KERNEL_SIZE)
         # for now output length is fixed to 159968
+        self.self_attention_pooling = nn.TransformerEncoder(
+            nn.TransformerEncoderLayer(
+                d_model=self.wavenet.end_channels,
+                nhead=1,
+            ),
+            num_layers=1
+        )  # take the last vector of the attention to the FC
         self.fc1 = nn.Linear(self.wavenet.end_channels,
-                             120)  # 6*6 from image dimension
-        self.fc2 = nn.Linear(120, 84)
-        self.fc3 = nn.Linear(84, num_classes)
-        self.wavenet_pooling = 'max'
+                             WAVENET_FC1_OUTPUT_DIM)  # 6*6 from image dimension
+        self.fc2 = nn.Linear(WAVENET_FC1_OUTPUT_DIM, WAVENET_FC2_OUTPUT_DIM)
+        self.fc3 = nn.Linear(WAVENET_FC2_OUTPUT_DIM, num_classes)
+        self.wavenet_pooling = 'self_attention'
 
     def forward(self, x):
         # Encoder
@@ -480,6 +543,12 @@ class WaveNetClassifier(nn.Module):
             x = torch.mean(x, dim=2)
         elif self.wavenet_pooling == 'max':
             x, _ = torch.max(x, dim=2)
+        elif self.wavenet_pooling == 'self_attention':
+            x = x.transpose(1, 2)
+            # transformer expected input is n_data, n_sequence, wavenet_channels
+            x = self.self_attention_pooling(x)
+            # todo: check if can reduce more smarter way
+            x = x[:, -1, :]
         else:
             raise NotImplementedError()
         # shape is (batch_size, wavenet_out_channel)

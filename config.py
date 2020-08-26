@@ -104,7 +104,6 @@ GMM_COMPONENT_NUMBER = 64
 GMM_RANDOM_CROM_FRAME_LENGTH = 17 * 1000  # 1000 are 1 second; used on data loader
 GMM_FIT_FRAME_LIMIT = 1000000 * GMM_RANDOM_CROM_FRAME_LENGTH  # 1000 are 1 second; 1000 * 60 is 1 minute; The frame limit is per-class as the fit is class-wise
 
-
 # RNN 1D Classifier
 RNN1D_BATCH_SIZE = 4000
 RNN1D_LEARNING_RATE = 0.01
@@ -129,13 +128,17 @@ CONV1D_DILATION = 1
 # FC
 CONV1D_FC1_OUTPUT_DIM = 256
 CONV1D_FC2_OUTPUT_DIM = 64
+
 # WaveNet General
-# Wavenet alone Layers
+# Wavenet Vanilla Layers
 WAVENET_BATCH_SIZE = 24
 WAVENET_LAYERS = 3
 WAVENET_BLOCKS = 2
-WAVENET_LEARNING_RATE = 0.0001
-WAVENET_WEIGHT_DECAY = 0.0000001
+WAVENET_LEARNING_RATE = 0.001
+WAVENET_WEIGHT_DECAY = 0.0
+# FC
+WAVENET_FC1_OUTPUT_DIM = 256
+WAVENET_FC2_OUTPUT_DIM = 64
 # Downsampling (for sentence encoder aproaches)
 WAVENET_POOLING_KERNEL_SIZE = 64
 WAVENET_POOLING_STRIDE = 64
@@ -189,6 +192,7 @@ RESNET_V2_VERSION = 2
 RESNET_V2_BATCH_SIZE = 32  # orig paper trained all networks with batch_size=128
 RESNET_V2_EPOCHS = 200
 RESNET_V2_DEPTH = 3 * 9 + 2
+RESNET_V2_LR = 0.001
 RESNET_MIN_DIM = 29  # discovered by A/B testing
 
 # Simpleconv

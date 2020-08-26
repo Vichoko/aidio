@@ -14,7 +14,7 @@ from config import WAVENET_BATCH_SIZE, DATA_LOADER_NUM_WORKERS, RESNET_V2_BATCH_
     WAVENET_WEIGHT_DECAY, WNTF_BATCH_SIZE, WNLSTM_BATCH_SIZE, WAVEFORM_MAX_SEQUENCE_LENGTH, GMM_PREDICT_BATCH_SIZE, \
     GMM_TRAIN_BATCH_SIZE, CONV1D_LEARNING_RATE, CONV1D_WEIGHT_DECAY, CONV1D_BATCH_SIZE, WNTF_LEARNING_RATE, \
     WNTF_WEIGHT_DECAY, WNLSTM_LEARNING_RATE, WNLSTM_WEIGHT_DECAY, RNN1D_BATCH_SIZE, RNN1D_LEARNING_RATE, \
-    RNN1D_WEIGHT_DECAY
+    RNN1D_WEIGHT_DECAY, RESNET_V2_LR
 from loaders import ClassSampler
 from torch_models import WaveNetTransformerClassifier, GMMClassifier, WaveNetClassifier, \
     Conv1DClassifier, RNNClassifier, WaveNetLSTMClassifier
@@ -535,6 +535,9 @@ class L_ResNext50(ptl.LightningModule):
     def __init__(self, hparams, num_classes, train_dataset, eval_dataset, test_dataset):
         super(L_ResNext50, self).__init__()
         self.hparams = hparams
+        self.wd = hparams.weight_decay
+        self.lr = hparams.learning_rate
+        self.batch_size = hparams.batch_size
         self.loss = torch.nn.CrossEntropyLoss()
         self.train_dataset = train_dataset
         self.eval_dataset = eval_dataset
@@ -542,10 +545,9 @@ class L_ResNext50(ptl.LightningModule):
         # build model
         self.model = resnext50_32x4d(num_classes=num_classes)
         input_channels = 1
-        initial_inplanes = 64
-        self.model.conv1 = Conv2d(input_channels, initial_inplanes, kernel_size=7, stride=2, padding=3,
+        self.model.conv1 = Conv2d(input_channels, 64, kernel_size=7, stride=2, padding=3,
                                   bias=False)
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=hparams.learning_rate)
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
 
     # ---------------------
     # TRAINING
@@ -567,19 +569,11 @@ class L_ResNext50(ptl.LightningModule):
         # forward pass
         x, y = batch['x'], batch['y']
         y_pred = self.forward(x)
-
         # calculate loss
-        loss_val = self.loss(y_pred, y)
-
-        tqdm_dict = {'train_loss': loss_val}
-        output = OrderedDict({
-            'loss': loss_val,
-            'progress_bar': tqdm_dict,
-            'log': tqdm_dict
-        })
-
-        # can also return just a scalar instead of a dict (return loss_val)
-        return output
+        loss = self.loss(y_pred, y)
+        result = ptl.TrainResult(loss)
+        result.log('train_loss', loss, prog_bar=True)
+        return result
 
     def validation_step(self, batch, batch_idx):
         """
@@ -589,57 +583,38 @@ class L_ResNext50(ptl.LightningModule):
         """
         x, y = batch['x'], batch['y']
         y_pred = self.forward(x)
-
         # calculate loss
-        loss_val = self.loss(y_pred, y)
-
+        loss = self.loss(y_pred, y)
         # acc
         labels_hat = torch.argmax(y_pred, dim=1)
-        val_acc = torch.sum(y == labels_hat).item() / (len(y) * 1.0)
-        val_acc = torch.tensor(val_acc)
-
+        accuracy = torch.sum(y == labels_hat).item() / (len(y) * 1.0)
+        accuracy = torch.tensor(accuracy)
         if self.on_gpu:
-            val_acc = val_acc.cuda(loss_val.device.index)
+            accuracy = accuracy.cuda(loss.device.index)
+        result = ptl.EvalResult(checkpoint_on=loss)
+        result.log('val_loss', loss, prog_bar=True)
+        result.log('val_acc', accuracy, prog_bar=True)
+        return result
 
-        output = OrderedDict({
-            'val_loss': loss_val,
-            'val_acc': val_acc,
-        })
-
-        # can also return just a scalar instead of a dict (return loss_val)
-        return output
-
-    def validation_end(self, outputs):
+    def test_step(self, batch, batch_idx):
         """
-        Called at the end of validation to aggregate outputs
-        :param outputs: list of individual outputs of each validation step
+        Lightning calls this inside the validation loop
+        :param batch:
         :return:
         """
-        # if returned a scalar from validation_step, outputs is a list of tensor scalars
-        # we return just the average in this case (if we want)
-        # return torch.stack(outputs).mean()
-
-        val_loss_mean = 0
-        val_acc_mean = 0
-        for output in outputs:
-            val_loss = output['val_loss']
-
-            # reduce manually when using dp
-            if self.trainer.use_dp or self.trainer.use_ddp2:
-                val_loss = torch.mean(val_loss)
-            val_loss_mean += val_loss
-
-            # reduce manually when using dp
-            val_acc = output['val_acc']
-            if self.trainer.use_dp or self.trainer.use_ddp2:
-                val_acc = torch.mean(val_acc)
-
-            val_acc_mean += val_acc
-
-        val_loss_mean /= len(outputs)
-        val_acc_mean /= len(outputs)
-        tqdm_dict = {'val_loss': val_loss_mean, 'val_acc': val_acc_mean}
-        result = {'progress_bar': tqdm_dict, 'log': tqdm_dict, 'val_loss': val_loss_mean}
+        x, y = batch['x'], batch['y']
+        y_pred = self.forward(x)
+        # calculate loss
+        loss = self.loss(y_pred, y)
+        # acc
+        labels_hat = torch.argmax(y_pred, dim=1)
+        accuracy = torch.sum(y == labels_hat).item() / (len(y) * 1.0)
+        accuracy = torch.tensor(accuracy)
+        if self.on_gpu:
+            accuracy = accuracy.cuda(loss.device.index)
+        result = ptl.EvalResult(checkpoint_on=loss)
+        result.log('test_loss', loss, prog_bar=True)
+        result.log('test_acc', accuracy, prog_bar=True)
         return result
 
     # ---------------------
@@ -653,18 +628,15 @@ class L_ResNext50(ptl.LightningModule):
         return [self.optimizer]
 
     def train_dataloader(self):
-        # logging.info('training data loader called')
-        return DataLoader(self.train_dataset, batch_size=WAVENET_BATCH_SIZE, shuffle=True,
+        return DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=True,
                           num_workers=DATA_LOADER_NUM_WORKERS)
 
     def val_dataloader(self):
-        # logging.info('val data loader called')
-        return DataLoader(self.eval_dataset, batch_size=WAVENET_BATCH_SIZE, shuffle=True,
+        return DataLoader(self.eval_dataset, batch_size=self.batch_size, shuffle=True,
                           num_workers=DATA_LOADER_NUM_WORKERS)
 
     def test_dataloader(self):
-        # logging.info('test data loader called')
-        return DataLoader(self.test_dataset, batch_size=WAVENET_BATCH_SIZE, shuffle=True,
+        return DataLoader(self.test_dataset, batch_size=self.batch_size, shuffle=True,
                           num_workers=DATA_LOADER_NUM_WORKERS)
 
     @staticmethod
@@ -676,7 +648,7 @@ class L_ResNext50(ptl.LightningModule):
         :return:
         """
         parser = ArgumentParser(parents=[parent_parser])
-        parser.add_argument('--learning_rate', default=0.001, type=float)
+        parser.add_argument('--learning_rate', default=RESNET_V2_LR, type=float)
         parser.add_argument('--batch_size', default=RESNET_V2_BATCH_SIZE, type=int)
         parser.add_argument('--gpus', default=0, type=int)
         parser.add_argument(
