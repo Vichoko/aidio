@@ -4,15 +4,15 @@ A helper is a wrapper that joins a DataSet with a Trainer in a more compact way.
 import argparse
 import json
 import pathlib
+from os import listdir
 
 import pytorch_lightning as ptl
-from pytorch_lightning.callbacks import EarlyStopping
-from pytorch_lightning.logging import TestTubeLogger
+from pytorch_lightning.loggers import TestTubeLogger
 
-from config import makedirs, MODELS_DATA_PATH, RAW_DATA_PATH, EARLY_STOP_PATIENCE
-from loaders import CepstrumDataset, WaveformDataset, ExperimentDataset
+from config import makedirs, MODELS_DATA_PATH, RAW_DATA_PATH
 from lightning_modules import L_ResNext50, L_WavenetTransformerClassifier, L_WavenetLSTMClassifier, L_GMMClassifier, \
-    L_WavenetClassifier
+    L_WavenetClassifier, L_Conv1DClassifier, L_RNNClassifier
+from loaders import CepstrumDataset, WaveformDataset, ExperimentDataset
 
 
 class AbstractHelper:
@@ -50,30 +50,48 @@ class AbstractHelper:
         gpus = json.loads(hyperparams.gpus)
         self.save_dir = models_path / model_name / experiment_name
         makedirs(self.save_dir)
-        logger = TestTubeLogger(
-            save_dir=self.save_dir,
-            version=1  # An existing version with a saved checkpoint
-        )
         if 'distributed_backend' not in hyperparams:
             hyperparams.distributed_backend = 'dp'
-
-        early_stop_callback = EarlyStopping(
-            monitor='val_loss',
-            min_delta=0.00,
-            patience=EARLY_STOP_PATIENCE,
-            verbose=False,
-            mode='min'
+        # todo: connect ddp, fix gpu specification
+        # Logger Specification
+        # We use TubeLogger for nicer structure
+        version = 1
+        logger = TestTubeLogger(
+            save_dir=self.save_dir,
+            version=version  # fixed to one to ensure checkpoint load
         )
+        ckpt_folder = self.save_dir / 'default' / 'version_{}'.format(version) / 'checkpoints'
+        resume_from_checkpoint = self.find_best_epoch(ckpt_folder)
+        # trainer with some optimizations
         self.trainer = ptl.Trainer(
             gpus=gpus if len(gpus) else 0,
-            distributed_backend=hyperparams.distributed_backend,
+            profiler=False,  # for once is good
+            auto_scale_batch_size=False,  # i prefer manually
+            auto_lr_find=False,  # mostly diverges
+            distributed_backend='dp',  # doesnt fill on ddp
+            precision=32,  # throws error on 16
+            default_root_dir=self.save_dir,
             logger=logger,
-            default_save_path=self.save_dir,
-            early_stop_callback=early_stop_callback,
-            nb_sanity_val_steps=0,
-            amp_level='O2',
-            use_amp=False
+            resume_from_checkpoint=resume_from_checkpoint
         )
+
+    @staticmethod
+    def find_best_epoch(ckpt_folder):
+        """
+        Find the highest epoch in the Test Tube file structure.
+        Assumes 'epoch={int}.ckpt' format on files.
+        :param ckpt_folder: dir where the checpoints are being saved.
+        :return: string of the path to the checkpoint. Or None if no checkpoints found.
+        """
+        try:
+            ckpt_files = listdir(ckpt_folder)  # list of strings
+            epochs = [int(filename[6:-5]) for filename in ckpt_files]  # 'epoch={int}.ckpt' filename format
+            resume_from_checkpoint = str(ckpt_folder / 'epoch={}.ckpt'.format(max(epochs)))
+        except FileNotFoundError:
+            resume_from_checkpoint = None
+        except ValueError:
+            resume_from_checkpoint = None
+        return resume_from_checkpoint
 
     def train(self):
         self.trainer.fit(self.module)
@@ -94,7 +112,7 @@ class AbstractHelper:
             Error
         :return:
         """
-        #self.trainer.run_evaluation(test=False)
+        # self.trainer.run_evaluation(test=False)
         return
 
 
@@ -121,6 +139,20 @@ class WavenetHelper(AbstractHelper):
     dataset = WaveformDataset
     # source_feature_name = SingingVoiceSeparationOpenUnmixFeatureExtractor.feature_name
     lightning_module = L_WavenetClassifier
+
+
+class Conv1dHelper(AbstractHelper):
+    model_name = 'conv1d'
+    dataset = WaveformDataset
+    # source_feature_name = SingingVoiceSeparationOpenUnmixFeatureExtractor.feature_name
+    lightning_module = L_Conv1DClassifier
+
+
+class RNNHelper(AbstractHelper):
+    model_name = 'rnn'
+    dataset = WaveformDataset
+    # source_feature_name = SingingVoiceSeparationOpenUnmixFeatureExtractor.feature_name
+    lightning_module = L_RNNClassifier
 
 
 class GMMClassifierHelper(AbstractHelper):
@@ -157,7 +189,9 @@ helpers = {
     WavenetTransformerHelper.model_name: WavenetTransformerHelper,
     WavenetLSTMHelper.model_name: WavenetLSTMHelper,
     GMMClassifierHelper.model_name: GMMClassifierHelper,
-    WavenetHelper.model_name: WavenetHelper
+    WavenetHelper.model_name: WavenetHelper,
+    Conv1dHelper.model_name: Conv1dHelper,
+    RNNHelper.model_name: RNNHelper,
 }
 
 

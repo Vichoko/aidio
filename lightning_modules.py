@@ -12,9 +12,12 @@ from torchvision.models import resnext50_32x4d
 
 from config import WAVENET_BATCH_SIZE, DATA_LOADER_NUM_WORKERS, RESNET_V2_BATCH_SIZE, WAVENET_LEARNING_RATE, \
     WAVENET_WEIGHT_DECAY, WNTF_BATCH_SIZE, WNLSTM_BATCH_SIZE, WAVEFORM_MAX_SEQUENCE_LENGTH, GMM_PREDICT_BATCH_SIZE, \
-    GMM_TRAIN_BATCH_SIZE
+    GMM_TRAIN_BATCH_SIZE, CONV1D_LEARNING_RATE, CONV1D_WEIGHT_DECAY, CONV1D_BATCH_SIZE, WNTF_LEARNING_RATE, \
+    WNTF_WEIGHT_DECAY, WNLSTM_LEARNING_RATE, WNLSTM_WEIGHT_DECAY, RNN1D_BATCH_SIZE, RNN1D_LEARNING_RATE, \
+    RNN1D_WEIGHT_DECAY
 from loaders import ClassSampler
-from torch_models import WaveNetTransformerClassifier, GMMClassifier, WaveNetLSTMClassifier, WaveNetClassifier
+from torch_models import WaveNetTransformerClassifier, GMMClassifier, WaveNetClassifier, \
+    Conv1DClassifier, RNNClassifier, WaveNetLSTMClassifier
 
 
 class DummyOptimizer(torch.optim.Optimizer):
@@ -116,20 +119,8 @@ class L_GMMClassifier(ptl.LightningModule):
         x, y = batch['x'], batch['y']
         print('debug: batch is {}, labels are {}'.format(batch_idx, y)) if debug else None
         self.model.fit(x, y)
-        print('info: Getting train data metrics...')
-        # y_pred = self.forward(x)
-        # # as torch methods expect first dim to be N, add first dimension to 1
-        # # calculate loss
-        # loss_val = self.loss(y_pred, y)
-        # tqdm_dict = {'train_loss': loss_val}
-        output = OrderedDict({
-            # 'loss': loss_val,
-            # 'progress_bar': tqdm_dict,
-            # 'log': tqdm_dict
-        })
-        print('info: Done!')
-        # can also return just a scalar instead of a dict (return loss_val)
-        return output
+        result = ptl.TrainResult()
+        return result
 
     def backward(self, use_amp, loss, optimizer):
         return
@@ -229,7 +220,6 @@ class L_GMMClassifier(ptl.LightningModule):
         """
         return [self.optimizer]
 
-    @ptl.data_loader
     def train_dataloader(self):
         # logging.info('training data loader called')
         return DataLoader(
@@ -238,7 +228,6 @@ class L_GMMClassifier(ptl.LightningModule):
             batch_sampler=ClassSampler(self.num_classes, self.train_dataset.labels, self.train_batch_size),
         )
 
-    @ptl.data_loader
     def val_dataloader(self):
         # logging.info('val data loader called')
         return DataLoader(
@@ -247,7 +236,6 @@ class L_GMMClassifier(ptl.LightningModule):
             num_workers=DATA_LOADER_NUM_WORKERS,
         )
 
-    @ptl.data_loader
     def test_dataloader(self):
         # logging.info('test data loader called')
         return DataLoader(
@@ -286,17 +274,6 @@ class L_WavenetAbstractClassifier(ptl.LightningModule):
         self.eval_dataset = eval_dataset
         self.test_dataset = test_dataset
 
-    def test(self):
-        print('info: starting test')
-        test_dataloader = self.test_dataloader()[0]
-        val_out = []
-        for batch_idx, batch in tqdm.tqdm(enumerate(test_dataloader)):
-            val_out.append(self.validation_step(batch, batch_idx))
-        res = self.validation_end(val_out)
-        print(res['log'])
-        print('info: ending test')
-        return 0
-
     def forward(self, x):
         """
         No special modification required for lightning, define as you normally would
@@ -315,15 +292,10 @@ class L_WavenetAbstractClassifier(ptl.LightningModule):
         x, y = batch['x'], batch['y']
         y_pred = self.forward(x)
         # calculate loss
-        loss_val = self.loss(y_pred, y)
-        tqdm_dict = {'train_loss': loss_val}
-        output = OrderedDict({
-            'loss': loss_val,
-            'progress_bar': tqdm_dict,
-            'log': tqdm_dict
-        })
-        # can also return just a scalar instead of a dict (return loss_val)
-        return output
+        loss = self.loss(y_pred, y)
+        result = ptl.TrainResult(loss)
+        result.log('train_loss', loss, prog_bar=True)
+        return result
 
     def validation_step(self, batch, batch_idx):
         """
@@ -334,58 +306,35 @@ class L_WavenetAbstractClassifier(ptl.LightningModule):
         x, y = batch['x'], batch['y']
         y_pred = self.forward(x)
         # calculate loss
-        loss_val = self.loss(y_pred, y)
-        # acc
+        loss = self.loss(y_pred, y)
+        # calculate accurracy
         labels_hat = torch.argmax(y_pred, dim=1)
-        val_acc = torch.sum(y == labels_hat).item() / (len(y) * 1.0)
-        val_acc = torch.tensor(val_acc)
+        accuracy = torch.sum(y == labels_hat).item() / (len(y) * 1.0)
+        accuracy = torch.tensor(accuracy)
         if self.on_gpu:
-            val_acc = val_acc.cuda(loss_val.device.index)
-        output = OrderedDict({
-            'val_loss': loss_val,
-            'val_acc': val_acc,
-        })
-        # can also return just a scalar instead of a dict (return loss_val)
-        return output
-
-    def validation_end(self, outputs):
-        """
-        Called at the end of validation to aggregate outputs
-        :param outputs: list of individual outputs of each validation step
-        :return:
-        """
-        # if returned a scalar from validation_step, outputs is a list of tensor scalars
-        # we return just the average in this case (if we want)
-        # return torch.stack(outputs).mean()
-        val_loss_mean = 0
-        val_acc_mean = 0
-        for output in outputs:
-            val_loss = output['val_loss']
-            # reduce manually when using dp
-            if self.trainer.use_dp or self.trainer.use_ddp2:
-                val_loss = torch.mean(val_loss)
-            val_loss_mean += val_loss
-            # reduce manually when using dp
-            val_acc = output['val_acc']
-            if self.trainer.use_dp or self.trainer.use_ddp2:
-                val_acc = torch.mean(val_acc)
-            val_acc_mean += val_acc
-        val_loss_mean /= len(outputs)
-        val_acc_mean /= len(outputs)
-        tqdm_dict = {'val_loss': val_loss_mean, 'val_acc': val_acc_mean}
-        result = {'progress_bar': tqdm_dict, 'log': tqdm_dict, 'val_loss': val_loss_mean}
+            accuracy = accuracy.cuda(loss.device.index)
+        # Checkpoint model based on validation loss
+        result = ptl.EvalResult(early_stop_on=None, checkpoint_on=loss)
+        result.log('val_loss', loss, prog_bar=True)
+        result.log('val_acc', accuracy, prog_bar=True)
         return result
 
     def test_step(self, batch, batch_idx):
-        return self.validation_step(batch, batch_idx)
-
-    def test_end(self, outputs):
-        debug = False
-        print('debug: test_end output is {}'.format(outputs)) if debug else None
-        result = self.validation_end(outputs)
-        print('info: Testing complete.')
-        print('info: {}'.format(result['log']))
-        return self.validation_end(outputs)
+        x, y = batch['x'], batch['y']
+        y_pred = self.forward(x)
+        # calculate loss
+        loss = self.loss(y_pred, y)
+        # calculate accurracy
+        labels_hat = torch.argmax(y_pred, dim=1)
+        accuracy = torch.sum(y == labels_hat).item() / (len(y) * 1.0)
+        accuracy = torch.tensor(accuracy)
+        if self.on_gpu:
+            accuracy = accuracy.cuda(loss.device.index)
+        # Checkpoint model based on validation loss
+        result = ptl.EvalResult()
+        result.log('test_loss', loss, prog_bar=True)
+        result.log('test_acc', accuracy, prog_bar=True)
+        return result
 
     def configure_optimizers(self):
         """
@@ -394,17 +343,17 @@ class L_WavenetAbstractClassifier(ptl.LightningModule):
         """
         return [self.optimizer]
 
-    @ptl.data_loader
     def train_dataloader(self):
-        return DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=True, num_workers=DATA_LOADER_NUM_WORKERS)
+        return DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=True,
+                          num_workers=DATA_LOADER_NUM_WORKERS)
 
-    @ptl.data_loader
     def val_dataloader(self):
-        return DataLoader(self.eval_dataset, batch_size=self.batch_size, shuffle=True, num_workers=DATA_LOADER_NUM_WORKERS)
+        return DataLoader(self.eval_dataset, batch_size=self.batch_size, shuffle=True,
+                          num_workers=DATA_LOADER_NUM_WORKERS)
 
-    @ptl.data_loader
     def test_dataloader(self):
-        return DataLoader(self.test_dataset, batch_size=self.batch_size, shuffle=True, num_workers=DATA_LOADER_NUM_WORKERS)
+        return DataLoader(self.test_dataset, batch_size=self.batch_size, shuffle=True,
+                          num_workers=DATA_LOADER_NUM_WORKERS)
 
 
 class L_WavenetClassifier(L_WavenetAbstractClassifier):
@@ -441,6 +390,39 @@ class L_WavenetClassifier(L_WavenetAbstractClassifier):
         return parser
 
 
+class L_Conv1DClassifier(L_WavenetAbstractClassifier):
+    """
+    Sample model to show how to define a template
+    """
+
+    def __init__(self, hparams, num_classes, train_dataset, eval_dataset, test_dataset, *args, **kwargs):
+        super().__init__(hparams, num_classes, train_dataset, eval_dataset, test_dataset, *args, **kwargs)
+        # build model
+        self.model = Conv1DClassifier(num_classes)
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr,
+                                          weight_decay=self.wd)
+
+    @staticmethod
+    def add_model_specific_args(parent_parser, root_dir):  # pragma: no cover
+        """
+        Parameters you define here will be available to your model through self.hparams
+        :param parent_parser:
+        :param root_dir:
+        :return:
+        """
+        parser = ArgumentParser(parents=[parent_parser])
+        parser.add_argument('--learning_rate', default=CONV1D_LEARNING_RATE, type=float)
+        parser.add_argument('--weight_decay', default=CONV1D_WEIGHT_DECAY, type=float)
+        parser.add_argument('--batch_size', default=CONV1D_BATCH_SIZE, type=int)
+        parser.add_argument(
+            '--distributed_backend',
+            type=str,
+            default='dp',
+            help='supports three options dp, ddp, ddp2'
+        )
+        return parser
+
+
 class L_WavenetTransformerClassifier(L_WavenetAbstractClassifier):
     """
     Sample model to show how to define a template
@@ -467,8 +449,8 @@ class L_WavenetTransformerClassifier(L_WavenetAbstractClassifier):
         :return:
         """
         parser = ArgumentParser(parents=[parent_parser])
-        parser.add_argument('--learning_rate', default=WAVENET_LEARNING_RATE, type=float)
-        parser.add_argument('--weight_decay', default=WAVENET_WEIGHT_DECAY, type=float)
+        parser.add_argument('--learning_rate', default=WNTF_LEARNING_RATE, type=float)
+        parser.add_argument('--weight_decay', default=WNTF_WEIGHT_DECAY, type=float)
         parser.add_argument('--batch_size', default=WNTF_BATCH_SIZE, type=int)
         parser.add_argument(
             '--distributed_backend',
@@ -500,9 +482,42 @@ class L_WavenetLSTMClassifier(L_WavenetAbstractClassifier):
         :return:
         """
         parser = ArgumentParser(parents=[parent_parser])
-        parser.add_argument('--learning_rate', default=WAVENET_LEARNING_RATE, type=float)
+        parser.add_argument('--learning_rate', default=WNLSTM_LEARNING_RATE, type=float)
         parser.add_argument('--batch_size', default=WNLSTM_BATCH_SIZE, type=int)
-        parser.add_argument('--weight_decay', default=WAVENET_WEIGHT_DECAY, type=float)
+        parser.add_argument('--weight_decay', default=WNLSTM_WEIGHT_DECAY, type=float)
+        parser.add_argument(
+            '--distributed_backend',
+            type=str,
+            default='dp',
+            help='supports three options dp, ddp, ddp2'
+        )
+        return parser
+
+
+class L_RNNClassifier(L_WavenetAbstractClassifier):
+    """
+    Sample model to show how to define a template
+    """
+
+    def __init__(self, hparams, num_classes, train_dataset, eval_dataset, test_dataset, *args, **kwargs):
+        super().__init__(hparams, num_classes, train_dataset, eval_dataset, test_dataset, *args, **kwargs)
+        # build model
+        self.model = RNNClassifier(num_classes)
+        # summary(self.model, input_size=(RNN1D_BATCH_SIZE, 1, WAVEFORM_MAX_SEQUENCE_LENGTH), device="cpu")
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr, weight_decay=self.wd)
+
+    @staticmethod
+    def add_model_specific_args(parent_parser, root_dir):  # pragma: no cover
+        """
+        Parameters you define here will be available to your model through self.hparams
+        :param parent_parser:
+        :param root_dir:
+        :return:
+        """
+        parser = ArgumentParser(parents=[parent_parser])
+        parser.add_argument('--learning_rate', default=RNN1D_LEARNING_RATE, type=float)
+        parser.add_argument('--batch_size', default=RNN1D_BATCH_SIZE, type=int)
+        parser.add_argument('--weight_decay', default=RNN1D_WEIGHT_DECAY, type=float)
         parser.add_argument(
             '--distributed_backend',
             type=str,
@@ -637,21 +652,20 @@ class L_ResNext50(ptl.LightningModule):
         """
         return [self.optimizer]
 
-    @ptl.data_loader
     def train_dataloader(self):
         # logging.info('training data loader called')
         return DataLoader(self.train_dataset, batch_size=WAVENET_BATCH_SIZE, shuffle=True,
                           num_workers=DATA_LOADER_NUM_WORKERS)
 
-    @ptl.data_loader
     def val_dataloader(self):
         # logging.info('val data loader called')
-        return DataLoader(self.eval_dataset, batch_size=WAVENET_BATCH_SIZE, shuffle=True, num_workers=DATA_LOADER_NUM_WORKERS)
+        return DataLoader(self.eval_dataset, batch_size=WAVENET_BATCH_SIZE, shuffle=True,
+                          num_workers=DATA_LOADER_NUM_WORKERS)
 
-    @ptl.data_loader
     def test_dataloader(self):
         # logging.info('test data loader called')
-        return DataLoader(self.test_dataset, batch_size=WAVENET_BATCH_SIZE, shuffle=True, num_workers=DATA_LOADER_NUM_WORKERS)
+        return DataLoader(self.test_dataset, batch_size=WAVENET_BATCH_SIZE, shuffle=True,
+                          num_workers=DATA_LOADER_NUM_WORKERS)
 
     @staticmethod
     def add_model_specific_args(parent_parser, root_dir):  # pragma: no cover

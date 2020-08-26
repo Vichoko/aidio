@@ -120,3 +120,13 @@ lame (or lame.exe) should be set in PATH environment variable to work properly.
 * [1] Simon Leglaive, Romain Hennequin, and Roland Badeau. "Singing voice detection with deep recurrent neural network." [pdf](https://hal.archives-ouvertes.fr/hal-01110035/document)
 * [2] Stöter et al. "Open-Unmix - A Reference Implementation for MusicSource Separation" [pdf](https://joss.theoj.org/papers/10.21105/joss.01667)
 * [3] A. Jansson, et al. "SINGING VOICE SEPARATION WITH DEEP U-NET CONVOLUTIONAL NETWORKS." [pdf](https://ismir2017.smcnus.org/wp-content/uploads/2017/10/171_Paper.pdf)
+
+## Extend
+
+### Add New Classification Model
+
+Involved files:
+* torch_models.py: Add the nn.module here.
+* lightning_modules.py: Add the train/test boilerplate code here.
+* models_manager.py: Register the model in the framework here.
+

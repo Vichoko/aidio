@@ -1,6 +1,5 @@
 """
-Transform label file(s) from a feature to another.
-Supports mainly already splited label files.
+Compare data sets
 """
 import argparse
 import inspect
