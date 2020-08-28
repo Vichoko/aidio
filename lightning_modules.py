@@ -535,7 +535,6 @@ class L_ResNext50(ptl.LightningModule):
     def __init__(self, hparams, num_classes, train_dataset, eval_dataset, test_dataset):
         super(L_ResNext50, self).__init__()
         self.hparams = hparams
-        self.wd = hparams.weight_decay
         self.lr = hparams.learning_rate
         self.batch_size = hparams.batch_size
         self.loss = torch.nn.CrossEntropyLoss()
