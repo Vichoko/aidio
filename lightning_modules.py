@@ -557,6 +557,7 @@ class L_ResNext50(ptl.LightningModule):
         :param x:
         :return:
         """
+        x = x.unsqueeze(1)
         return self.model(x)
 
     def training_step(self, batch, batch_idx):
