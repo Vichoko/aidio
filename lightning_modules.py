@@ -650,7 +650,6 @@ class L_ResNext50(ptl.LightningModule):
         parser = ArgumentParser(parents=[parent_parser])
         parser.add_argument('--learning_rate', default=RESNET_V2_LR, type=float)
         parser.add_argument('--batch_size', default=RESNET_V2_BATCH_SIZE, type=int)
-        parser.add_argument('--gpus', default=0, type=int)
         parser.add_argument(
             '--distributed_backend',
             type=str,
