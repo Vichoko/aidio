@@ -7,15 +7,15 @@ import inspect
 import os
 import sys
 from pathlib import Path
-from shutil import copyfile
 
+import librosa
 import numpy as np
 import pandas as pd
 
 current_dir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
 parent_dir = os.path.dirname(current_dir)
 sys.path.insert(0, parent_dir)
-from config import NUMBER_OF_CLASSES
+from config import NUMBER_OF_CLASSES, SR, MFCC_N_COEF, MFCC_FFT_WINDOW, MFCC_HOP_LENGTH, MFCC_N_MELS
 
 
 def load_csv(path, filename):
@@ -42,14 +42,29 @@ if __name__ == '__main__':
         # load source metadata from csv
         # copy label file
         label_filename = '{}.{}.{}.csv'.format(src_label_prefix, NUMBER_OF_CLASSES, set_name)
-        copyfile(
-            src_path / label_filename,
-            dest_path / label_filename
-        )
         # copy files
-        filenames, labels = load_csv(src_path, label_filename)
-        for data_idx, filename in enumerate(filenames):
-            copyfile(
-                src_path / filename,
-                dest_path / filename
+        wav_filenames, labels = load_csv(src_path, label_filename)
+        mfcc_filenames = []
+        for data_idx, wav_filename in enumerate(wav_filenames):
+            # load and process wav to mfcc
+            wav = np.load(src_path / wav_filename)
+            mfcc = librosa.feature.mfcc(
+                wav,
+                sr=SR,
+                n_mfcc=MFCC_N_COEF,
+                n_fft=MFCC_FFT_WINDOW,
+                hop_length=MFCC_HOP_LENGTH,
+                n_mels=MFCC_N_MELS
             )
+            mfcc_filename = wav_filename.replace('.npy', 'mfcc.npy')
+            mfcc_filenames.append(mfcc_filename)
+            np.save(
+                dest_path / mfcc_filename,
+                mfcc
+            )
+            print('info: {} exported successfully.'.format(mfcc_filename))
+        # export labels
+        df = pd.DataFrame(np.asarray([mfcc_filenames, labels]).swapaxes(0, 1))
+        df.columns = ['filename', 'label']
+        df.to_csv(dest_path / label_filename, index=False)
+        print('info: New {} exported successfully.'.format(label_filename))

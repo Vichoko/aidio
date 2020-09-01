@@ -50,9 +50,11 @@ FMAX = None  # Highest frequency (in Hz)
 
 # MFCC
 # params from 2011 Tsai et al.
-MFCC_FFT_WINDOW = int(SR * 0.032)  # 32 ms window frame
-MFCC_HOP_LENGTH = int(SR * 0.010)  # 10 ms shifts
-MFCC_N_COEF = 20
+MFCC_FFT_WINDOW = int(SR * 0.032)  # 32 ms window frame ~512
+MFCC_HOP_LENGTH = int(SR * 0.010)  # 10 ms shifts ~128
+MFCC_N_COEF = 20  # This is the most important param for fidelity, at 64 is much better but 20 was used on most
+MFCC_N_MELS = N_MELS
+
 
 # -- sINGING vOICE dETECTION --#
 VOICE_DETECTION_PATH = '/home/voyanedel/data/code/ismir2018-revisiting-svd/'
