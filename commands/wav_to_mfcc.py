@@ -56,7 +56,7 @@ if __name__ == '__main__':
                 hop_length=MFCC_HOP_LENGTH,
                 n_mels=MFCC_N_MELS
             )
-            mfcc_filename = wav_filename.replace('.npy', 'mfcc.npy')
+            mfcc_filename = wav_filename.replace('.npy', '.mfcc.npy')
             mfcc_filenames.append(mfcc_filename)
             np.save(
                 dest_path / mfcc_filename,
