@@ -1,3 +1,8 @@
+"""
+Command to split MP3/WAV audio dataset in smaller binary chunks and optional mfcc.
+
+…unks for easier loading.
+"""
 import argparse
 import concurrent.futures
 import inspect
