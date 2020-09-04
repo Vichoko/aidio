@@ -20,7 +20,7 @@ from config import WAVENET_LAYERS, WAVENET_BLOCKS, WAVENET_DILATION_CHANNELS, WA
     RNN1D_DOWNSAMPLER_KERNEL_SIZE, RNN1D_DOWNSAMPLER_DILATION, CONV1D_KERNEL_SIZE, CONV1D_STRIDE, CONV1D_DILATION, \
     LSTM_FC1_OUTPUT_DIM, LSTM_FC2_OUTPUT_DIM, CONV1D_FC1_OUTPUT_DIM, CONV1D_FC2_OUTPUT_DIM, WNTF_FC1_OUTPUT_DIM, \
     WNTF_FC2_OUTPUT_DIM, WNTF_TRANSFORMER_DIM_FEEDFORWARD, LSTM_BIDIRECTIONALITY, WAVENET_FC1_OUTPUT_DIM, \
-    WAVENET_FC2_OUTPUT_DIM
+    WAVENET_FC2_OUTPUT_DIM, RNN1D_MAX_SIZE, RNN1D_FC1_INPUT_SIZE, RNN1D_FC1_OUTPUT_SIZE, RNN1D_FC2_OUTPUT_SIZE
 from util.wavenet.wavenet_model import WaveNetModel
 
 
@@ -379,17 +379,10 @@ class RNNClassifier(nn.Module):
             dropout=RNN1D_DROPOUT_PROB,
             bidirectional=RNN1D_BIDIRECTIONAL
         )
-        self.self_attention_pooling = nn.TransformerEncoder(
-            nn.TransformerEncoderLayer(
-                d_model=RNN1D_HIDDEN_SIZE * 2 if RNN1D_BIDIRECTIONAL else RNN1D_HIDDEN_SIZE,
-                nhead=1,
-            ),
-            num_layers=1
-        )  # take the last vector of the attention to the FC
-        self.fc1 = nn.Linear(RNN1D_HIDDEN_SIZE * 2, 256) if RNN1D_BIDIRECTIONAL else nn.Linear(
-            RNN1D_HIDDEN_SIZE, 256)
-        self.fc2 = nn.Linear(256, 128)
-        self.fc3 = nn.Linear(128, num_classes)
+        self.amax = nn.AdaptiveAvgPool1d(RNN1D_MAX_SIZE)
+        self.fc1 = nn.Linear(RNN1D_FC1_INPUT_SIZE, RNN1D_FC1_OUTPUT_SIZE)
+        self.fc2 = nn.Linear(RNN1D_FC1_OUTPUT_SIZE, RNN1D_FC2_OUTPUT_SIZE)
+        self.fc3 = nn.Linear(RNN1D_FC2_OUTPUT_SIZE, num_classes)
 
     def forward(self, x):
         # assert x.shape is (BS, In_CHNL, ~80000) --> it is!
@@ -402,10 +395,9 @@ class RNNClassifier(nn.Module):
         x = x.transpose(0, 2).transpose(1, 2)
         self.rnn.flatten_parameters()
         x, _ = self.rnn(x)  # shape n_sequence, n_data, lstm_hidden_size (dropped _ is (h_n, c_n))
-        x = x.transpose(0, 1)
-        # transformer expected input is n_data, n_sequence, wavenet_channels
-        x = self.self_attention_pooling(x)
-        x = x[:, -1, :]
+        x = x.transpose(0, 2)  # shape n_data, lstm_hidden_size, n_sequence
+        x = self.amax(x)  # shape n_data, lstm_hidden_size, a_max_dim
+        x = torch.flatten(x, 1)
         x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))
         x = self.fc3(x)

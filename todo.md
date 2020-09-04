@@ -15,8 +15,12 @@
     * Usar Lefraru
    
 * Parametrizar wavenet para meter mas batchsize
-    * wavenet
-    python aidio.py model --model wavenet --experiment svs_svd_4 --data_path /home/voyanedel/data/data/1d/svs-svd-bin-full --label_filename labels.csv --gpus [0]
+    * resnetx
+
+            * S/N   svs_svd_2_0 val_a=0.869 test_a=0.85%
+
+0    * wavenet
+ 0   python aidio.py model --model wavenet --experiment svs_svd_4 --data_path /home/voyanedel/data/data/1d/svs-svd-bin-full --label_filename labels.csv --gpus [0]
         * 1-1-48    svs_svd_0   val_a=0.607@81  #70k
         * 2-2-31    svs_svd_1   val_a=0.796@306 #103k
         * 3-2-24    svs_svd_2   val_a=0.847@297 #125k
