@@ -395,9 +395,10 @@ class RNNClassifier(nn.Module):
         x = x.transpose(0, 2).transpose(1, 2)
         self.rnn.flatten_parameters()
         x, _ = self.rnn(x)  # shape n_sequence, n_data, lstm_hidden_size (dropped _ is (h_n, c_n))
-        x = x.transpose(0, 2)  # shape n_data, lstm_hidden_size, n_sequence
+        x = x.transpose(1, 0)  # shape n_data, n_sequence, lstm_hidden_size
+        x = x.transpose(1, 2)  # shape n_data, lstm_hidden_size, n_sequence
         x = self.amax(x)  # shape n_data, lstm_hidden_size, a_max_dim
-        x = torch.flatten(x, 1)
+        x = torch.flatten(x, 1)  # shape n_data, lstm_hidden_size * a_max_dim
         x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))
         x = self.fc3(x)
