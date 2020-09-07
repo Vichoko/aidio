@@ -62,13 +62,13 @@ class L_GMMClassifier(ptl.LightningModule):
 
     def eval_now(self):
         print('info: starting evaluation')
-        val_dataloader = self.val_dataloader()[0]
-        test_dataloader = self.test_dataloader()[0]
+        val_dataloader = self.val_dataloader()
+        test_dataloader = self.test_dataloader()
         val_out = []
         for batch_idx, batch in tqdm.tqdm(enumerate(val_dataloader)):
             val_out.append(self.validation_step(batch, batch_idx))
         res = self.validation_end(val_out)
-        print(res['log'])
+        print(res)
         print('info: ending evaluation')
         return 0
 
@@ -221,7 +221,6 @@ class L_GMMClassifier(ptl.LightningModule):
         return [self.optimizer]
 
     def train_dataloader(self):
-        # logging.info('training data loader called')
         return DataLoader(
             self.train_dataset,
             num_workers=DATA_LOADER_NUM_WORKERS,
@@ -229,7 +228,6 @@ class L_GMMClassifier(ptl.LightningModule):
         )
 
     def val_dataloader(self):
-        # logging.info('val data loader called')
         return DataLoader(
             self.eval_dataset,
             batch_size=self.predict_batch_size,
@@ -237,7 +235,6 @@ class L_GMMClassifier(ptl.LightningModule):
         )
 
     def test_dataloader(self):
-        # logging.info('test data loader called')
         return DataLoader(
             self.test_dataset,
             batch_size=self.predict_batch_size,
