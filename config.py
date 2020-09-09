@@ -55,7 +55,6 @@ MFCC_HOP_LENGTH = int(SR * 0.010)  # 10 ms shifts ~128
 MFCC_N_COEF = 20  # This is the most important param for fidelity, at 64 is much better but 20 was used on most
 MFCC_N_MELS = N_MELS
 
-
 # -- sINGING vOICE dETECTION --#
 VOICE_DETECTION_PATH = '/home/voyanedel/data/code/ismir2018-revisiting-svd/'
 VOICE_DETECTION_MODEL_NAME = 'june2019'
@@ -93,15 +92,18 @@ OUNMIX_MODEL = 'umxhq'
 ###########################
 ## trainer
 # early stop
-EARLY_STOP_PATIENCE = 100
-EARLY_STOP_MONITOR = 'val_loss'
+# EARLY_STOP_PATIENCE = 100
+# EARLY_STOP_MONITOR = 'val_loss'
 
 #########################################
 ####    MODELS
 #########################################
+# DUMMY MODE (2 classes; same train/val set)
+DUMMY_EXAMPLES_PER_CLASS = 1
+
 # GMM
 GMM_PREDICT_BATCH_SIZE = 700
-GMM_TRAIN_BATCH_SIZE = 700  # used in data sampler of data loader
+GMM_TRAIN_BATCH_SIZE = 700  # used in data sampler of data loader; None is all posible
 GMM_COMPONENT_NUMBER = 64
 GMM_RANDOM_CROM_FRAME_LENGTH = 17 * 1000  # 1000 are 1 second; used on data loader
 GMM_FIT_FRAME_LIMIT = 1000000 * GMM_RANDOM_CROM_FRAME_LENGTH  # 1000 are 1 second; 1000 * 60 is 1 minute; The frame limit is per-class as the fit is class-wise

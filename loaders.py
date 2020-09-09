@@ -14,7 +14,8 @@ from torch.utils.data.sampler import Sampler
 from torchvision import transforms
 
 from config import FEATURES_DATA_PATH, RESNET_MIN_DIM, ADISAN_BATCH_SIZE, ADISAN_EPOCHS, WAVEFORM_MAX_SEQUENCE_LENGTH, \
-    WAVEFORM_NUM_CHANNELS, WAVEFORM_SAMPLE_RATE, NUMBER_OF_CLASSES, GMM_RANDOM_CROM_FRAME_LENGTH
+    WAVEFORM_NUM_CHANNELS, WAVEFORM_SAMPLE_RATE, NUMBER_OF_CLASSES, GMM_RANDOM_CROM_FRAME_LENGTH, \
+    DUMMY_EXAMPLES_PER_CLASS
 
 
 # def get_shuffle_split(self, n_splits=2, test_size=0.5, train_size=0.5):
@@ -510,13 +511,11 @@ class ExperimentDataset(Dataset):
         print('info: total label universe: {}'.format(set(labels)))
         print('info: starting split...')
 
+        filenames_dev, filenames_test, filenames_train, labels_dev, labels_test, labels_train = cls.split_meta_dataset(
+            filenames, labels, label_filename, ratio, shuffle, data_path, random_seed)
         if dummy_mode:
             filenames_dev, filenames_test, filenames_train, labels_dev, labels_test, labels_train = cls.get_dummy_dataset(
-                filenames, labels, shuffle, ratio, random_seed)
-        else:
-            filenames_dev, filenames_test, filenames_train, labels_dev, labels_test, labels_train = cls.split_meta_dataset(
-                filenames, labels, label_filename, ratio, shuffle, data_path, random_seed)
-            # check the nmber of classes and fit an ordinal ecoder
+                filenames_train, labels_train)
 
         # as split can sub-set the original label set, we need to build a fresh one
         label_set = set()
@@ -730,7 +729,7 @@ class ExperimentDataset(Dataset):
         return filenames_val, filenames_test, filenames_train, labels_val, labels_test, labels_train
 
     @staticmethod
-    def get_dummy_dataset(filenames, labels, shuffle, ratio, random_seed):
+    def get_dummy_dataset(filenames, labels):
         """
         Construct splits of the same 10 songs to test the model learning capabilities.
         It has 2 classes.
@@ -741,20 +740,22 @@ class ExperimentDataset(Dataset):
         :param shuffle:
         :return:
         """
-        assert ratio[0] + ratio[1] + ratio[2] == 1
         assert len(filenames) == len(labels)
-        filenames = np.asarray(sorted(list(filenames)))
         available_labels = np.asarray(sorted(list(set(labels))))
-        first_class_filenames = filenames[labels == available_labels[0]]
-        second_class_filenames = filenames[labels == available_labels[1]]
+        out_filenames = None
+        out_labels = None
+        for unique_label in available_labels:
+            class_filenames = filenames[labels == unique_label][:DUMMY_EXAMPLES_PER_CLASS]
+            class_labels = labels[labels == unique_label][:DUMMY_EXAMPLES_PER_CLASS]
+            if out_filenames is None:
+                out_filenames = class_filenames
+                out_labels = class_labels
+            else:
+                out_filenames = np.concatenate((out_filenames, class_filenames))
+                out_labels = np.concatenate((out_labels, class_filenames))
 
-        examples_per_class = 1
-        out_filenames = np.concatenate(
-            (first_class_filenames[:examples_per_class], second_class_filenames[:examples_per_class]))
-        out_labels = np.asarray([available_labels[0]] * examples_per_class + [available_labels[1]] * examples_per_class)
         assert len(out_labels) == len(out_filenames)
         indices = np.arange(len(out_labels))
-
         np.random.shuffle(indices)
         out_filenames = out_filenames[indices]
         out_labels = out_labels[indices]
@@ -1015,4 +1016,13 @@ class ClassSampler(Sampler):
                 yield relevant_indexes.tolist()
             else:
                 # random sample without replacement
-                yield np.random.choice(relevant_indexes, self.batch_size, replace=False)
+                try:
+                    indices = np.random.choice(relevant_indexes, self.batch_size, replace=False)
+                except ValueError as e:
+                    print(
+                        'error: trying to subset {} indexes on bigger bs={}. '
+                        'Maybe you want to set bs to None to fit all possible data'.format(
+                            len(relevant_indexes),
+                            self.batch_size))
+                    raise e
+                yield indices

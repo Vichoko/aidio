@@ -63,7 +63,7 @@ class L_GMMClassifier(ptl.LightningModule):
     def eval_now(self):
         print('info: starting evaluation')
         val_dataloader = self.val_dataloader()
-        test_dataloader = self.test_dataloader()
+        # test_dataloader = self.test_dataloader()
         val_out = []
         for batch_idx, batch in tqdm.tqdm(enumerate(val_dataloader)):
             val_out.append(self.validation_step(batch, batch_idx))
