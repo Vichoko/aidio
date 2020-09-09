@@ -20,7 +20,8 @@ from config import WAVENET_LAYERS, WAVENET_BLOCKS, WAVENET_DILATION_CHANNELS, WA
     RNN1D_DOWNSAMPLER_KERNEL_SIZE, RNN1D_DOWNSAMPLER_DILATION, CONV1D_KERNEL_SIZE, CONV1D_STRIDE, CONV1D_DILATION, \
     LSTM_FC1_OUTPUT_DIM, LSTM_FC2_OUTPUT_DIM, CONV1D_FC1_OUTPUT_DIM, CONV1D_FC2_OUTPUT_DIM, WNTF_FC1_OUTPUT_DIM, \
     WNTF_FC2_OUTPUT_DIM, WNTF_TRANSFORMER_DIM_FEEDFORWARD, LSTM_BIDIRECTIONALITY, WAVENET_FC1_OUTPUT_DIM, \
-    WAVENET_FC2_OUTPUT_DIM, RNN1D_MAX_SIZE, RNN1D_FC1_INPUT_SIZE, RNN1D_FC1_OUTPUT_SIZE, RNN1D_FC2_OUTPUT_SIZE
+    WAVENET_FC2_OUTPUT_DIM, RNN1D_MAX_SIZE, RNN1D_FC1_INPUT_SIZE, RNN1D_FC1_OUTPUT_SIZE, RNN1D_FC2_OUTPUT_SIZE, \
+    CONV1D_MAX_SIZE
 from util.wavenet.wavenet_model import WaveNetModel
 
 
@@ -261,6 +262,9 @@ class Conv1DClassifier(nn.Module):
                     dilation=CONV1D_DILATION,
                 )
             )
+
+        # different poolings
+        ## 1
         self.self_attention_pooling = nn.TransformerEncoder(
             nn.TransformerEncoderLayer(
                 d_model=CONV1D_FEATURE_DIM,
@@ -268,7 +272,17 @@ class Conv1DClassifier(nn.Module):
             ),
             num_layers=1
         )  # take the last vector of the attention to the FC
-        self.fc1 = nn.Linear(CONV1D_FEATURE_DIM, CONV1D_FC1_OUTPUT_DIM)
+        # x = x[:, -1, :]
+        ## 2
+        # x, _ = x.max(1)  # max pooling over the sequence dim; drop sequence axis
+        ## 3
+        self.max_pool = nn.AdaptiveAvgPool1d(CONV1D_MAX_SIZE)
+        self.avg_pool = nn.AvgPool1d(CONV1D_MAX_SIZE)
+        # or
+        # x = torch.flatten(x, N)  # shape n_data, encoder_out_dim, N to shape n_data, encoder_out_dim * N
+
+        conv_1d_input_dim = CONV1D_FEATURE_DIM
+        self.fc1 = nn.Linear(conv_1d_input_dim, CONV1D_FC1_OUTPUT_DIM)
         self.fc2 = nn.Linear(CONV1D_FC1_OUTPUT_DIM, CONV1D_FC2_OUTPUT_DIM)
         self.fc3 = nn.Linear(CONV1D_FC2_OUTPUT_DIM, num_classes)
 
@@ -278,65 +292,16 @@ class Conv1DClassifier(nn.Module):
         # nn.Conv1D: (N, Cin, Lin) -> (N, Cout, Lout)
         for conv_layer in self.conv_layers:
             x = conv_layer(x)
-        x = x.transpose(1, 2)  # (N, Cout, Lout) -> (N, Lout, Cout)
-        # transformer expected input is n_data, n_sequence, wavenet_channels
-        x = self.self_attention_pooling(x)
-        x = x[:, -1, :]
-        x = F.relu(self.fc1(x))
-        x = F.relu(self.fc2(x))
-        x = self.fc3(x)
-        return x
 
-
-class Conv2DClassifier(nn.Module):
-    def __call__(self, *input, **kwargs) -> typing.Any:
-        """
-        Hack to fix '(input: (Any, ...), kwargs: dict) -> Any' warning in PyCharm auto-complete.
-        :param input:
-        :param kwargs:
-        :return:
-        """
-        return super().__call__(*input, **kwargs)
-
-    def __init__(self, num_classes):
-        super(Conv2DClassifier, self).__init__()
-        # first encoder
-        # neural audio embeddings
-        # captures local representations through convolutions
-        # note: x.shape is (bs, 1, ~80000)
-        n_layers = int(math.log2(CONV1D_FEATURE_DIM))
-        self.conv_layers = nn.ModuleList()
-        for layer_idx in range(n_layers):
-            self.conv_layers.append(
-                nn.Conv1d(
-                    in_channels=2 ** layer_idx,
-                    out_channels=2 ** (layer_idx + 1),
-                    kernel_size=CONV1D_KERNEL_SIZE,
-                    stride=CONV1D_STRIDE,
-                    dilation=CONV1D_DILATION,
-                )
-            )
-        self.self_attention_pooling = nn.TransformerEncoder(
-            nn.TransformerEncoderLayer(
-                d_model=CONV1D_FEATURE_DIM,
-                nhead=1,
-            ),
-            num_layers=1
-        )  # take the last vector of the attention to the FC
-        self.fc1 = nn.Linear(CONV1D_FEATURE_DIM, CONV1D_FC1_OUTPUT_DIM)
-        self.fc2 = nn.Linear(CONV1D_FC1_OUTPUT_DIM, CONV1D_FC2_OUTPUT_DIM)
-        self.fc3 = nn.Linear(CONV1D_FC2_OUTPUT_DIM, num_classes)
-
-    def forward(self, x):
-        # assert x.shape is (BS, In_CHNL, ~80000) --> it is!
-        # assert In_CHNL is 1 or 2 --> it is 1.
-        # nn.Conv1D: (N, Cin, Lin) -> (N, Cout, Lout)
-        for conv_layer in self.conv_layers:
-            x = conv_layer(x)
-        x = x.transpose(1, 2)  # (N, Cout, Lout) -> (N, Lout, Cout)
-        # transformer expected input is n_data, n_sequence, wavenet_channels
-        x = self.self_attention_pooling(x)
-        x = x[:, -1, :]
+        # Self Attention Pooling
+        # x = x.transpose(1, 2)  # (N, Cout, Lout) -> (N, Lout, Cout)
+        # # transformer expected input is n_data, n_sequence, wavenet_channels
+        # x = self.self_attention_pooling(x)
+        # x = x[:, -1, :]
+        # Simple Max Pooling
+        x, _ = x.max(2)
+        # Classification
+        # Expects shape (N_data, fc1_input_size)
         x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))
         x = self.fc3(x)
