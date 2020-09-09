@@ -752,7 +752,7 @@ class ExperimentDataset(Dataset):
                 out_labels = class_labels
             else:
                 out_filenames = np.concatenate((out_filenames, class_filenames))
-                out_labels = np.concatenate((out_labels, class_filenames))
+                out_labels = np.concatenate((out_labels, class_labels))
 
         assert len(out_labels) == len(out_filenames)
         indices = np.arange(len(out_labels))
