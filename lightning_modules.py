@@ -270,6 +270,7 @@ class L_WavenetAbstractClassifier(ptl.LightningModule):
         self.train_dataset = train_dataset
         self.eval_dataset = eval_dataset
         self.test_dataset = test_dataset
+        self.acc = ptl.metrics.Accuracy(num_classes)
 
     def forward(self, x):
         """
@@ -290,8 +291,13 @@ class L_WavenetAbstractClassifier(ptl.LightningModule):
         y_pred = self.forward(x)
         # calculate loss
         loss = self.loss(y_pred, y)
+        # calculate accurracy
+        labels_hat = torch.argmax(y_pred, dim=1)  # change from one-hot encoding to nominal label
+        accuracy = self.acc(labels_hat, y)
         result = ptl.TrainResult(loss)
         result.log('train_loss', loss, prog_bar=True)
+        result.log('train_acc', accuracy, prog_bar=True)
+
         return result
 
     def validation_step(self, batch, batch_idx):
@@ -305,12 +311,8 @@ class L_WavenetAbstractClassifier(ptl.LightningModule):
         # calculate loss
         loss = self.loss(y_pred, y)
         # calculate accurracy
-        labels_hat = torch.argmax(y_pred, dim=1)
-        accuracy = torch.sum(y == labels_hat).item() / (len(y) * 1.0)
-        accuracy = torch.tensor(accuracy)
-        if self.on_gpu:
-            accuracy = accuracy.cuda(loss.device.index)
-        # Checkpoint model based on validation loss
+        labels_hat = torch.argmax(y_pred, dim=1)  # change from one-hot encoding to nominal label
+        accuracy = self.acc(labels_hat, y)
         result = ptl.EvalResult(early_stop_on=None, checkpoint_on=loss)
         result.log('val_loss', loss, prog_bar=True)
         result.log('val_acc', accuracy, prog_bar=True)
@@ -322,12 +324,8 @@ class L_WavenetAbstractClassifier(ptl.LightningModule):
         # calculate loss
         loss = self.loss(y_pred, y)
         # calculate accurracy
-        labels_hat = torch.argmax(y_pred, dim=1)
-        accuracy = torch.sum(y == labels_hat).item() / (len(y) * 1.0)
-        accuracy = torch.tensor(accuracy)
-        if self.on_gpu:
-            accuracy = accuracy.cuda(loss.device.index)
-        # Checkpoint model based on validation loss
+        labels_hat = torch.argmax(y_pred, dim=1)  # change from one-hot encoding to nominal label
+        accuracy = self.acc(labels_hat, y)
         result = ptl.EvalResult()
         result.log('test_loss', loss, prog_bar=True)
         result.log('test_acc', accuracy, prog_bar=True)
@@ -396,8 +394,11 @@ class L_Conv1DClassifier(L_WavenetAbstractClassifier):
         super().__init__(hparams, num_classes, train_dataset, eval_dataset, test_dataset, *args, **kwargs)
         # build model
         self.model = Conv1DClassifier(num_classes)
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr,
-                                          weight_decay=self.wd)
+        self.optimizer = torch.optim.Adam(
+            self.model.parameters(),
+            lr=self.lr,
+            weight_decay=self.wd
+        )
 
     @staticmethod
     def add_model_specific_args(parent_parser, root_dir):  # pragma: no cover

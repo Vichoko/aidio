@@ -22,10 +22,10 @@
 0    * wavenet
  0   python aidio.py model --model wavenet --experiment svs_svd_4 --data_path /home/voyanedel/data/data/1d/svs-svd-bin-full --label_filename labels.csv --gpus [0]
         * 1-1-48    svs_svd_0   val_a=0.607@81  #70k
-        * 2-2-31    svs_svd_1   val_a=0.796@306 #103k
-        * 3-2-24    svs_svd_2   val_a=0.847@297 #125k
+        * 2-2-31    svs_svd_1   val_a=0.796@306 #103k test_a=0.4662
+        * 3-2-24    svs_svd_2   val_a=0.847@297 #125k test_a=0.4822
         * 3-3-18    svs_svd_3   val_a=0.814  #159k
-        * 4-3-14    svs_svd_4   val_a=0.858@  #193k
+        * 4-3-14    svs_svd_4   val_a=0.858@  #193k test_a=0.4661
         
         Observaciones: 
             * Se demora entre 20 y 24 horas en converger a ~85%
@@ -39,9 +39,9 @@
         * 3-2 4-2-128-22    svs_svd_3   val_a=0.48@27
         (w/o positional encoding)
         * 2-2 2-1-128-20    svs_svd_4   val_a=0.55@75
-        * 3-2 1-1-512-18    svs_svd_6   val_a=0.547@38
-        * 3-2 2-1-512-16    svd_svd_7   val_a=0.81@58
-        * 3-2 3-1-512-16    svd_svd_7   val_a=0.81@58
+        * 3-2 1-1-512-18    svs_svd_6   val_a=0.55@38
+        * 3-2 2-1-512-16    svd_svd_7   val_a=0.81@58   test_a=0.53
+        * 3-2 3-1-512-16    svd_svd_7   val_a=0.81@58   test_a=0.54
         * 4-3 3-3-512-13-0.01 (32 32)  svs_svd_2_1 
         * 4-2 3-2-256-6 (32 32) svs_svd_2_1 val_a=0.48
         * 4-3 4-1-256-  svs_svd_2_5 val_a=0.48
@@ -54,7 +54,7 @@
         * 2-2 128-2-23  svs_svd_5   val_a=0.841@96;0.859@101
         * 3-2 512-1-15 (16 16)  svs_svd_6   val_a=0.862@59
         * 3-2 1024-1-16 (32 32) svs_svd_7   val_a=0.86@69   test_a=0.851
-        * 4-3 256-2-16  (32 32) svs_svd_2_1 val_a=0.862 test_a=0.867**
+            * 4-3 256-2-16  (32 32) svs_svd_2_1 val_a=0.862 test_a=0.867**
         * 4-3 256-4-13  (16 16) svs_svd_2_2 val_a=0.853 test_a=0.839
         * 5-5 256-3-6   (16 16) svs_svd_2_3 val_a=0.858 test_a=0.838
         * 5-5 256-11-6  (32 32) svs_svd_2_4 val_a=0.481  test_a=
