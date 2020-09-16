@@ -2,7 +2,7 @@ import pathlib
 from os import makedirs as _makedirs
 
 # General Settings
-NUMBER_OF_CLASSES = 2
+NUMBER_OF_CLASSES = 4
 RANDOM_SEED = 69
 
 
@@ -16,7 +16,7 @@ def makedirs(path):
 
 AVAIL_MEDIA_TYPES = ['mp3', 'ogg', 'wav', 'flac', ]
 FEATURE_EXTRACTOR_NUM_WORKERS = 4
-DATA_LOADER_NUM_WORKERS = 2
+DATA_LOADER_NUM_WORKERS = 4
 CPU_NUM_WORKERS = 4
 
 SOURCE_DATA_PATH = pathlib.Path('C:\\Users\\Vichoko\\Music\\in')
@@ -102,8 +102,8 @@ OUNMIX_MODEL = 'umxhq'
 DUMMY_EXAMPLES_PER_CLASS = 1
 
 # GMM
-GMM_PREDICT_BATCH_SIZE = 700
-GMM_TRAIN_BATCH_SIZE = 700  # used in data sampler of data loader; None is all posible
+GMM_PREDICT_BATCH_SIZE = 1000
+GMM_TRAIN_BATCH_SIZE = None  # used in data sampler of data loader; None is all posible
 GMM_COMPONENT_NUMBER = 64
 GMM_RANDOM_CROM_FRAME_LENGTH = 17 * 1000  # 1000 are 1 second; used on data loader
 GMM_FIT_FRAME_LIMIT = 1000000 * GMM_RANDOM_CROM_FRAME_LENGTH  # 1000 are 1 second; 1000 * 60 is 1 minute; The frame limit is per-class as the fit is class-wise
