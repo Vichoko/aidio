@@ -660,19 +660,19 @@ class ExperimentDataset(Dataset):
             songs = np.asarray(list(songs))
             print('debug: selected songs: {}'.format(songs)) if debug else None
             # randomize unique songs
-            # np.random.seed(random_seed)
-            # np.random.shuffle(songs)
+            np.random.seed(random_seed)
+            np.random.shuffle(songs)
             # split unique songs in 3 sets
             first_pivot = round(ratio[0] * len(songs))
             second_pivot = round((ratio[0] + ratio[1]) * len(songs))
             train_songs, test_songs, val_songs = np.split(songs, [first_pivot, second_pivot])
             # randomize filenames together with the labels
             # note: there is multiple filenames pointing to different pieces of a same song
-            indices = np.arange(len(filenames))
-            np.random.seed(random_seed)
-            np.random.shuffle(indices)
-            filenames = np.asarray(filenames[indices])
-            labels = np.asarray(labels[indices])
+            # indices = np.arange(len(filenames))
+            # np.random.seed(random_seed)
+            # np.random.shuffle(indices)
+            # filenames = np.asarray(filenames[indices])
+            # labels = np.asarray(labels[indices])
             print('f: {}, l: {}'.format(filenames, labels))
             # gather the corresponding song pieces (filenames) to each set
             # note: here we enforce that the same song pieces fall in the same train/test/val to avoid song-effect
@@ -692,6 +692,7 @@ class ExperimentDataset(Dataset):
                     filenames_val.append(filename)
                     labels_val.append(label)
                 else:
+                    print('warning: song name {} with no set (train/test/val).'.format(song_name))
                     continue
             # transform python list to np.array
             filenames_train, filenames_test, filenames_val = np.asarray(filenames_train), np.asarray(
