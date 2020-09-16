@@ -499,21 +499,12 @@ class ExperimentDataset(Dataset):
         :return:
         """
         debug = True
-        # metadata_df = pd.read_csv(
-        #     features_path /
-        #     feature_name /
-        #     'labels.{}.csv'.format(feature_name)
-        # )
-
-        metadata_df = pd.read_csv(data_path / label_filename)
-        filenames = metadata_df['filename']
-        labels = metadata_df['label']
-        print('info: total label universe: {}'.format(set(labels)))
         print('info: starting split...')
-
+        # Load dataset's meta-data
         filenames_dev, filenames_test, filenames_train, labels_dev, labels_test, labels_train = cls.split_meta_dataset(
-            filenames, labels, label_filename, ratio, shuffle, data_path, random_seed)
+            label_filename, ratio, shuffle, data_path, random_seed)
         if dummy_mode:
+            print('info: dummy mode detected. Re-formatting train/test/dev sets based on train sub-set')
             filenames_dev, filenames_test, filenames_train, labels_dev, labels_test, labels_train = cls.get_dummy_dataset(
                 filenames_train, labels_train)
 
@@ -594,14 +585,12 @@ class ExperimentDataset(Dataset):
         return np.asarray(new_filenames), np.asarray(new_labels), selected_labels
 
     @classmethod
-    def split_meta_dataset(cls, filenames, labels, label_filename, ratio, shuffle, data_path, random_seed):
+    def split_meta_dataset(cls, label_filename, ratio, shuffle, data_path, random_seed):
         """
         Makes sure that same-song splits stay in same partition to avoid song-effect.
-        Make random split over the songs, and prints distributuions statistics of the resulting datasets.
+        Make random split over the songs, and prints distribution statistics of the resulting datasets.
 
         The random split supposes the distribution of classes is equivalent. If not another picking-algrithm should be used.
-        :param filenames: All available filenames
-        :param labels: All filename labels with same indexing
         :param random_seed: unused
         :param ratio: Tri-tuple with ratios of each data-set (train, test, dev)
         :param shuffle: unused
@@ -610,7 +599,7 @@ class ExperimentDataset(Dataset):
         :return:
         """
         debug = True
-        possible_labels = set(label for label in labels)
+
         # Check if split was already done in label files
         train_label_filename = label_filename.replace(
             '.csv',
@@ -625,10 +614,10 @@ class ExperimentDataset(Dataset):
             '.{}.{}.csv'.format(NUMBER_OF_CLASSES, 'val')
         )
         # if 3set-label files exist
-        cond = isfile(data_path / train_label_filename) \
+        already_splitted = isfile(data_path / train_label_filename) \
                and isfile(data_path / test_label_filename) \
                and isfile(data_path / val_label_filename)
-        if cond:
+        if already_splitted:
             print('info: loading from pre-splitted data-sets')
             # train set load
             metadata_df = pd.read_csv(data_path / train_label_filename)
@@ -642,7 +631,15 @@ class ExperimentDataset(Dataset):
             metadata_df = pd.read_csv(data_path / val_label_filename)
             filenames_val = metadata_df['filename']
             labels_val = metadata_df['label']
+            possible_labels = set(label for label in labels_train) or \
+                              set(label for label in labels_test) or \
+                              set(label for label in labels_val)
         else:
+            # do splits
+            metadata_df = pd.read_csv(data_path / label_filename)
+            filenames = metadata_df['filename']
+            labels = metadata_df['label']
+            possible_labels = set(label for label in labels)
             # assert minimum conditions
             assert ratio[0] + ratio[1] + ratio[2] == 1
             assert len(filenames) == len(labels)
