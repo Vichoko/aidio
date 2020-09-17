@@ -54,7 +54,7 @@ class L_GMMClassifier(ptl.LightningModule):
 
         print('info: starting training')
         batch_generator = self.train_dataloader()
-        for batch_idx, batch in tqdm.tqdm(enumerate(batch_generator)):  # aqui se hangea leftraru
+        for batch_idx, batch in tqdm.tqdm(enumerate(batch_generator())):  # aqui se hangea leftraru
             self.training_step(batch, batch_idx)
         self.trained = True
         print('info: ending training')
