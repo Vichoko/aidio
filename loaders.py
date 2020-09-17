@@ -880,6 +880,8 @@ class CepstrumDataset(ExperimentDataset):
             data_path,
             label_encoder
         )
+        self.debug = True
+        print('debug: CepstrumDataset.__init__ call') if self.debug else None
         self.transform = transforms.Compose([
             CepstrumDataset.RandomCropMFCC(GMM_RANDOM_CROM_FRAME_LENGTH),  # ]  # with numpy
             self.ToTensor(),
@@ -887,7 +889,7 @@ class CepstrumDataset(ExperimentDataset):
         )
 
     def __getitem__(self, index: int):
-        debug = True
+        debug = self.debug
         label = self.labels[index]
         data = np.load(
             str(self.data_path / self.filenames[index]),
@@ -994,6 +996,8 @@ class ClassSampler(Sampler):
         self.number_of_classes = number_of_classes
         self.labels = np.asarray(labels)
         self.batch_size = batch_size
+        self.debug = True
+        print('debug: ClassSampler.__init__') if self.debug else None
 
         if len(self.labels.shape) > 1:
             raise RuntimeError('labels should be a flattened array. Detected {}.'.format(len(self.labels.shape)))
@@ -1013,7 +1017,7 @@ class ClassSampler(Sampler):
         Iterate over possible classes, yielding the indices of the samples of that class.
         :yield: a list of indexes
         """
-        debug = True
+        debug = self.debug
         print('debug: ClassSampler.__iter__') if debug else None
         for label in range(self.number_of_classes):
             relevant_indexes = (self.labels == label).nonzero()[0]
