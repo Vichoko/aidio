@@ -230,7 +230,7 @@ class L_GMMClassifier(ptl.LightningModule):
 
         def batch_generator():
             for indices in class_sampler:
-                yield CepstrumDataset.get_batch(indices)
+                yield self.train_dataset.get_batch(indices)
         return batch_generator
 
 

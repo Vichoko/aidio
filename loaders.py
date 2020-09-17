@@ -901,8 +901,7 @@ class CepstrumDataset(ExperimentDataset):
             sample = self.transform(sample)
         return sample
 
-    @classmethod
-    def get_batch(cls, indices: list):
+    def get_batch(self, indices: list):
         """
         Load a batch of indices and return the iterator.
         :param indices: Iterable of indices
@@ -910,7 +909,7 @@ class CepstrumDataset(ExperimentDataset):
         """
         print('info: starting to load items')
         with concurrent.futures.ThreadPoolExecutor(max_workers=DATA_LOADER_NUM_WORKERS) as executor:
-            batch_items = executor.map(cls.__getitem__, indices)
+            batch_items = executor.map(self.__getitem__, indices)
         # batch_data should be an iterable of {'x': data, 'y': label} where data is 'torch.DoubleTensor' and label is 'torch.LongTensor'
         # concatenate
         batch_data = None
