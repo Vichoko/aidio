@@ -15,7 +15,7 @@ from config import WAVENET_BATCH_SIZE, DATA_LOADER_NUM_WORKERS, RESNET_V2_BATCH_
     GMM_TRAIN_BATCH_SIZE, CONV1D_LEARNING_RATE, CONV1D_WEIGHT_DECAY, CONV1D_BATCH_SIZE, WNTF_LEARNING_RATE, \
     WNTF_WEIGHT_DECAY, WNLSTM_LEARNING_RATE, WNLSTM_WEIGHT_DECAY, RNN1D_BATCH_SIZE, RNN1D_LEARNING_RATE, \
     RNN1D_WEIGHT_DECAY, RESNET_V2_LR
-from loaders import ClassSampler
+from loaders import ClassSampler, CepstrumDataset
 from torch_models import WaveNetTransformerClassifier, GMMClassifier, WaveNetClassifier, \
     Conv1DClassifier, RNNClassifier, WaveNetLSTMClassifier
 
@@ -53,8 +53,8 @@ class L_GMMClassifier(ptl.LightningModule):
             return -1
 
         print('info: starting training')
-        train_dataloader = self.train_dataloader()
-        for batch_idx, batch in tqdm.tqdm(enumerate(train_dataloader)):
+        batch_generator = self.train_dataloader()
+        for batch_idx, batch in tqdm.tqdm(enumerate(batch_generator)):  # aqui se hangea leftraru
             self.training_step(batch, batch_idx)
         self.trained = True
         print('info: ending training')
@@ -221,11 +221,18 @@ class L_GMMClassifier(ptl.LightningModule):
         return [self.optimizer]
 
     def train_dataloader(self):
-        return DataLoader(
-            self.train_dataset,
-            num_workers=DATA_LOADER_NUM_WORKERS,
-            batch_sampler=ClassSampler(self.num_classes, self.train_dataset.labels, self.train_batch_size),
-        )
+        """
+
+        :return: A lazy iterable of batches
+            where every batch should be a dict with keys x and y containing the data and the labels
+        """
+        class_sampler = ClassSampler(self.num_classes, self.train_dataset.labels, self.train_batch_size)
+
+        def batch_generator():
+            for indices in class_sampler:
+                yield CepstrumDataset.get_batch(indices)
+        return batch_generator
+
 
     def val_dataloader(self):
         return DataLoader(

@@ -1,3 +1,4 @@
+import concurrent.futures
 import os
 from collections import defaultdict
 from math import ceil
@@ -15,7 +16,7 @@ from torchvision import transforms
 
 from config import FEATURES_DATA_PATH, RESNET_MIN_DIM, ADISAN_BATCH_SIZE, ADISAN_EPOCHS, WAVEFORM_MAX_SEQUENCE_LENGTH, \
     WAVEFORM_NUM_CHANNELS, WAVEFORM_SAMPLE_RATE, NUMBER_OF_CLASSES, GMM_RANDOM_CROM_FRAME_LENGTH, \
-    DUMMY_EXAMPLES_PER_CLASS
+    DUMMY_EXAMPLES_PER_CLASS, DATA_LOADER_NUM_WORKERS
 
 
 class DataManager:
@@ -598,8 +599,8 @@ class ExperimentDataset(Dataset):
         )
         # if 3set-label files exist
         already_splitted = isfile(data_path / train_label_filename) \
-               and isfile(data_path / test_label_filename) \
-               and isfile(data_path / val_label_filename)
+                           and isfile(data_path / test_label_filename) \
+                           and isfile(data_path / val_label_filename)
         if already_splitted:
             print('info: loading from pre-splitted data-sets')
             # train set load
@@ -897,6 +898,32 @@ class CepstrumDataset(ExperimentDataset):
         if self.transform:
             sample = self.transform(sample)
         return sample
+
+    @classmethod
+    def get_batch(cls, indices: list):
+        """
+        Load a batch of indices and return the iterator.
+        :param indices: Iterable of indices
+        :return: Dict {'x': 'torch.DoubleTensor', 'y': 'torch.LongTensor'}
+        """
+        print('info: starting to load items')
+        with concurrent.futures.ThreadPoolExecutor(max_workers=DATA_LOADER_NUM_WORKERS) as executor:
+            batch_items = executor.map(cls.__getitem__, indices)
+        # batch_data should be an iterable of {'x': data, 'y': label} where data is 'torch.DoubleTensor' and label is 'torch.LongTensor'
+        # concatenate
+        batch_data = None
+        batch_labels = None
+        for element in batch_items:
+            # add an empty dimension
+            element_data = element['x'].view(1, -1)
+            element_label = element['y'].view(1, -1)
+            if batch_data is None:
+                batch_data = element_data
+                batch_labels = element_label
+            else:
+                batch_data = torch.cat(batch_data, element_data)
+                batch_labels = torch.cat(batch_labels, element_label)
+        return {'x': batch_data, 'y': batch_labels}
 
     @staticmethod
     def encode_labels(labels, label_encoder=None):
