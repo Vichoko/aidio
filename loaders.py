@@ -18,23 +18,6 @@ from config import FEATURES_DATA_PATH, RESNET_MIN_DIM, ADISAN_BATCH_SIZE, ADISAN
     DUMMY_EXAMPLES_PER_CLASS
 
 
-# def get_shuffle_split(self, n_splits=2, test_size=0.5, train_size=0.5):
-#     """
-#     Return a generator to get a shuffle split of the data.
-#     :param n_splits:
-#     :param test_size:
-#     :param train_size:
-#     :return: x_train, y_train, x_test, y_test
-#     """
-#     print('info: starting shuffle-split training...')
-#     kf = ShuffleSplit(n_splits=n_splits, test_size=test_size, train_size=train_size)
-#     for train_index, test_index in kf.split(self.X):
-#         yield self.X[train_index], self.Y[train_index], self.X[test_index], self.Y[test_index]
-
-
-# import torch
-
-
 class DataManager:
     def __init__(self, feature_name, data_type, batch_size, epochs, feature_data_path, **kwargs):
         """
@@ -666,6 +649,7 @@ class ExperimentDataset(Dataset):
             first_pivot = round(ratio[0] * len(songs))
             second_pivot = round((ratio[0] + ratio[1]) * len(songs))
             train_songs, test_songs, val_songs = np.split(songs, [first_pivot, second_pivot])
+            assert len(songs) == (len(train_songs) + len(test_songs) + len(val_songs))
             # randomize filenames together with the labels
             # note: there is multiple filenames pointing to different pieces of a same song
             # indices = np.arange(len(filenames))
@@ -908,7 +892,7 @@ class CepstrumDataset(ExperimentDataset):
             str(self.data_path / self.filenames[index]),
             allow_pickle=True
         )
-        # print('debug: CepstrumDataset.get_item label is {}'.format(label)) if debug else None  # floody
+        print('debug: CepstrumDataset.get_item label is {}'.format(label)) if debug else None  # floody
         sample = {'x': data, 'y': label}
         if self.transform:
             sample = self.transform(sample)
@@ -1002,7 +986,7 @@ class ClassSampler(Sampler):
         Iterate over possible classes, yielding the indices of the samples of that class.
         :yield: a list of indexes
         """
-        debug = False
+        debug = True
         print('debug: ClassSampler.__iter__') if debug else None
         for label in range(self.number_of_classes):
             relevant_indexes = (self.labels == label).nonzero()[0]
@@ -1011,7 +995,7 @@ class ClassSampler(Sampler):
                     self.labels == label).nonzero())) if debug else None
 
             if self.batch_size is None:
-                yield relevant_indexes.tolist()
+                yield relevant_indexes
             else:
                 # random sample without replacement
                 try:
