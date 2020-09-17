@@ -889,13 +889,12 @@ class CepstrumDataset(ExperimentDataset):
         )
 
     def __getitem__(self, index: int):
-        debug = self.debug
+        # debug = self.debug
         label = self.labels[index]
         data = np.load(
             str(self.data_path / self.filenames[index]),
             allow_pickle=True
         )
-        print('debug: CepstrumDataset.get_item label is {}'.format(label)) if debug else None  # floody
         sample = {'x': data, 'y': label}
         if self.transform:
             sample = self.transform(sample)
@@ -922,8 +921,8 @@ class CepstrumDataset(ExperimentDataset):
                 batch_data = element_data
                 batch_labels = element_label
             else:
-                batch_data = torch.cat(batch_data, element_data)
-                batch_labels = torch.cat(batch_labels, element_label)
+                batch_data = torch.cat((batch_data, element_data))
+                batch_labels = torch.cat((batch_labels, element_label))
         return {'x': batch_data, 'y': batch_labels}
 
     @staticmethod
