@@ -915,8 +915,8 @@ class CepstrumDataset(ExperimentDataset):
         batch_labels = None
         for element in batch_items:
             # add an empty dimension
-            element_data = element['x'].view(1, -1)
-            element_label = element['y'].view(1, -1)
+            element_data = element['x'].unsqueeze(0)
+            element_label = element['y'].unsqueeze(0)
             if batch_data is None:
                 batch_data = element_data
                 batch_labels = element_label
