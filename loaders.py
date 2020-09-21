@@ -922,7 +922,7 @@ class CepstrumDataset(ExperimentDataset):
             # concatenate
             batch_data = None
             batch_labels = None
-            for element in tqdm.tqdm(batch_items, desc='Data piece'):
+            for element in tqdm.tqdm(batch_items, desc='Data ETL', total=len(indices), unit='element'):
                 # add an empty dimension
                 element_data = element['x'].unsqueeze(0)
                 element_label = element['y'].unsqueeze(0)
