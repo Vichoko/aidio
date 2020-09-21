@@ -1,13 +1,16 @@
 import concurrent.futures
 import os
-from collections import defaultdict
-from math import ceil
-from os.path import isfile
-
+import pickle
+import tqdm
 import librosa
 import numpy as np
 import pandas as pd
 import torch
+
+from collections import defaultdict
+from math import ceil
+from os.path import isfile
+
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import OneHotEncoder, OrdinalEncoder
 from torch.utils.data.dataset import Dataset
@@ -900,30 +903,40 @@ class CepstrumDataset(ExperimentDataset):
             sample = self.transform(sample)
         return sample
 
-    def get_batch(self, indices: list):
+    def get_batch(self, indices: list, batch_idx: int):
         """
         Load a batch of indices and return the iterator.
         :param indices: Iterable of indices
         :return: Dict {'x': 'torch.DoubleTensor', 'y': 'torch.LongTensor'}
         """
-        print('info: starting to load items')
-        with concurrent.futures.ThreadPoolExecutor(max_workers=DATA_LOADER_NUM_WORKERS) as executor:
-            batch_items = executor.map(self.__getitem__, indices)
-        # batch_data should be an iterable of {'x': data, 'y': label} where data is 'torch.DoubleTensor' and label is 'torch.LongTensor'
-        # concatenate
-        batch_data = None
-        batch_labels = None
-        for element in batch_items:
-            # add an empty dimension
-            element_data = element['x'].unsqueeze(0)
-            element_label = element['y'].unsqueeze(0)
-            if batch_data is None:
-                batch_data = element_data
-                batch_labels = element_label
-            else:
-                batch_data = torch.cat((batch_data, element_data))
-                batch_labels = torch.cat((batch_labels, element_label))
-        return {'x': batch_data, 'y': batch_labels}
+        print('info: Trying to load batch from big chunk file.')
+        chunk_name = 'mfcc_{}_{}.pickle'.format(NUMBER_OF_CLASSES, batch_idx)
+        try:
+            ret = pickle.load(open(self.data_path / chunk_name, 'rb'))
+        except FileNotFoundError:
+            print('warning: big chunk file not found. This may take a while...')
+            print('info: starting to load items.')
+            with concurrent.futures.ThreadPoolExecutor(max_workers=DATA_LOADER_NUM_WORKERS) as executor:
+                batch_items = executor.map(self.__getitem__, indices)
+            # batch_data should be an iterable of {'x': data, 'y': label} where data is 'torch.DoubleTensor' and label is 'torch.LongTensor'
+            # concatenate
+            batch_data = None
+            batch_labels = None
+            for element in tqdm.tqdm(batch_items, desc='Data piece'):
+                # add an empty dimension
+                element_data = element['x'].unsqueeze(0)
+                element_label = element['y'].unsqueeze(0)
+                if batch_data is None:
+                    batch_data = element_data
+                    batch_labels = element_label
+                else:
+                    batch_data = torch.cat((batch_data, element_data))
+                    batch_labels = torch.cat((batch_labels, element_label))
+            ret = {'x': batch_data, 'y': batch_labels}
+            print('info: done loading data. Starting chunk saving...')
+            pickle.dump(ret, open(self.data_path / chunk_name, 'wb'))
+            print('info: chunk saved on {}'.format(self.data_path / chunk_name))
+        return ret
 
     @staticmethod
     def encode_labels(labels, label_encoder=None):
