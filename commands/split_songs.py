@@ -1,3 +1,8 @@
+"""
+Command to split MP3/WAV audio dataset in smaller binary chunks and optional mfcc.
+
+…unks for easier loading.
+"""
 import argparse
 import concurrent.futures
 import inspect
@@ -13,7 +18,7 @@ import pandas as pd
 current_dir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
 parent_dir = os.path.dirname(current_dir)
 sys.path.insert(0, parent_dir)
-from config import SR, MFCC_N_COEF, MFCC_FFT_WINDOW, MFCC_HOP_LENGTH, FEATURE_EXTRACTOR_NUM_WORKERS
+from config import SR, MFCC_N_COEF, MFCC_FFT_WINDOW, MFCC_HOP_LENGTH, FEATURE_EXTRACTOR_NUM_WORKERS, MFCC_N_MELS
 
 MAX_CLASS_NUMBER = 0  # Number of classes; 0 is all possible
 SPLIT_AUDIO_LENGTH = 11  # Second
@@ -51,10 +56,10 @@ def make_handler(new_labels, new_filenames, data_path, out_path):
                     new_labels.append(label)
                     continue
                 # Normalize audio signal
-                wav = librosa.util.normalize(wav)
+                new_wav = librosa.util.normalize(new_wav)
                 # Get Mel-Spectrogram
-                mfcc = librosa.feature.mfcc(wav, sr=SR, n_mfcc=MFCC_N_COEF, n_fft=MFCC_FFT_WINDOW,
-                                            hop_length=MFCC_HOP_LENGTH)
+                mfcc = librosa.feature.mfcc(new_wav, sr=SR, n_mfcc=MFCC_N_COEF, n_fft=MFCC_FFT_WINDOW,
+                                            hop_length=MFCC_HOP_LENGTH, n_mels=MFCC_N_MELS)
                 data = mfcc
             else:
                 raise NotImplementedError()

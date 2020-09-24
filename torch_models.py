@@ -19,7 +19,9 @@ from config import WAVENET_LAYERS, WAVENET_BLOCKS, WAVENET_DILATION_CHANNELS, WA
     RNN1D_DROPOUT_PROB, RNN1D_HIDDEN_SIZE, RNN1D_LSTM_LAYERS, RNN1D_BIDIRECTIONAL, RNN1D_DOWNSAMPLER_STRIDE, \
     RNN1D_DOWNSAMPLER_KERNEL_SIZE, RNN1D_DOWNSAMPLER_DILATION, CONV1D_KERNEL_SIZE, CONV1D_STRIDE, CONV1D_DILATION, \
     LSTM_FC1_OUTPUT_DIM, LSTM_FC2_OUTPUT_DIM, CONV1D_FC1_OUTPUT_DIM, CONV1D_FC2_OUTPUT_DIM, WNTF_FC1_OUTPUT_DIM, \
-    WNTF_FC2_OUTPUT_DIM, WNTF_TRANSFORMER_DIM_FEEDFORWARD, LSTM_BIDIRECTIONALITY
+    WNTF_FC2_OUTPUT_DIM, WNTF_TRANSFORMER_DIM_FEEDFORWARD, LSTM_BIDIRECTIONALITY, WAVENET_FC1_OUTPUT_DIM, \
+    WAVENET_FC2_OUTPUT_DIM, RNN1D_MAX_SIZE, RNN1D_FC1_INPUT_SIZE, RNN1D_FC1_OUTPUT_SIZE, RNN1D_FC2_OUTPUT_SIZE, \
+    CONV1D_MAX_SIZE, WNTF_MAX_SIZE, WNLSTM_MAX_SIZE, WN_MAX_SIZE
 from util.wavenet.wavenet_model import WaveNetModel
 
 
@@ -204,13 +206,10 @@ class WaveNetTransformerClassifier(nn.Module):
             ,
             num_layers=WNTF_TRANSFORMER_N_LAYERS
         )
-        self.self_attention_pooling = nn.TransformerEncoder(
-            nn.TransformerEncoderLayer(
-                d_model=WNTF_TRANSFORMER_D_MODEL,
-                nhead=1,
-            ),
-            num_layers=1
-        )  # take the last vector of the attention to the FC
+
+        self.max_pool = nn.AdaptiveAvgPool1d(WNTF_MAX_SIZE)
+        self.avg_pool = nn.AvgPool1d(WNTF_MAX_SIZE)
+
         self.fc1 = nn.Linear(WNTF_TRANSFORMER_D_MODEL, WNTF_FC1_OUTPUT_DIM)
         self.fc2 = nn.Linear(WNTF_FC1_OUTPUT_DIM, WNTF_FC2_OUTPUT_DIM)
         self.fc3 = nn.Linear(WNTF_FC2_OUTPUT_DIM, num_classes)
@@ -218,14 +217,19 @@ class WaveNetTransformerClassifier(nn.Module):
     def forward(self, x):
         x = self.wavenet.forward(x)
         x = self.conv_dimension_reshaper(x)
-        # x.shape for convs is n_data, n_channels, n_sequence
+        # x.shape for convs is n_data, Cout, Lout
+
         # transformer expected input is n_data, n_sequence, wavenet_channels
-        x = x.transpose(1, 2)
+        x = x.transpose(1, 2)  # (N, Cout, Lout, ) to (N, Lout, Cout)
         x = self.positional_encoder(x)
         x = self.transformer_encoder(x)  # shape  n_data, n_sequence, d_model
-        x = self.self_attention_pooling(x)
-        x = x[:, -1, :]  # pick the last vector from the output as the sentence embedding
-        # x, _ = x.max(1)  # max pooling over the sequence dim; drop sequence axis
+
+        # Max_pool expected input is (N, Cout, Lout)
+        x = x.transpose(1, 2)  # (N, Lout, Cout, ) to (N, Cout, Lout)
+        x = self.max_pool(x)
+        x = self.avg_pool(x)
+        x = x.squeeze(2)
+
         x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))
         x = self.fc3(x)
@@ -260,14 +264,14 @@ class Conv1DClassifier(nn.Module):
                     dilation=CONV1D_DILATION,
                 )
             )
-        self.self_attention_pooling = nn.TransformerEncoder(
-            nn.TransformerEncoderLayer(
-                d_model=CONV1D_FEATURE_DIM,
-                nhead=1,
-            ),
-            num_layers=1
-        )  # take the last vector of the attention to the FC
-        self.fc1 = nn.Linear(CONV1D_FEATURE_DIM, CONV1D_FC1_OUTPUT_DIM)
+
+        self.max_pool = nn.AdaptiveAvgPool1d(CONV1D_MAX_SIZE)
+        self.avg_pool = nn.AvgPool1d(CONV1D_MAX_SIZE)
+        # or
+        # x = torch.flatten(x, N)  # shape n_data, encoder_out_dim, N to shape n_data, encoder_out_dim * N
+
+        conv_1d_input_dim = CONV1D_FEATURE_DIM
+        self.fc1 = nn.Linear(conv_1d_input_dim, CONV1D_FC1_OUTPUT_DIM)
         self.fc2 = nn.Linear(CONV1D_FC1_OUTPUT_DIM, CONV1D_FC2_OUTPUT_DIM)
         self.fc3 = nn.Linear(CONV1D_FC2_OUTPUT_DIM, num_classes)
 
@@ -277,10 +281,15 @@ class Conv1DClassifier(nn.Module):
         # nn.Conv1D: (N, Cin, Lin) -> (N, Cout, Lout)
         for conv_layer in self.conv_layers:
             x = conv_layer(x)
-        x = x.transpose(1, 2)  # (N, Cout, Lout) -> (N, Lout, Cout)
-        # transformer expected input is n_data, n_sequence, wavenet_channels
-        x = self.self_attention_pooling(x)
-        x = x[:, -1, :]
+
+        # AdaptativeMaxPooling
+        # Max_pool expected input is (N, Cout, Lout)
+        x = self.max_pool(x)
+        x = self.avg_pool(x)
+        x = x.squeeze(2)
+
+        # Classification
+        # Expects shape (N_data, fc1_input_size)
         x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))
         x = self.fc3(x)
@@ -323,17 +332,13 @@ class RNNClassifier(nn.Module):
             dropout=RNN1D_DROPOUT_PROB,
             bidirectional=RNN1D_BIDIRECTIONAL
         )
-        self.self_attention_pooling = nn.TransformerEncoder(
-            nn.TransformerEncoderLayer(
-                d_model=RNN1D_HIDDEN_SIZE * 2 if RNN1D_BIDIRECTIONAL else RNN1D_HIDDEN_SIZE,
-                nhead=1,
-            ),
-            num_layers=1
-        )  # take the last vector of the attention to the FC
-        self.fc1 = nn.Linear(RNN1D_HIDDEN_SIZE * 2, 256) if RNN1D_BIDIRECTIONAL else nn.Linear(
-            RNN1D_HIDDEN_SIZE, 256)
-        self.fc2 = nn.Linear(256, 128)
-        self.fc3 = nn.Linear(128, num_classes)
+
+        self.max_pool = nn.AdaptiveAvgPool1d(RNN1D_MAX_SIZE)
+        self.avg_pool = nn.AvgPool1d(RNN1D_MAX_SIZE)
+
+        self.fc1 = nn.Linear(RNN1D_FC1_INPUT_SIZE, RNN1D_FC1_OUTPUT_SIZE)
+        self.fc2 = nn.Linear(RNN1D_FC1_OUTPUT_SIZE, RNN1D_FC2_OUTPUT_SIZE)
+        self.fc3 = nn.Linear(RNN1D_FC2_OUTPUT_SIZE, num_classes)
 
     def forward(self, x):
         # assert x.shape is (BS, In_CHNL, ~80000) --> it is!
@@ -343,13 +348,19 @@ class RNNClassifier(nn.Module):
             x = conv_layer(x)
         # question for the reader:
         # Why PyTorch have different input shape for CNNs (N, Cin, Lin) compared to RNNs (Lin, N, Cin)
-        x = x.transpose(0, 2).transpose(1, 2)
+        x = x.transpose(0, 2).transpose(1, 2)  # (N, Cout, Lout) -> (Lout, Cout, N) -> (Lout, N, Cout)
         self.rnn.flatten_parameters()
         x, _ = self.rnn(x)  # shape n_sequence, n_data, lstm_hidden_size (dropped _ is (h_n, c_n))
-        x = x.transpose(0, 1)
-        # transformer expected input is n_data, n_sequence, wavenet_channels
-        x = self.self_attention_pooling(x)
-        x = x[:, -1, :]
+
+        x = x.transpose(1, 0)  # (Lout, N, Cout) -> (N, Lout, Cout)
+        x = x.transpose(1, 2)  # (N, Lout, Cout) -> (N, Cout, Lout)
+
+        # AdaptativeMaxPooling
+        # Max_pool expected input is (N, Cout, Lout)
+        x = self.max_pool(x)
+        x = self.avg_pool(x)
+        x = x.squeeze(2)
+
         x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))
         x = self.fc3(x)
@@ -396,15 +407,8 @@ class WaveNetLSTMClassifier(nn.Module):
             bidirectional=LSTM_BIDIRECTIONALITY,
             dropout=LSTM_DROPOUT_PROB)
 
-        self.self_attention_pooling = nn.TransformerEncoder(
-            nn.TransformerEncoderLayer(
-                d_model=LSTM_HIDDEN_SIZE * 2 if LSTM_BIDIRECTIONALITY else LSTM_HIDDEN_SIZE,
-                nhead=1,
-                dim_feedforward=WNTF_TRANSFORMER_DIM_FEEDFORWARD,
-            )
-            ,
-            num_layers=1
-        )  # take the last vector of the attention to the FC
+        self.max_pool = nn.AdaptiveAvgPool1d(WNLSTM_MAX_SIZE)
+        self.avg_pool = nn.AvgPool1d(WNLSTM_MAX_SIZE)
 
         self.fc1 = nn.Linear(
             LSTM_HIDDEN_SIZE * 2 if LSTM_BIDIRECTIONALITY else LSTM_HIDDEN_SIZE,
@@ -424,13 +428,16 @@ class WaveNetLSTMClassifier(nn.Module):
         # print('info: feeding lstm...')
         self.enc_lstm.flatten_parameters()
         x, _ = self.enc_lstm(x)  # shape n_sequence, n_data, lstm_hidden_size * 2
-        x = x.transpose(0, 1)
-        # transformer expected input is n_data, n_sequence, wavenet_channels
-        x = self.self_attention_pooling(x)
-        x = x[:, -1, :]
-        # pick the last vector from the output as the sentence embedding
+        x = x.transpose(0, 1)  # (Lout, N, Cout, ) -> (N, Lout, Cout, )
+        x = x.transpose(1, 2)  # (N, Lout, Cout, ) -> (N, Cout, Lout, )
+
+        # AdaptativeMaxPooling
+        # Max_pool expected input is (N, Cout, Lout)
+        x = self.max_pool(x)
+        x = self.avg_pool(x)
+        x = x.squeeze(2)
+
         # x final shape is n_data, lstm_hidden_size * 2
-        # print('info: feeding fully-connected...')
         # simple classifier
         x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))
@@ -465,21 +472,29 @@ class WaveNetClassifier(nn.Module):
             WAVENET_OUTPUT_LENGTH,
             WAVENET_KERNEL_SIZE)
         # for now output length is fixed to 159968
+
+        self.max_pool = nn.AdaptiveAvgPool1d(WN_MAX_SIZE)
+        self.avg_pool = nn.AvgPool1d(WN_MAX_SIZE)
+
         self.fc1 = nn.Linear(self.wavenet.end_channels,
-                             120)  # 6*6 from image dimension
-        self.fc2 = nn.Linear(120, 84)
-        self.fc3 = nn.Linear(84, num_classes)
-        self.wavenet_pooling = 'max'
+                             WAVENET_FC1_OUTPUT_DIM)  # 6*6 from image dimension
+        self.fc2 = nn.Linear(WAVENET_FC1_OUTPUT_DIM, WAVENET_FC2_OUTPUT_DIM)
+        self.fc3 = nn.Linear(WAVENET_FC2_OUTPUT_DIM, num_classes)
+        self.wavenet_pooling = 'amax'
 
     def forward(self, x):
         # Encoder
         # shape is (batch_size, channel, sequence_number)
-        x = self.wavenet.forward(x)
+        x = self.wavenet.forward(x)  # (N, Cout, Lout)
         # AvgPooling all the sequences into one Audio Embeding
         if self.wavenet_pooling == 'mean':
             x = torch.mean(x, dim=2)
         elif self.wavenet_pooling == 'max':
             x, _ = torch.max(x, dim=2)
+        elif self.wavenet_pooling == 'amax':
+            x = self.max_pool(x)
+            x = self.avg_pool(x)
+            x = x.squeeze(2)
         else:
             raise NotImplementedError()
         # shape is (batch_size, wavenet_out_channel)

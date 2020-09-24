@@ -11,4 +11,5 @@ torchsummary
 norbert
 tqdm
 pytorch-lightning==0.9.0
+test-tube
 

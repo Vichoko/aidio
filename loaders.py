@@ -1,12 +1,16 @@
+import concurrent.futures
 import os
-from collections import defaultdict
-from math import ceil
-from os.path import isfile
-
+import pickle
+import tqdm
 import librosa
 import numpy as np
 import pandas as pd
 import torch
+
+from collections import defaultdict
+from math import ceil
+from os.path import isfile
+
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import OneHotEncoder, OrdinalEncoder
 from torch.utils.data.dataset import Dataset
@@ -14,24 +18,8 @@ from torch.utils.data.sampler import Sampler
 from torchvision import transforms
 
 from config import FEATURES_DATA_PATH, RESNET_MIN_DIM, ADISAN_BATCH_SIZE, ADISAN_EPOCHS, WAVEFORM_MAX_SEQUENCE_LENGTH, \
-    WAVEFORM_NUM_CHANNELS, WAVEFORM_SAMPLE_RATE, NUMBER_OF_CLASSES, GMM_RANDOM_CROM_FRAME_LENGTH
-
-
-# def get_shuffle_split(self, n_splits=2, test_size=0.5, train_size=0.5):
-#     """
-#     Return a generator to get a shuffle split of the data.
-#     :param n_splits:
-#     :param test_size:
-#     :param train_size:
-#     :return: x_train, y_train, x_test, y_test
-#     """
-#     print('info: starting shuffle-split training...')
-#     kf = ShuffleSplit(n_splits=n_splits, test_size=test_size, train_size=train_size)
-#     for train_index, test_index in kf.split(self.X):
-#         yield self.X[train_index], self.Y[train_index], self.X[test_index], self.Y[test_index]
-
-
-# import torch
+    WAVEFORM_NUM_CHANNELS, WAVEFORM_SAMPLE_RATE, NUMBER_OF_CLASSES, GMM_RANDOM_CROM_FRAME_LENGTH, \
+    DUMMY_EXAMPLES_PER_CLASS, DATA_LOADER_NUM_WORKERS
 
 
 class DataManager:
@@ -498,25 +486,14 @@ class ExperimentDataset(Dataset):
         :return:
         """
         debug = True
-        # metadata_df = pd.read_csv(
-        #     features_path /
-        #     feature_name /
-        #     'labels.{}.csv'.format(feature_name)
-        # )
-
-        metadata_df = pd.read_csv(data_path / label_filename)
-        filenames = metadata_df['filename']
-        labels = metadata_df['label']
-        print('info: total label universe: {}'.format(set(labels)))
         print('info: starting split...')
-
+        # Load dataset's meta-data
+        filenames_dev, filenames_test, filenames_train, labels_dev, labels_test, labels_train = cls.split_meta_dataset(
+            label_filename, ratio, shuffle, data_path, random_seed)
         if dummy_mode:
+            print('info: dummy mode detected. Re-formatting train/test/dev sets based on train sub-set')
             filenames_dev, filenames_test, filenames_train, labels_dev, labels_test, labels_train = cls.get_dummy_dataset(
-                filenames, labels, shuffle, ratio, random_seed)
-        else:
-            filenames_dev, filenames_test, filenames_train, labels_dev, labels_test, labels_train = cls.split_meta_dataset(
-                filenames, labels, label_filename, ratio, shuffle, data_path, random_seed)
-            # check the nmber of classes and fit an ordinal ecoder
+                filenames_train, labels_train)
 
         # as split can sub-set the original label set, we need to build a fresh one
         label_set = set()
@@ -595,14 +572,12 @@ class ExperimentDataset(Dataset):
         return np.asarray(new_filenames), np.asarray(new_labels), selected_labels
 
     @classmethod
-    def split_meta_dataset(cls, filenames, labels, label_filename, ratio, shuffle, data_path, random_seed):
+    def split_meta_dataset(cls, label_filename, ratio, shuffle, data_path, random_seed):
         """
         Makes sure that same-song splits stay in same partition to avoid song-effect.
-        Make random split over the songs, and prints distributuions statistics of the resulting datasets.
+        Make random split over the songs, and prints distribution statistics of the resulting datasets.
 
         The random split supposes the distribution of classes is equivalent. If not another picking-algrithm should be used.
-        :param filenames: All available filenames
-        :param labels: All filename labels with same indexing
         :param random_seed: unused
         :param ratio: Tri-tuple with ratios of each data-set (train, test, dev)
         :param shuffle: unused
@@ -611,7 +586,7 @@ class ExperimentDataset(Dataset):
         :return:
         """
         debug = True
-        possible_labels = set(label for label in labels)
+
         # Check if split was already done in label files
         train_label_filename = label_filename.replace(
             '.csv',
@@ -626,10 +601,10 @@ class ExperimentDataset(Dataset):
             '.{}.{}.csv'.format(NUMBER_OF_CLASSES, 'val')
         )
         # if 3set-label files exist
-        cond = isfile(data_path / train_label_filename) \
-               and isfile(data_path / test_label_filename) \
-               and isfile(data_path / val_label_filename)
-        if cond:
+        already_splitted = isfile(data_path / train_label_filename) \
+                           and isfile(data_path / test_label_filename) \
+                           and isfile(data_path / val_label_filename)
+        if already_splitted:
             print('info: loading from pre-splitted data-sets')
             # train set load
             metadata_df = pd.read_csv(data_path / train_label_filename)
@@ -643,7 +618,15 @@ class ExperimentDataset(Dataset):
             metadata_df = pd.read_csv(data_path / val_label_filename)
             filenames_val = metadata_df['filename']
             labels_val = metadata_df['label']
+            possible_labels = set(label for label in labels_train) or \
+                              set(label for label in labels_test) or \
+                              set(label for label in labels_val)
         else:
+            # do splits
+            metadata_df = pd.read_csv(data_path / label_filename)
+            filenames = metadata_df['filename']
+            labels = metadata_df['label']
+            possible_labels = set(label for label in labels)
             # assert minimum conditions
             assert ratio[0] + ratio[1] + ratio[2] == 1
             assert len(filenames) == len(labels)
@@ -664,19 +647,20 @@ class ExperimentDataset(Dataset):
             songs = np.asarray(list(songs))
             print('debug: selected songs: {}'.format(songs)) if debug else None
             # randomize unique songs
-            # np.random.seed(random_seed)
-            # np.random.shuffle(songs)
+            np.random.seed(random_seed)
+            np.random.shuffle(songs)
             # split unique songs in 3 sets
             first_pivot = round(ratio[0] * len(songs))
             second_pivot = round((ratio[0] + ratio[1]) * len(songs))
             train_songs, test_songs, val_songs = np.split(songs, [first_pivot, second_pivot])
+            assert len(songs) == (len(train_songs) + len(test_songs) + len(val_songs))
             # randomize filenames together with the labels
             # note: there is multiple filenames pointing to different pieces of a same song
-            indices = np.arange(len(filenames))
-            np.random.seed(random_seed)
-            np.random.shuffle(indices)
-            filenames = np.asarray(filenames[indices])
-            labels = np.asarray(labels[indices])
+            # indices = np.arange(len(filenames))
+            # np.random.seed(random_seed)
+            # np.random.shuffle(indices)
+            # filenames = np.asarray(filenames[indices])
+            # labels = np.asarray(labels[indices])
             print('f: {}, l: {}'.format(filenames, labels))
             # gather the corresponding song pieces (filenames) to each set
             # note: here we enforce that the same song pieces fall in the same train/test/val to avoid song-effect
@@ -696,6 +680,7 @@ class ExperimentDataset(Dataset):
                     filenames_val.append(filename)
                     labels_val.append(label)
                 else:
+                    print('warning: song name {} with no set (train/test/val).'.format(song_name))
                     continue
             # transform python list to np.array
             filenames_train, filenames_test, filenames_val = np.asarray(filenames_train), np.asarray(
@@ -730,7 +715,7 @@ class ExperimentDataset(Dataset):
         return filenames_val, filenames_test, filenames_train, labels_val, labels_test, labels_train
 
     @staticmethod
-    def get_dummy_dataset(filenames, labels, shuffle, ratio, random_seed):
+    def get_dummy_dataset(filenames, labels):
         """
         Construct splits of the same 10 songs to test the model learning capabilities.
         It has 2 classes.
@@ -741,20 +726,22 @@ class ExperimentDataset(Dataset):
         :param shuffle:
         :return:
         """
-        assert ratio[0] + ratio[1] + ratio[2] == 1
         assert len(filenames) == len(labels)
-        filenames = np.asarray(sorted(list(filenames)))
         available_labels = np.asarray(sorted(list(set(labels))))
-        first_class_filenames = filenames[labels == available_labels[0]]
-        second_class_filenames = filenames[labels == available_labels[1]]
+        out_filenames = None
+        out_labels = None
+        for unique_label in available_labels:
+            class_filenames = filenames[labels == unique_label][:DUMMY_EXAMPLES_PER_CLASS]
+            class_labels = labels[labels == unique_label][:DUMMY_EXAMPLES_PER_CLASS]
+            if out_filenames is None:
+                out_filenames = class_filenames
+                out_labels = class_labels
+            else:
+                out_filenames = np.concatenate((out_filenames, class_filenames))
+                out_labels = np.concatenate((out_labels, class_labels))
 
-        examples_per_class = 1
-        out_filenames = np.concatenate(
-            (first_class_filenames[:examples_per_class], second_class_filenames[:examples_per_class]))
-        out_labels = np.asarray([available_labels[0]] * examples_per_class + [available_labels[1]] * examples_per_class)
         assert len(out_labels) == len(out_filenames)
         indices = np.arange(len(out_labels))
-
         np.random.shuffle(indices)
         out_filenames = out_filenames[indices]
         out_labels = out_labels[indices]
@@ -896,6 +883,8 @@ class CepstrumDataset(ExperimentDataset):
             data_path,
             label_encoder
         )
+        self.debug = True
+        print('debug: CepstrumDataset.__init__ call') if self.debug else None
         self.transform = transforms.Compose([
             CepstrumDataset.RandomCropMFCC(GMM_RANDOM_CROM_FRAME_LENGTH),  # ]  # with numpy
             self.ToTensor(),
@@ -903,17 +892,51 @@ class CepstrumDataset(ExperimentDataset):
         )
 
     def __getitem__(self, index: int):
-        debug = True
+        # debug = self.debug
         label = self.labels[index]
         data = np.load(
             str(self.data_path / self.filenames[index]),
             allow_pickle=True
         )
-        # print('debug: CepstrumDataset.get_item label is {}'.format(label)) if debug else None  # floody
         sample = {'x': data, 'y': label}
         if self.transform:
             sample = self.transform(sample)
         return sample
+
+    def get_batch(self, indices: list, batch_idx: int):
+        """
+        Load a batch of indices and return the iterator.
+        :param indices: Iterable of indices
+        :return: Dict {'x': 'torch.DoubleTensor', 'y': 'torch.LongTensor'}
+        """
+        print('info: Trying to load batch from big chunk file.')
+        chunk_name = 'mfcc_{}_{}.pickle'.format(NUMBER_OF_CLASSES, batch_idx)
+        try:
+            ret = pickle.load(open(self.data_path / chunk_name, 'rb'))
+        except FileNotFoundError:
+            print('warning: big chunk file not found. This may take a while...')
+            print('info: starting to load items.')
+            with concurrent.futures.ThreadPoolExecutor(max_workers=DATA_LOADER_NUM_WORKERS) as executor:
+                batch_items = executor.map(self.__getitem__, indices)
+            # batch_data should be an iterable of {'x': data, 'y': label} where data is 'torch.DoubleTensor' and label is 'torch.LongTensor'
+            # concatenate
+            batch_data = None
+            batch_labels = None
+            for element in tqdm.tqdm(batch_items, desc='Data ETL', total=len(indices), unit='element'):
+                # add an empty dimension
+                element_data = element['x'].unsqueeze(0)
+                element_label = element['y'].unsqueeze(0)
+                if batch_data is None:
+                    batch_data = element_data
+                    batch_labels = element_label
+                else:
+                    batch_data = torch.cat((batch_data, element_data))
+                    batch_labels = torch.cat((batch_labels, element_label))
+            ret = {'x': batch_data, 'y': batch_labels}
+            print('info: done loading data. Starting chunk saving...')
+            pickle.dump(ret, open(self.data_path / chunk_name, 'wb'))
+            print('info: chunk saved on {}'.format(self.data_path / chunk_name))
+        return ret
 
     @staticmethod
     def encode_labels(labels, label_encoder=None):
@@ -984,6 +1007,8 @@ class ClassSampler(Sampler):
         self.number_of_classes = number_of_classes
         self.labels = np.asarray(labels)
         self.batch_size = batch_size
+        self.debug = True
+        print('debug: ClassSampler.__init__') if self.debug else None
 
         if len(self.labels.shape) > 1:
             raise RuntimeError('labels should be a flattened array. Detected {}.'.format(len(self.labels.shape)))
@@ -1003,7 +1028,7 @@ class ClassSampler(Sampler):
         Iterate over possible classes, yielding the indices of the samples of that class.
         :yield: a list of indexes
         """
-        debug = False
+        debug = self.debug
         print('debug: ClassSampler.__iter__') if debug else None
         for label in range(self.number_of_classes):
             relevant_indexes = (self.labels == label).nonzero()[0]
@@ -1012,7 +1037,16 @@ class ClassSampler(Sampler):
                     self.labels == label).nonzero())) if debug else None
 
             if self.batch_size is None:
-                yield relevant_indexes.tolist()
+                yield relevant_indexes
             else:
                 # random sample without replacement
-                yield np.random.choice(relevant_indexes, self.batch_size, replace=False)
+                try:
+                    indices = np.random.choice(relevant_indexes, self.batch_size, replace=False)
+                except ValueError as e:
+                    print(
+                        'error: trying to subset {} indexes on bigger bs={}. '
+                        'Maybe you want to set bs to None to fit all possible data'.format(
+                            len(relevant_indexes),
+                            self.batch_size))
+                    raise e
+                yield indices
