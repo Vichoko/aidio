@@ -172,9 +172,8 @@ class GMMClassifierHelper(AbstractHelper):
         attribute and save_model methods.
         :return:
         """
-        if self.module.train_now() == 0:
-            self.module.save_model(self.save_dir)
-        self.module.eval_now()
+        self.module.start_training()
+        self.module.start_evaluation()
 
 
 class ResNext50Helper(AbstractHelper):

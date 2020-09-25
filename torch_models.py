@@ -1,6 +1,8 @@
 import math
+import pickle
 import typing
 from concurrent.futures.thread import ThreadPoolExecutor
+from os import path
 
 import torch
 from sklearn import mixture
@@ -92,6 +94,26 @@ class GMMClassifier(nn.Module):
         print('Debug: Training data have shape {}'.format(data.shape)) if debug else None
         self.gmm_list[y[0].item()].fit(data)
         print('info: Done!')
+
+    def save_gmm(self, gmm_idx: int, path):
+        """
+        Save indexed GMM on storage.
+        :param gmm_idx: Index of the GMM corresponding to the nominal label trained to predict.
+        :param path: Absolute path to the storage file to open.
+        :return:
+        """
+        assert not path.isfile(path), 'error: Saving GMM instance noted that {} already exists'.format(path)
+        pickle.dump(self.gmm_list[gmm_idx], open(path, 'wb'))
+
+    def load_gmm(self, gmm_idx: int, path):
+        """
+        Loaded GMM from storage to this instance given index.
+        May raise FileNotFoundException if path doesn't exists.
+        :param gmm_idx: Index of the GMM representing the corresponding nominal label trained to predict.
+        :param path: Absolute path to the storage file to open.
+        :return:
+        """
+        self.gmm_list[gmm_idx] = pickle.load(open(path, 'rb'))
 
     def forward_score(self, x):
         """

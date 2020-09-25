@@ -903,10 +903,11 @@ class CepstrumDataset(ExperimentDataset):
             sample = self.transform(sample)
         return sample
 
-    def get_batch(self, indices: list, batch_idx: int):
+    def get_batch(self, batch_idx: int, indices: list):
         """
         Load a batch of indices and return the iterator.
         :param indices: Iterable of indices
+        :param batch_idx:
         :return: Dict {'x': 'torch.DoubleTensor', 'y': 'torch.LongTensor'}
         """
         print('info: Trying to load batch from big chunk file.')

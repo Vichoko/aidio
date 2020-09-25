@@ -1,6 +1,7 @@
-import pickle
+from argparse import ArgumentParser
 from argparse import ArgumentParser
 from collections import OrderedDict
+from os.path import isfile
 
 import pytorch_lightning as ptl
 import torch
@@ -43,26 +44,37 @@ class L_GMMClassifier(ptl.LightningModule):
         # build model
         self.optimizer = DummyOptimizer([torch.Tensor()], {})
         self.trained = False
-        self.model = None
-        # self.model = self.load_model(self.num_classes)
+        self.model = GMMClassifier(self.num_classes)
+        self.gmm_filename = 'gmm_{}_of_{}.pickle'
+        self.trained_gmm_indices = None
 
-    def train_now(self):
+    def start_training(self):
         if self.trained:
             print('warning: Trying to train an alredy fitted GMM loaded from folder: {}. Skipping train...'.format(
                 self.model_path))
             return -1
-
         print('info: starting training')
+        print('info: Skipping load and train of already trained GMMs {} found. '.format(self.trained_gmm_indices)) if self.trained_gmm_indices else None
+
         batch_generator = self.train_dataloader()
         print('info: starting batch data loading...')
-        for batch_idx, batch in tqdm.tqdm(enumerate(batch_generator()), desc='Batch'):  # aqui se hangea leftraru
+        for batch_idx, batch in tqdm.tqdm(enumerate(batch_generator()), desc='Batch', unit='#',
+                                          total=self.num_classes):
+            if batch_idx in self.trained_gmm_indices and batch is None:
+                print('info: skipping batch {} already trained.')
+                continue
+            assert batch_idx not in self.trained_gmm_indices and batch is not None, 'error: inconsitency in batch skipping mechanism.'
             print('info: batch {} loaded!'.format(batch_idx))
             self.training_step(batch, batch_idx)
+            self.model.save_gmm(
+                batch_idx,
+                self.model_path / self.gmm_filename.format(batch_idx, self.num_classes)
+            )
         self.trained = True
         print('info: ending training')
         return 0
 
-    def eval_now(self):
+    def start_evaluation(self):
         print('info: starting evaluation')
         val_dataloader = self.val_dataloader()
         # test_dataloader = self.test_dataloader()
@@ -74,30 +86,26 @@ class L_GMMClassifier(ptl.LightningModule):
         print('info: ending evaluation')
         return 0
 
-    def save_model(self, model_path):
+    def load_model(self, model_path):
         """
-        Save the model state with some metrics.
-
+        Load GMM model pieces from previous trained ones.
+        This method is always called after init on model_manager.py.
+        :param model_path:
         :return:
         """
-        filename = 'model.pickle'
-        pickle.dump(self.model, open(model_path / filename, 'wb'))
-        print('info: gmm model saved')
-        return
-
-    def load_model(self, model_path):
-        filename = 'model.pickle'
         self.model_path = model_path
-        try:
-            model = pickle.load(open(model_path / filename, 'rb'))
-            print('info: gmm loaded from file')
+        trained_gmm_mask = [isfile(self.model_path / self.gmm_filename.format(class_idx, self.num_classes))
+                            for class_idx in range(self.num_classes)]
+        self.trained_gmm_indices = [i for i, x in enumerate(trained_gmm_mask) if x]
+        for gmm_index in self.trained_gmm_indices:
+            self.model.load_gmm(
+                gmm_index,
+                self.model_path / self.gmm_filename.format(gmm_index, self.num_classes)
+            )
+
+        if len(self.trained_gmm_indices) == self.num_classes:
+            # if all pieces are found, consider the module fully-trained
             self.trained = True
-        except IOError:
-            model = GMMClassifier(self.num_classes)
-            print('info: previuous gmm not found.')
-            self.trained = False
-        self.model = model
-        return model
 
     # ---------------------
     # TRAINING
@@ -120,6 +128,8 @@ class L_GMMClassifier(ptl.LightningModule):
         debug = True
         x, y = batch['x'], batch['y']
         print('debug: batch is {}, labels are {}'.format(batch_idx, y)) if debug else None
+        assert y[0].item() == batch_idx, 'error: batch index is different than a label ({} vs {})'.format(batch_idx,
+                                                                                                          y[0].item())
         self.model.fit(x, y)
         result = ptl.TrainResult()
         return result
@@ -212,9 +222,6 @@ class L_GMMClassifier(ptl.LightningModule):
         print('info: {}'.format(result['log']))
         return result
 
-    # ---------------------
-    # TRAINING SETUP
-    # ---------------------
     def configure_optimizers(self):
         """
         return whatever optimizers we want here
@@ -224,15 +231,20 @@ class L_GMMClassifier(ptl.LightningModule):
 
     def train_dataloader(self):
         """
-
+        :param trained_gmm_indices: Indices of the batches to avoid loading.
         :return: A lazy iterable of batches
             where every batch should be a dict with keys x and y containing the data and the labels
         """
         class_sampler = ClassSampler(self.num_classes, self.train_dataset.labels, self.train_batch_size)
+        trained_gmm_indices = self.trained_gmm_indices
 
         def batch_generator():
-            for idx, indices in enumerate(class_sampler):
-                yield self.train_dataset.get_batch(indices, idx)
+            for batch_idx, indices in enumerate(class_sampler):
+                if batch_idx in trained_gmm_indices:
+                    print('warning: skipping load of data batch {}, as it was already trained.'.format(batch_idx))
+                    yield None
+                else:
+                    yield self.train_dataset.get_batch(batch_idx, indices)
 
         return batch_generator
 
