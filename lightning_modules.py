@@ -64,6 +64,7 @@ class L_GMMClassifier(ptl.LightningModule):
 
     def eval_now(self):
         print('info: starting evaluation')
+        assert self.trained, 'error: evaluating a non-trained GMM.'
         val_dataloader = self.val_dataloader()
         # test_dataloader = self.test_dataloader()
         val_out = []
@@ -86,15 +87,16 @@ class L_GMMClassifier(ptl.LightningModule):
         return
 
     def load_model(self, model_path):
+        print('info: trying to load trained GMMs...')
         filename = 'model.pickle'
         self.model_path = model_path
         try:
             model = pickle.load(open(model_path / filename, 'rb'))
-            print('info: gmm loaded from file')
+            print('info: trained GMMs loaded from file')
             self.trained = True
         except IOError:
             model = GMMClassifier(self.num_classes)
-            print('info: previuous gmm not found.')
+            print('info: trained GMMs not found.')
             self.trained = False
         self.model = model
         return model
