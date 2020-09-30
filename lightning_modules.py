@@ -14,7 +14,7 @@ from config import WAVENET_BATCH_SIZE, DATA_LOADER_NUM_WORKERS, RESNET_V2_BATCH_
     WAVENET_WEIGHT_DECAY, WNTF_BATCH_SIZE, WNLSTM_BATCH_SIZE, WAVEFORM_MAX_SEQUENCE_LENGTH, GMM_PREDICT_BATCH_SIZE, \
     GMM_TRAIN_BATCH_SIZE, CONV1D_LEARNING_RATE, CONV1D_WEIGHT_DECAY, CONV1D_BATCH_SIZE, WNTF_LEARNING_RATE, \
     WNTF_WEIGHT_DECAY, WNLSTM_LEARNING_RATE, WNLSTM_WEIGHT_DECAY, RNN1D_BATCH_SIZE, RNN1D_LEARNING_RATE, \
-    RNN1D_WEIGHT_DECAY, RESNET_V2_LR
+    RNN1D_WEIGHT_DECAY, RESNET_V2_LR, RESNET_V2_WEIGHT_DECAY
 from loaders import ClassSampler
 from torch_models import WaveNetTransformerClassifier, GMMClassifier, WaveNetClassifier, \
     Conv1DClassifier, RNNClassifier, WaveNetLSTMClassifier
@@ -266,9 +266,10 @@ class L_GMMClassifier(ptl.LightningModule):
         return parser
 
 
-class L_WavenetAbstractClassifier(ptl.LightningModule):
+class L_AbstractClassifier(ptl.LightningModule):
     """
-    Sample model to show how to define a template
+    Lightning Module template that include standard classification metrics, params and methods.
+    Only requires to define self.model and self.optimizer in constructor.
     """
 
     def __init__(self, hparams, num_classes, train_dataset, eval_dataset, test_dataset, *args, **kwargs):
@@ -282,6 +283,7 @@ class L_WavenetAbstractClassifier(ptl.LightningModule):
         self.eval_dataset = eval_dataset
         self.test_dataset = test_dataset
         self.acc = ptl.metrics.Accuracy(num_classes)
+        # After this constructor should define self.model and self.optimizer
 
     def forward(self, x):
         """
@@ -305,6 +307,7 @@ class L_WavenetAbstractClassifier(ptl.LightningModule):
         # calculate accurracy
         labels_hat = torch.argmax(y_pred, dim=1)  # change from one-hot encoding to nominal label
         accuracy = self.acc(labels_hat, y)
+        # gather results
         result = ptl.TrainResult(loss)
         result.log('train_loss', loss, prog_bar=True)
         result.log('train_acc', accuracy, prog_bar=True)
@@ -321,15 +324,23 @@ class L_WavenetAbstractClassifier(ptl.LightningModule):
         y_pred = self.forward(x)
         # calculate loss
         loss = self.loss(y_pred, y)
-        # calculate accurracy
+        # calculate accuracy
         labels_hat = torch.argmax(y_pred, dim=1)  # change from one-hot encoding to nominal label
         accuracy = self.acc(labels_hat, y)
-        result = ptl.EvalResult(early_stop_on=None, checkpoint_on=loss)
+        # gather results
+        result = ptl.EvalResult(early_stop_on=None, checkpoint_on=accuracy)
         result.log('val_loss', loss, prog_bar=True)
         result.log('val_acc', accuracy, prog_bar=True)
         return result
 
     def test_step(self, batch, batch_idx):
+        """
+        Lightning calls this inside the testing loop
+
+        :param batch:
+        :param batch_idx:
+        :return:
+        """
         x, y = batch['x'], batch['y']
         y_pred = self.forward(x)
         # calculate loss
@@ -337,6 +348,7 @@ class L_WavenetAbstractClassifier(ptl.LightningModule):
         # calculate accurracy
         labels_hat = torch.argmax(y_pred, dim=1)  # change from one-hot encoding to nominal label
         accuracy = self.acc(labels_hat, y)
+        # gather results
         result = ptl.EvalResult()
         result.log('test_loss', loss, prog_bar=True)
         result.log('test_acc', accuracy, prog_bar=True)
@@ -362,7 +374,7 @@ class L_WavenetAbstractClassifier(ptl.LightningModule):
                           num_workers=DATA_LOADER_NUM_WORKERS)
 
 
-class L_WavenetClassifier(L_WavenetAbstractClassifier):
+class L_WavenetClassifier(L_AbstractClassifier):
     """
     Sample model to show how to define a template
     """
@@ -372,8 +384,11 @@ class L_WavenetClassifier(L_WavenetAbstractClassifier):
         # build model
         self.model = WaveNetClassifier(num_classes)
         summary(self.model, input_size=(1, WAVEFORM_MAX_SEQUENCE_LENGTH), device="cpu")
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr,
-                                          weight_decay=self.wd)
+        self.optimizer = torch.optim.Adam(
+            self.model.parameters(),
+            lr=self.lr,
+            weight_decay=self.wd
+        )
 
     @staticmethod
     def add_model_specific_args(parent_parser, root_dir):  # pragma: no cover
@@ -396,7 +411,7 @@ class L_WavenetClassifier(L_WavenetAbstractClassifier):
         return parser
 
 
-class L_Conv1DClassifier(L_WavenetAbstractClassifier):
+class L_Conv1DClassifier(L_AbstractClassifier):
     """
     Sample model to show how to define a template
     """
@@ -432,7 +447,7 @@ class L_Conv1DClassifier(L_WavenetAbstractClassifier):
         return parser
 
 
-class L_WavenetTransformerClassifier(L_WavenetAbstractClassifier):
+class L_WavenetTransformerClassifier(L_AbstractClassifier):
     """
     Sample model to show how to define a template
     """
@@ -470,14 +485,13 @@ class L_WavenetTransformerClassifier(L_WavenetAbstractClassifier):
         return parser
 
 
-class L_WavenetLSTMClassifier(L_WavenetAbstractClassifier):
+class L_WavenetLSTMClassifier(L_AbstractClassifier):
     """
     Sample model to show how to define a template
     """
 
     def __init__(self, hparams, num_classes, train_dataset, eval_dataset, test_dataset, *args, **kwargs):
         super().__init__(hparams, num_classes, train_dataset, eval_dataset, test_dataset, *args, **kwargs)
-        # build model
         self.model = WaveNetLSTMClassifier(num_classes)
         # summary(self.model, input_size=(WNLSTM_BATCH_SIZE, 1, WAVEFORM_MAX_SEQUENCE_LENGTH), device="cpu")
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr, weight_decay=self.wd)
@@ -503,14 +517,13 @@ class L_WavenetLSTMClassifier(L_WavenetAbstractClassifier):
         return parser
 
 
-class L_RNNClassifier(L_WavenetAbstractClassifier):
+class L_RNNClassifier(L_AbstractClassifier):
     """
     Sample model to show how to define a template
     """
 
     def __init__(self, hparams, num_classes, train_dataset, eval_dataset, test_dataset, *args, **kwargs):
         super().__init__(hparams, num_classes, train_dataset, eval_dataset, test_dataset, *args, **kwargs)
-        # build model
         self.model = RNNClassifier(num_classes)
         # summary(self.model, input_size=(RNN1D_BATCH_SIZE, 1, WAVEFORM_MAX_SEQUENCE_LENGTH), device="cpu")
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr, weight_decay=self.wd)
@@ -536,30 +549,28 @@ class L_RNNClassifier(L_WavenetAbstractClassifier):
         return parser
 
 
-class L_ResNext50(ptl.LightningModule):
+class L_ResNext50(L_AbstractClassifier):
     """
     Sample model to show how to define a template
     """
 
     def __init__(self, hparams, num_classes, train_dataset, eval_dataset, test_dataset):
-        super(L_ResNext50, self).__init__()
-        self.hparams = hparams
-        self.lr = hparams.learning_rate
-        self.batch_size = hparams.batch_size
-        self.loss = torch.nn.CrossEntropyLoss()
-        self.train_dataset = train_dataset
-        self.eval_dataset = eval_dataset
-        self.test_dataset = test_dataset
-        # build model
+        super().__init__(hparams, num_classes, train_dataset, eval_dataset, test_dataset)
         self.model = resnext50_32x4d(num_classes=num_classes)
-        input_channels = 1
-        self.model.conv1 = Conv2d(input_channels, 64, kernel_size=7, stride=2, padding=3,
-                                  bias=False)
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
+        self.model.conv1 = Conv2d(
+            in_channels=1,
+            out_channels=64,
+            kernel_size=7,
+            stride=2,
+            padding=3,
+            bias=False
+        )
+        self.optimizer = torch.optim.Adam(
+            self.model.parameters(),
+            lr=self.lr,
+            weight_decay=self.wd
+        )
 
-    # ---------------------
-    # TRAINING
-    # ---------------------
     def forward(self, x):
         """
         No special modification required for lightning, define as you normally would
@@ -568,85 +579,6 @@ class L_ResNext50(ptl.LightningModule):
         """
         x = x.unsqueeze(1).float()
         return self.model(x)
-
-    def training_step(self, batch, batch_idx):
-        """
-        Lightning calls this inside the training loop
-        :param batch:
-        :return:
-        """
-        # forward pass
-        x, y = batch['x'], batch['y']
-        y_pred = self.forward(x)
-        # calculate loss
-        loss = self.loss(y_pred, y)
-        result = ptl.TrainResult(loss)
-        result.log('train_loss', loss, prog_bar=True)
-        return result
-
-    def validation_step(self, batch, batch_idx):
-        """
-        Lightning calls this inside the validation loop
-        :param batch:
-        :return:
-        """
-        x, y = batch['x'], batch['y']
-        y_pred = self.forward(x)
-        # calculate loss
-        loss = self.loss(y_pred, y)
-        # acc
-        labels_hat = torch.argmax(y_pred, dim=1)
-        accuracy = torch.sum(y == labels_hat).item() / (len(y) * 1.0)
-        accuracy = torch.tensor(accuracy)
-        if self.on_gpu:
-            accuracy = accuracy.cuda(loss.device.index)
-        result = ptl.EvalResult(checkpoint_on=loss)
-        result.log('val_loss', loss, prog_bar=True)
-        result.log('val_acc', accuracy, prog_bar=True)
-        return result
-
-    def test_step(self, batch, batch_idx):
-        """
-        Lightning calls this inside the validation loop
-        :param batch:
-        :return:
-        """
-        x, y = batch['x'], batch['y']
-        y_pred = self.forward(x)
-        # calculate loss
-        loss = self.loss(y_pred, y)
-        # acc
-        labels_hat = torch.argmax(y_pred, dim=1)
-        accuracy = torch.sum(y == labels_hat).item() / (len(y) * 1.0)
-        accuracy = torch.tensor(accuracy)
-        if self.on_gpu:
-            accuracy = accuracy.cuda(loss.device.index)
-        result = ptl.EvalResult(checkpoint_on=loss)
-        result.log('test_loss', loss, prog_bar=True)
-        result.log('test_acc', accuracy, prog_bar=True)
-        return result
-
-    # ---------------------
-    # TRAINING SETUP
-    # ---------------------
-    def configure_optimizers(self):
-        """
-        return whatever optimizers we want here
-        :return: list of optimizers
-        """
-        return [self.optimizer]
-
-    def train_dataloader(self):
-        return DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=True,
-                          num_workers=DATA_LOADER_NUM_WORKERS)
-
-    def val_dataloader(self):
-        return DataLoader(self.eval_dataset, batch_size=self.batch_size, shuffle=True,
-                          num_workers=DATA_LOADER_NUM_WORKERS)
-
-    def test_dataloader(self):
-        return DataLoader(self.test_dataset, batch_size=self.batch_size, shuffle=True,
-                          num_workers=DATA_LOADER_NUM_WORKERS)
 
     @staticmethod
     def add_model_specific_args(parent_parser, root_dir):  # pragma: no cover
@@ -659,6 +591,7 @@ class L_ResNext50(ptl.LightningModule):
         parser = ArgumentParser(parents=[parent_parser])
         parser.add_argument('--learning_rate', default=RESNET_V2_LR, type=float)
         parser.add_argument('--batch_size', default=RESNET_V2_BATCH_SIZE, type=int)
+        parser.add_argument('--weight_decay', default=RESNET_V2_WEIGHT_DECAY, type=float)
         parser.add_argument(
             '--distributed_backend',
             type=str,

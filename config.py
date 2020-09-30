@@ -208,6 +208,7 @@ RESNET_V2_BATCH_SIZE = 20  # orig paper trained all networks with batch_size=128
 RESNET_V2_EPOCHS = 200
 RESNET_V2_DEPTH = 3 * 9 + 2
 RESNET_V2_LR = 0.001
+RESNET_V2_WEIGHT_DECAY = 0.01
 RESNET_MIN_DIM = 29  # discovered by A/B testing
 
 # Simpleconv
