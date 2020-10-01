@@ -11,7 +11,7 @@ from torchsummary import summary
 from torchvision.models import resnext50_32x4d
 
 from config import WAVENET_BATCH_SIZE, DATA_LOADER_NUM_WORKERS, RESNET_V2_BATCH_SIZE, WAVENET_LEARNING_RATE, \
-    WAVENET_WEIGHT_DECAY, WNTF_BATCH_SIZE, WNLSTM_BATCH_SIZE, WAVEFORM_MAX_SEQUENCE_LENGTH, GMM_PREDICT_BATCH_SIZE, \
+    WAVENET_WEIGHT_DECAY, WNTF_BATCH_SIZE, WNLSTM_BATCH_SIZE, WAVEFORM_RANDOM_CROP_SEQUENCE_LENGTH, GMM_PREDICT_BATCH_SIZE, \
     GMM_TRAIN_BATCH_SIZE, CONV1D_LEARNING_RATE, CONV1D_WEIGHT_DECAY, CONV1D_BATCH_SIZE, WNTF_LEARNING_RATE, \
     WNTF_WEIGHT_DECAY, WNLSTM_LEARNING_RATE, WNLSTM_WEIGHT_DECAY, RNN1D_BATCH_SIZE, RNN1D_LEARNING_RATE, \
     RNN1D_WEIGHT_DECAY, RESNET_V2_LR, RESNET_V2_WEIGHT_DECAY
@@ -383,7 +383,7 @@ class L_WavenetClassifier(L_AbstractClassifier):
         super().__init__(hparams, num_classes, train_dataset, eval_dataset, test_dataset, *args, **kwargs)
         # build model
         self.model = WaveNetClassifier(num_classes)
-        summary(self.model, input_size=(1, WAVEFORM_MAX_SEQUENCE_LENGTH), device="cpu")
+        summary(self.model, input_size=(1, WAVEFORM_RANDOM_CROP_SEQUENCE_LENGTH), device="cpu")
         self.optimizer = torch.optim.Adam(
             self.model.parameters(),
             lr=self.lr,
@@ -456,7 +456,7 @@ class L_WavenetTransformerClassifier(L_AbstractClassifier):
         super().__init__(hparams, num_classes, train_dataset, eval_dataset, test_dataset)
         # build model
         self.model = WaveNetTransformerClassifier(num_classes)
-        summary(self.model, input_size=(1, WAVEFORM_MAX_SEQUENCE_LENGTH), device="cpu")
+        summary(self.model, input_size=(1, WAVEFORM_RANDOM_CROP_SEQUENCE_LENGTH), device="cpu")
         self.optimizer = torch.optim.Adam(
             self.model.parameters(),
             lr=self.lr,
