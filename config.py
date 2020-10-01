@@ -140,7 +140,7 @@ CONV1D_FC1_OUTPUT_DIM = 256
 CONV1D_FC2_OUTPUT_DIM = 64
 
 # WaveNet General
-WAVEFORM_RANDOM_CROP_SEQUENCE_LENGTH = SR * 5  # native length is 176000 samples, i.e. 11 seconds
+WAVEFORM_RANDOM_CROP_SEQUENCE_LENGTH = SR * 11  # native length is 176000 samples, i.e. 11 seconds
 # Wavenet Vanilla Layers
 WN_MAX_SIZE = 4
 WAVENET_BATCH_SIZE = 20
