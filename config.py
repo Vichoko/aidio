@@ -105,7 +105,7 @@ DUMMY_EXAMPLES_PER_CLASS = 1
 GMM_PREDICT_BATCH_SIZE = 200
 GMM_TRAIN_BATCH_SIZE = None  # used in data sampler of data loader; None is all posible
 GMM_COMPONENT_NUMBER = 64
-GMM_RANDOM_CROM_FRAME_LENGTH = 17 * 1000  # 1000 are 1 second; used on data loader
+GMM_RANDOM_CROM_FRAME_LENGTH = 12 * 100  # 100 are 1 second; used on data loader; max is 1101
 GMM_FIT_FRAME_LIMIT = 1000000 * GMM_RANDOM_CROM_FRAME_LENGTH  # 1000 are 1 second; 1000 * 60 is 1 minute; The frame limit is per-class as the fit is class-wise
 
 # RNN 1D Classifier
