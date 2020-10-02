@@ -54,5 +54,24 @@ Error: mkl-service + Intel(R) MKL: MKL_THREADING_LAYER=INTEL is incompatible wit
 ```
 Then export this variable
 ```
-MKL_THREADING_LAYER=GNU
+export MKL_THREADING_LAYER=GNU
+```
+
+# 1D to 2D
+Note: This is method is intended to import wav files from numpy.load method. So file names must be in .npy format.
+
+1. Set the correct ```NUMBER_OF_CLASSES``` on ```config.py``` to match desired label file to be exactly exported.
+2. Run ```wav_to_mfcc.py``` and wait to transform each:
+
+```
+python commands/wav_to_mfcc.py --src_path /home/vichoko/data/data/1d/svs-svd-bin-full --dest_path /home/vichoko/data/data/2d/svs-svd-N --src_label_prefix labels
+```
+
+# Subset Data Folder
+
+1. Set the correct ```NUMBER_OF_CLASSES``` on ```config.py``` to match desired label file to be exactly exported.
+2. Run ```copy_data_by_label.py``` and wait to transform each:
+
+```
+python commands/copy_data_by_label.py --src_path /home/vichoko/data/data/1d/svs-svd-bin-full --dest_path /home/vichoko/data/data/1d/svs-svd-N --src_label_prefix labels
 ```
