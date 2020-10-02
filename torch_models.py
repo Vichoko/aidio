@@ -314,43 +314,15 @@ class WaveNetLSTMClassifier(nn.Module):
             WAVENET_KERNEL_SIZE
         )
         # Conv1d to reduce sequence length from 180k to 2k
+        stride = 64
         self.conv1d_1 = nn.Conv1d(
             in_channels=WAVENET_END_CHANNELS,
-            out_channels=96,
-            kernel_size=16,
-            stride=2
-        )
-        self.conv1d_2 = nn.Conv1d(
-            in_channels=96,
-            out_channels=128,
-            kernel_size=16,
-            stride=2
-        )
-        self.conv1d_3 = nn.Conv1d(
-            in_channels=128,
-            out_channels=160,
-            kernel_size=16,
-            stride=2
-        )
-        self.conv1d_4 = nn.Conv1d(
-            in_channels=160,
-            out_channels=192,
-            kernel_size=16,
-            stride=2
-        )
-        self.conv1d_5 = nn.Conv1d(
-            in_channels=192,
-            out_channels=224,
-            kernel_size=16,
-            stride=2
-        )
-        self.conv1d_6 = nn.Conv1d(
-            in_channels=224,
             out_channels=256,
-            kernel_size=16,
-            stride=2
+            kernel_size=4,
+            stride=stride,
+            dilation=16
         )
-        self.conv1d_list = [self.conv1d_1, self.conv1d_2, self.conv1d_3, self.conv1d_4, self.conv1d_5, self.conv1d_6]
+        self.conv1d_list = [self.conv1d_1, ]
         self.enc_lstm = nn.LSTM(
             256,
             LSTM_HIDDEN_SIZE,
@@ -420,46 +392,18 @@ class WaveNetTransformerClassifier(nn.Module):
             WAVENET_OUTPUT_LENGTH,
             WAVENET_KERNEL_SIZE)
         # Conv1d to reduce sequence length from 180k to 2k
+        stride = 64
         self.conv1d_1 = nn.Conv1d(
             in_channels=WAVENET_END_CHANNELS,
-            out_channels=96,
-            kernel_size=16,
-            stride=2
-        )
-        self.conv1d_2 = nn.Conv1d(
-            in_channels=96,
-            out_channels=128,
-            kernel_size=16,
-            stride=2
-        )
-        self.conv1d_3 = nn.Conv1d(
-            in_channels=128,
-            out_channels=160,
-            kernel_size=16,
-            stride=2
-        )
-        self.conv1d_4 = nn.Conv1d(
-            in_channels=160,
-            out_channels=192,
-            kernel_size=16,
-            stride=2
-        )
-        self.conv1d_5 = nn.Conv1d(
-            in_channels=192,
-            out_channels=224,
-            kernel_size=16,
-            stride=2
-        )
-        self.conv1d_6 = nn.Conv1d(
-            in_channels=224,
             out_channels=256,
-            kernel_size=16,
-            stride=2
+            kernel_size=4,
+            stride=stride,
+            dilation=16
         )
-        self.conv1d_list = [self.conv1d_1, self.conv1d_2, self.conv1d_3, self.conv1d_4, self.conv1d_5, self.conv1d_6]
-        max_seq_len = int(
-            WAVEFORM_RANDOM_CROP_SEQUENCE_LENGTH / (2 ** len(self.conv1d_list))
-        ) + 200
+        self.conv1d_list = [self.conv1d_1, ]
+        max_seq_len = int(math.ceil(
+            WAVEFORM_RANDOM_CROP_SEQUENCE_LENGTH / (stride ** len(self.conv1d_list))
+        ))
         self.positional_encoder = PositionalEncoder(
             WNTF_TRANSFORMER_D_MODEL,
             max_seq_len=max_seq_len
