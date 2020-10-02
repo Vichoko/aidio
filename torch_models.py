@@ -13,7 +13,7 @@ from torch.nn import functional as F
 from config import WAVENET_LAYERS, WAVENET_BLOCKS, WAVENET_DILATION_CHANNELS, WAVENET_RESIDUAL_CHANNELS, \
     WAVENET_SKIP_CHANNELS, \
     WAVENET_END_CHANNELS, WAVENET_CLASSES, WAVENET_OUTPUT_LENGTH, WAVENET_KERNEL_SIZE, WAVENET_POOLING_KERNEL_SIZE, \
-    WAVENET_POOLING_STRIDE, LSTM_HIDDEN_SIZE, LSTM_NUM_LAYERS, LSTM_DROPOUT_PROB, WAVEFORM_MAX_SEQUENCE_LENGTH, \
+    WAVENET_POOLING_STRIDE, LSTM_HIDDEN_SIZE, LSTM_NUM_LAYERS, LSTM_DROPOUT_PROB, WAVEFORM_RANDOM_CROP_SEQUENCE_LENGTH, \
     WNTF_TRANSFORMER_D_MODEL, WNTF_TRANSFORMER_N_HEAD, WNTF_TRANSFORMER_N_LAYERS, FEATURES_DATA_PATH, \
     GMM_COMPONENT_NUMBER, \
     GMM_FIT_FRAME_LIMIT, WNTF_WAVENET_LAYERS, WNTF_WAVENET_BLOCKS, \
@@ -177,87 +177,6 @@ class PositionalEncoder(torch.nn.Module):
             return x
 
 
-class WaveNetTransformerClassifier(nn.Module):
-
-    def __call__(self, *input, **kwargs) -> typing.Any:
-        """
-        Hack to fix '(input: (Any, ...), kwargs: dict) -> Any' warning in PyCharm auto-complete.
-        :param input:
-        :param kwargs:
-        :return:
-        """
-        return super().__call__(*input, **kwargs)
-
-    def __init__(self, num_classes):
-        super(WaveNetTransformerClassifier, self).__init__()
-        # first encoder
-        # neural audio embeddings
-        # captures local representations through convolutions
-        self.wavenet = WaveNetModel(
-            WNTF_WAVENET_LAYERS,
-            WNTF_WAVENET_BLOCKS,
-            WAVENET_DILATION_CHANNELS,
-            WAVENET_RESIDUAL_CHANNELS,
-            WAVENET_SKIP_CHANNELS,
-            WAVENET_END_CHANNELS,
-            WAVENET_CLASSES,
-            WAVENET_OUTPUT_LENGTH,
-            WAVENET_KERNEL_SIZE)
-        # reduce sample resolution from 160k to 32k
-        # output_length = floor(
-        #       (input_length - (kernel_size-1)) / stride + 1
-        #   )
-        self.conv_dimension_reshaper = nn.Conv1d(
-            in_channels=WAVENET_END_CHANNELS,
-            out_channels=WNTF_TRANSFORMER_D_MODEL,
-            kernel_size=WAVENET_POOLING_KERNEL_SIZE,
-            stride=WAVENET_POOLING_STRIDE
-        )
-        max_seq_len = int(math.floor(
-            (WAVEFORM_MAX_SEQUENCE_LENGTH - (WAVENET_POOLING_KERNEL_SIZE - 1)) / WAVENET_POOLING_STRIDE + 1))
-        self.positional_encoder = PositionalEncoder(
-            WNTF_TRANSFORMER_D_MODEL,
-            max_seq_len=max_seq_len
-        )
-        self.transformer_encoder = nn.TransformerEncoder(
-            nn.TransformerEncoderLayer(
-                d_model=WNTF_TRANSFORMER_D_MODEL,
-                nhead=WNTF_TRANSFORMER_N_HEAD,
-                dim_feedforward=WNTF_TRANSFORMER_DIM_FEEDFORWARD,
-            )
-            ,
-            num_layers=WNTF_TRANSFORMER_N_LAYERS
-        )
-
-        self.max_pool = nn.AdaptiveAvgPool1d(WNTF_MAX_SIZE)
-        self.avg_pool = nn.AvgPool1d(WNTF_MAX_SIZE)
-
-        self.fc1 = nn.Linear(WNTF_TRANSFORMER_D_MODEL, WNTF_FC1_OUTPUT_DIM)
-        self.fc2 = nn.Linear(WNTF_FC1_OUTPUT_DIM, WNTF_FC2_OUTPUT_DIM)
-        self.fc3 = nn.Linear(WNTF_FC2_OUTPUT_DIM, num_classes)
-
-    def forward(self, x):
-        x = self.wavenet.forward(x)
-        x = self.conv_dimension_reshaper(x)
-        # x.shape for convs is n_data, Cout, Lout
-
-        # transformer expected input is n_data, n_sequence, wavenet_channels
-        x = x.transpose(1, 2)  # (N, Cout, Lout, ) to (N, Lout, Cout)
-        x = self.positional_encoder(x)
-        x = self.transformer_encoder(x)  # shape  n_data, n_sequence, d_model
-
-        # Max_pool expected input is (N, Cout, Lout)
-        x = x.transpose(1, 2)  # (N, Lout, Cout, ) to (N, Cout, Lout)
-        x = self.max_pool(x)
-        x = self.avg_pool(x)
-        x = x.squeeze(2)
-
-        x = F.relu(self.fc1(x))
-        x = F.relu(self.fc2(x))
-        x = self.fc3(x)
-        return x
-
-
 class Conv1DClassifier(nn.Module):
     def __call__(self, *input, **kwargs) -> typing.Any:
         """
@@ -414,18 +333,22 @@ class WaveNetLSTMClassifier(nn.Module):
             WAVENET_END_CHANNELS,
             WAVENET_CLASSES,
             WAVENET_OUTPUT_LENGTH,
-            WAVENET_KERNEL_SIZE)
-        # reduce sample resolution from 160k to 32k
-        # output_length = floor((input_length - (kernel_size - 1))/stride + 1)
-        self.conv_dimension_reshaper = nn.Conv1d(
-            in_channels=WAVENET_END_CHANNELS,
-            out_channels=WAVENET_END_CHANNELS,
-            kernel_size=WAVENET_POOLING_KERNEL_SIZE,
-            stride=WAVENET_POOLING_STRIDE
+            WAVENET_KERNEL_SIZE
         )
+        # Conv1d to reduce sequence length from 180k to 2k
+        stride = 64
+        self.conv1d_1 = nn.Conv1d(
+            in_channels=WAVENET_END_CHANNELS,
+            out_channels=256,
+            kernel_size=4,
+            stride=stride,
+            dilation=16
+        )
+        self.conv1d_list = [self.conv1d_1, ]
         self.enc_lstm = nn.LSTM(
-            self.wavenet.end_channels,
-            LSTM_HIDDEN_SIZE, LSTM_NUM_LAYERS,
+            256,
+            LSTM_HIDDEN_SIZE,
+            LSTM_NUM_LAYERS,
             bidirectional=LSTM_BIDIRECTIONALITY,
             dropout=LSTM_DROPOUT_PROB)
 
@@ -440,10 +363,9 @@ class WaveNetLSTMClassifier(nn.Module):
         self.fc3 = nn.Linear(LSTM_FC2_OUTPUT_DIM, num_classes)
 
     def forward(self, x):
-        # print('info: feeding wavenet...')
         x = self.wavenet.forward(x)
-        # reduce sequence_length / 5
-        x = self.conv_dimension_reshaper(x)
+        for conv1d_layer in self.conv1d_list:
+            x = conv1d_layer(x)
         # x.shape is n_data, n_channels, n_sequence
         # rnn expected input is n_sequence, n_data, wavenet_channels
         x = x.transpose(0, 2).transpose(1, 2)
@@ -452,15 +374,96 @@ class WaveNetLSTMClassifier(nn.Module):
         x, _ = self.enc_lstm(x)  # shape n_sequence, n_data, lstm_hidden_size * 2
         x = x.transpose(0, 1)  # (Lout, N, Cout, ) -> (N, Lout, Cout, )
         x = x.transpose(1, 2)  # (N, Lout, Cout, ) -> (N, Cout, Lout, )
-
         # AdaptativeMaxPooling
         # Max_pool expected input is (N, Cout, Lout)
         x = self.max_pool(x)
         x = self.avg_pool(x)
         x = x.squeeze(2)
-
         # x final shape is n_data, lstm_hidden_size * 2
         # simple classifier
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
+        x = self.fc3(x)
+        return x
+
+
+class WaveNetTransformerClassifier(nn.Module):
+
+    def __call__(self, *input, **kwargs) -> typing.Any:
+        """
+        Hack to fix '(input: (Any, ...), kwargs: dict) -> Any' warning in PyCharm auto-complete.
+        :param input:
+        :param kwargs:
+        :return:
+        """
+        return super().__call__(*input, **kwargs)
+
+    def __init__(self, num_classes):
+        super(WaveNetTransformerClassifier, self).__init__()
+        # first encoder
+        # neural audio embeddings
+        # captures local representations through convolutions
+        self.wavenet = WaveNetModel(
+            WNTF_WAVENET_LAYERS,
+            WNTF_WAVENET_BLOCKS,
+            WAVENET_DILATION_CHANNELS,
+            WAVENET_RESIDUAL_CHANNELS,
+            WAVENET_SKIP_CHANNELS,
+            WAVENET_END_CHANNELS,
+            WAVENET_CLASSES,
+            WAVENET_OUTPUT_LENGTH,
+            WAVENET_KERNEL_SIZE)
+        # Conv1d to reduce sequence length from 180k to 2k
+        stride = 64
+        self.conv1d_1 = nn.Conv1d(
+            in_channels=WAVENET_END_CHANNELS,
+            out_channels=256,
+            kernel_size=4,
+            stride=stride,
+            dilation=16
+        )
+        self.conv1d_list = [self.conv1d_1, ]
+        max_seq_len = int(math.ceil(
+            WAVEFORM_RANDOM_CROP_SEQUENCE_LENGTH / (stride ** len(self.conv1d_list))
+        ))
+        self.positional_encoder = PositionalEncoder(
+            WNTF_TRANSFORMER_D_MODEL,
+            max_seq_len=max_seq_len
+        )
+        self.transformer_encoder = nn.TransformerEncoder(
+            nn.TransformerEncoderLayer(
+                d_model=WNTF_TRANSFORMER_D_MODEL,
+                nhead=WNTF_TRANSFORMER_N_HEAD,
+                dim_feedforward=WNTF_TRANSFORMER_DIM_FEEDFORWARD,
+            )
+            ,
+            num_layers=WNTF_TRANSFORMER_N_LAYERS
+        )
+
+        self.max_pool = nn.AdaptiveAvgPool1d(WNTF_MAX_SIZE)
+        self.avg_pool = nn.AvgPool1d(WNTF_MAX_SIZE)
+
+        self.fc1 = nn.Linear(WNTF_TRANSFORMER_D_MODEL, WNTF_FC1_OUTPUT_DIM)
+        self.fc2 = nn.Linear(WNTF_FC1_OUTPUT_DIM, WNTF_FC2_OUTPUT_DIM)
+        self.fc3 = nn.Linear(WNTF_FC2_OUTPUT_DIM, num_classes)
+
+    def forward(self, x):
+        x = self.wavenet.forward(x)
+        for conv1d_layer in self.conv1d_list:
+            x = conv1d_layer(x)
+        # x.shape for convs is n_data, Cout, Lout
+
+        # transformer expected input is n_data, n_sequence, wavenet_channels
+        x = x.transpose(1, 2)  # (N, Cout, Lout, ) to (N, Lout, Cout)
+        x = self.positional_encoder(x)
+        x = self.transformer_encoder(x)  # shape  n_data, n_sequence, d_model
+
+        # Max_pool expected input is (N, Cout, Lout)
+        x = x.transpose(1, 2)  # (N, Lout, Cout, ) to (N, Cout, Lout)
+        x = self.max_pool(x)
+        x = self.avg_pool(x)
+        x = x.squeeze(2)
+
         x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))
         x = self.fc3(x)

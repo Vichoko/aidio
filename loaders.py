@@ -17,7 +17,7 @@ from torch.utils.data.dataset import Dataset
 from torch.utils.data.sampler import Sampler
 from torchvision import transforms
 
-from config import FEATURES_DATA_PATH, RESNET_MIN_DIM, ADISAN_BATCH_SIZE, ADISAN_EPOCHS, WAVEFORM_MAX_SEQUENCE_LENGTH, \
+from config import FEATURES_DATA_PATH, RESNET_MIN_DIM, ADISAN_BATCH_SIZE, ADISAN_EPOCHS, WAVEFORM_RANDOM_CROP_SEQUENCE_LENGTH, \
     WAVEFORM_NUM_CHANNELS, WAVEFORM_SAMPLE_RATE, NUMBER_OF_CLASSES, GMM_RANDOM_CROM_FRAME_LENGTH, \
     DUMMY_EXAMPLES_PER_CLASS, DATA_LOADER_NUM_WORKERS
 
@@ -774,7 +774,7 @@ class WaveformDataset(ExperimentDataset):
             label_encoder
         )
         self.transform = transforms.Compose(
-            [self.RandomCrop1d(WAVEFORM_MAX_SEQUENCE_LENGTH),
+            [self.RandomCrop1d(WAVEFORM_RANDOM_CROP_SEQUENCE_LENGTH),
              self.ToTensor()]
         )
 
@@ -873,8 +873,6 @@ class CepstrumDataset(ExperimentDataset):
     """
     Load the input data as an MFCC with specified number of cepstral coefficients.
     """
-
-    input_shape = WAVEFORM_MAX_SEQUENCE_LENGTH
 
     def __init__(self, filenames, labels, data_path, label_encoder) -> None:
         super().__init__(

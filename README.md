@@ -12,7 +12,11 @@ Audio Artificial Intelligence Suite (Aidio) provides:
     * Deep Learning
         * ResNet
         * WaveNet
-        * 
+        * Wavenet + BiLSTM
+        * Wavenet + Transformer
+        * Conv1D
+        * BiLSTM
+
     * Classic ML
         * GMM
         
