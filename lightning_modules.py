@@ -339,7 +339,7 @@ class L_AbstractClassifier(ptl.LightningModule):
         labels_hat = torch.argmax(y_pred, dim=1)  # change from one-hot encoding to nominal label
         accuracy = self.acc(labels_hat, y)
         # gather results
-        result = ptl.EvalResult(early_stop_on=None, checkpoint_on=accuracy)
+        result = ptl.EvalResult(early_stop_on=None)
         result.log('val_loss', loss, prog_bar=True)
         result.log('val_acc', accuracy, prog_bar=True)
         return result
