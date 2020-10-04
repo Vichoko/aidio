@@ -455,7 +455,7 @@ class WaveNetTransformerClassifier(nn.Module):
 
         # transformer expected input is n_data, n_sequence, wavenet_channels
         x = x.transpose(1, 2)  # (N, Cout, Lout, ) to (N, Lout, Cout)
-        x = self.positional_encoder(x)
+        # x = self.positional_encoder(x)
         x = self.transformer_encoder(x)  # shape  n_data, n_sequence, d_model
 
         # Max_pool expected input is (N, Cout, Lout)
