@@ -79,7 +79,7 @@ class AbstractHelper:
                 save_top_k=1,
                 verbose=True,
                 monitor='val_acc',
-                mode='min',
+                mode='max',
                 prefix=''
             )
         )
