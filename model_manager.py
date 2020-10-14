@@ -92,14 +92,18 @@ class AbstractHelper:
         :param ckpt_folder: dir where the checpoints are being saved.
         :return: string of the path to the checkpoint. Or None if no checkpoints found.
         """
+        debug = True
         try:
             ckpt_files = listdir(ckpt_folder)  # list of strings
             epochs = [int(filename[6:-5]) for filename in ckpt_files]  # 'epoch={int}.ckpt' filename format
             resume_from_checkpoint = str(ckpt_folder / 'epoch={}.ckpt'.format(max(epochs)))
+            print('debug: loading from checkpoint epoch {}'.format(max(epochs))) if debug else None
         except FileNotFoundError:
             resume_from_checkpoint = None
+            print('debug: couldnt load from checkpoint (FileNotFoundError)') if debug else None
         except ValueError:
             resume_from_checkpoint = None
+            print('debug: couldnt load from checkpoint (ValueError)') if debug else None
         return resume_from_checkpoint
 
     def train(self):
