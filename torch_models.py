@@ -2,7 +2,7 @@ import math
 import pickle
 import typing
 from concurrent.futures.thread import ThreadPoolExecutor
-from os import path
+import os
 
 import torch
 from sklearn import mixture
@@ -102,7 +102,7 @@ class GMMClassifier(nn.Module):
         :param path: Absolute path to the storage file to open.
         :return:
         """
-        assert not path.isfile(path), 'error: Saving GMM instance noted that {} already exists'.format(path)
+        assert not os.path.isfile(path), 'error: Saving GMM instance noted that {} already exists'.format(path)
         pickle.dump(self.gmm_list[gmm_idx], open(path, 'wb'))
 
     def load_gmm(self, gmm_idx: int, path):
