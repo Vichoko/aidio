@@ -98,12 +98,13 @@ class AbstractHelper:
             epochs = [int(filename[6:-5]) for filename in ckpt_files]  # 'epoch={int}.ckpt' filename format
             resume_from_checkpoint = str(ckpt_folder / 'epoch={}.ckpt'.format(max(epochs)))
             print('debug: loading from checkpoint epoch {}'.format(max(epochs))) if debug else None
-        except FileNotFoundError:
+        except FileNotFoundError as e:
             resume_from_checkpoint = None
             print('debug: couldnt load from checkpoint (FileNotFoundError)') if debug else None
-        except ValueError:
+        except ValueError as e:
             resume_from_checkpoint = None
             print('debug: couldnt load from checkpoint (ValueError)') if debug else None
+            print(e)
         return resume_from_checkpoint
 
     def train(self):
