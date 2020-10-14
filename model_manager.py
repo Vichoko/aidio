@@ -97,6 +97,8 @@ class AbstractHelper:
             ckpt_files = listdir(ckpt_folder)  # list of strings
             epochs = [int(filename[6:-5]) for filename in ckpt_files if
                       'epoch=' in filename]  # 'epoch={int}.ckpt' filename format
+            if len(epochs) == 0:
+                return None
             resume_from_checkpoint = str(ckpt_folder / 'epoch={}.ckpt'.format(max(epochs)))
             print('debug: loading from checkpoint epoch {}'.format(max(epochs))) if debug else None
         except FileNotFoundError as e:
