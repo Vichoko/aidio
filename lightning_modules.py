@@ -1,6 +1,7 @@
 import pickle
 from argparse import ArgumentParser
 from collections import OrderedDict
+from os.path import isfile
 
 import pytorch_lightning as ptl
 import torch
@@ -11,10 +12,10 @@ from torchsummary import summary
 from torchvision.models import resnext50_32x4d
 
 from config import WAVENET_BATCH_SIZE, DATA_LOADER_NUM_WORKERS, RESNET_V2_BATCH_SIZE, WAVENET_LEARNING_RATE, \
-    WAVENET_WEIGHT_DECAY, WNTF_BATCH_SIZE, WNLSTM_BATCH_SIZE, WAVEFORM_MAX_SEQUENCE_LENGTH, GMM_PREDICT_BATCH_SIZE, \
+    WAVENET_WEIGHT_DECAY, WNTF_BATCH_SIZE, WNLSTM_BATCH_SIZE, WAVEFORM_RANDOM_CROP_SEQUENCE_LENGTH, GMM_PREDICT_BATCH_SIZE, \
     GMM_TRAIN_BATCH_SIZE, CONV1D_LEARNING_RATE, CONV1D_WEIGHT_DECAY, CONV1D_BATCH_SIZE, WNTF_LEARNING_RATE, \
     WNTF_WEIGHT_DECAY, WNLSTM_LEARNING_RATE, WNLSTM_WEIGHT_DECAY, RNN1D_BATCH_SIZE, RNN1D_LEARNING_RATE, \
-    RNN1D_WEIGHT_DECAY, RESNET_V2_LR
+    RNN1D_WEIGHT_DECAY, RESNET_V2_LR, RESNET_V2_WEIGHT_DECAY
 from loaders import ClassSampler
 from torch_models import WaveNetTransformerClassifier, GMMClassifier, WaveNetClassifier, \
     Conv1DClassifier, RNNClassifier, WaveNetLSTMClassifier
@@ -43,27 +44,39 @@ class L_GMMClassifier(ptl.LightningModule):
         # build model
         self.optimizer = DummyOptimizer([torch.Tensor()], {})
         self.trained = False
-        self.model = None
-        # self.model = self.load_model(self.num_classes)
+        self.model = GMMClassifier(self.num_classes)
+        self.gmm_filename = 'gmm_{}_of_{}.pickle'
+        self.trained_gmm_indices = None
 
-    def train_now(self):
+    def start_training(self):
         if self.trained:
             print('warning: Trying to train an alredy fitted GMM loaded from folder: {}. Skipping train...'.format(
                 self.model_path))
             return -1
-
         print('info: starting training')
+        print('info: skipping load and train of already trained GMMs {} found. '.format(self.trained_gmm_indices)) if self.trained_gmm_indices else None
+
         batch_generator = self.train_dataloader()
         print('info: starting batch data loading...')
-        for batch_idx, batch in tqdm.tqdm(enumerate(batch_generator()), desc='Batch'):  # aqui se hangea leftraru
+        for batch_idx, batch in tqdm.tqdm(enumerate(batch_generator()), desc='Batch', unit='#',
+                                          total=self.num_classes):
+            if batch_idx in self.trained_gmm_indices and batch is None:
+                print('info: skipping batch {} already trained.')
+                continue
+            assert batch_idx not in self.trained_gmm_indices and batch is not None, 'error: inconsitency in batch skipping mechanism.'
             print('info: batch {} loaded!'.format(batch_idx))
             self.training_step(batch, batch_idx)
+            self.model.save_gmm(
+                batch_idx,
+                self.model_path / self.gmm_filename.format(batch_idx, self.num_classes)
+            )
         self.trained = True
         print('info: ending training')
         return 0
 
-    def eval_now(self):
+    def start_evaluation(self):
         print('info: starting evaluation')
+        assert self.trained, 'error: evaluating a non-trained GMM.'
         val_dataloader = self.val_dataloader()
         # test_dataloader = self.test_dataloader()
         val_out = []
@@ -74,30 +87,26 @@ class L_GMMClassifier(ptl.LightningModule):
         print('info: ending evaluation')
         return 0
 
-    def save_model(self, model_path):
+    def load_model(self, model_path):
         """
-        Save the model state with some metrics.
-
+        Load GMM model pieces from previous trained ones.
+        This method is always called after init on model_manager.py.
+        :param model_path:
         :return:
         """
-        filename = 'model.pickle'
-        pickle.dump(self.model, open(model_path / filename, 'wb'))
-        print('info: gmm model saved')
-        return
-
-    def load_model(self, model_path):
-        filename = 'model.pickle'
         self.model_path = model_path
-        try:
-            model = pickle.load(open(model_path / filename, 'rb'))
-            print('info: gmm loaded from file')
+        trained_gmm_mask = [isfile(self.model_path / self.gmm_filename.format(class_idx, self.num_classes))
+                            for class_idx in range(self.num_classes)]
+        self.trained_gmm_indices = [i for i, x in enumerate(trained_gmm_mask) if x]
+        for gmm_index in self.trained_gmm_indices:
+            self.model.load_gmm(
+                gmm_index,
+                self.model_path / self.gmm_filename.format(gmm_index, self.num_classes)
+            )
+
+        if len(self.trained_gmm_indices) == self.num_classes:
+            # if all pieces are found, consider the module fully-trained
             self.trained = True
-        except IOError:
-            model = GMMClassifier(self.num_classes)
-            print('info: previuous gmm not found.')
-            self.trained = False
-        self.model = model
-        return model
 
     # ---------------------
     # TRAINING
@@ -120,6 +129,8 @@ class L_GMMClassifier(ptl.LightningModule):
         debug = True
         x, y = batch['x'], batch['y']
         print('debug: batch is {}, labels are {}'.format(batch_idx, y)) if debug else None
+        assert y[0].item() == batch_idx, 'error: batch index is different than a label ({} vs {})'.format(batch_idx,
+                                                                                                          y[0].item())
         self.model.fit(x, y)
         result = ptl.TrainResult()
         return result
@@ -212,9 +223,6 @@ class L_GMMClassifier(ptl.LightningModule):
         print('info: {}'.format(result['log']))
         return result
 
-    # ---------------------
-    # TRAINING SETUP
-    # ---------------------
     def configure_optimizers(self):
         """
         return whatever optimizers we want here
@@ -224,15 +232,20 @@ class L_GMMClassifier(ptl.LightningModule):
 
     def train_dataloader(self):
         """
-
+        :param trained_gmm_indices: Indices of the batches to avoid loading.
         :return: A lazy iterable of batches
             where every batch should be a dict with keys x and y containing the data and the labels
         """
         class_sampler = ClassSampler(self.num_classes, self.train_dataset.labels, self.train_batch_size)
+        trained_gmm_indices = self.trained_gmm_indices
 
         def batch_generator():
-            for idx, indices in enumerate(class_sampler):
-                yield self.train_dataset.get_batch(indices, idx)
+            for batch_idx, indices in enumerate(class_sampler):
+                if batch_idx in trained_gmm_indices:
+                    print('warning: skipping load of data batch {}, as it was already trained.'.format(batch_idx))
+                    yield None
+                else:
+                    yield self.train_dataset.get_batch(batch_idx, indices)
 
         return batch_generator
 
@@ -264,9 +277,10 @@ class L_GMMClassifier(ptl.LightningModule):
         return parser
 
 
-class L_WavenetAbstractClassifier(ptl.LightningModule):
+class L_AbstractClassifier(ptl.LightningModule):
     """
-    Sample model to show how to define a template
+    Lightning Module template that include standard classification metrics, params and methods.
+    Only requires to define self.model and self.optimizer in constructor.
     """
 
     def __init__(self, hparams, num_classes, train_dataset, eval_dataset, test_dataset, *args, **kwargs):
@@ -279,7 +293,7 @@ class L_WavenetAbstractClassifier(ptl.LightningModule):
         self.train_dataset = train_dataset
         self.eval_dataset = eval_dataset
         self.test_dataset = test_dataset
-        self.acc = ptl.metrics.Accuracy(num_classes)
+        # After this constructor should define self.model and self.optimizer
 
     def forward(self, x):
         """
@@ -289,6 +303,21 @@ class L_WavenetAbstractClassifier(ptl.LightningModule):
         """
         return self.model(x)
 
+    def accuracy(self, y_pred, y_target, device_index):
+        """
+        Calculate accuracy metric between predicted output and target.
+        :param y_pred: shape (N, C) where C = number of classes, with class-wise probability prediction.
+        :param y_target: shape (N) with nominal encoding. Ex. Y = [0,0,1]
+        :param device_index: Integer of device that's being used. If model not on_gpu this param is ignored.
+        :return: torch.Tensor or torch.cuda.Tensor depending of gpu mode. With a value.
+        """
+        number_of_classes = int(y_pred.shape[1])
+        y_pred_nominal = torch.argmax(y_pred, dim=1)  # change from class-wise encoding (N, C) to nominal label (N, )
+        accuracy = torch.sum(torch.eq(y_target, y_pred_nominal)) / (number_of_classes * 1.0)
+        if self.on_gpu:
+            accuracy = accuracy.cuda(device_index)
+        return accuracy
+
     def training_step(self, batch, batch_idx):
         """
         Lightning calls this inside the training loop
@@ -296,17 +325,16 @@ class L_WavenetAbstractClassifier(ptl.LightningModule):
         :return:
         """
         # forward pass
-        x, y = batch['x'], batch['y']
+        x, y_target = batch['x'], batch['y']
         y_pred = self.forward(x)
         # calculate loss
-        loss = self.loss(y_pred, y)
+        loss = self.loss(y_pred, y_target)
         # calculate accurracy
-        labels_hat = torch.argmax(y_pred, dim=1)  # change from one-hot encoding to nominal label
-        accuracy = self.acc(labels_hat, y)
+        accuracy = self.accuracy(y_pred, y_target, loss.device.index)
+        # gather results
         result = ptl.TrainResult(loss)
         result.log('train_loss', loss, prog_bar=True)
         result.log('train_acc', accuracy, prog_bar=True)
-
         return result
 
     def validation_step(self, batch, batch_idx):
@@ -315,26 +343,33 @@ class L_WavenetAbstractClassifier(ptl.LightningModule):
         :param batch:
         :return:
         """
-        x, y = batch['x'], batch['y']
+        x, y_target = batch['x'], batch['y']
         y_pred = self.forward(x)
         # calculate loss
-        loss = self.loss(y_pred, y)
-        # calculate accurracy
-        labels_hat = torch.argmax(y_pred, dim=1)  # change from one-hot encoding to nominal label
-        accuracy = self.acc(labels_hat, y)
-        result = ptl.EvalResult(early_stop_on=None, checkpoint_on=loss)
+        loss = self.loss(y_pred, y_target)
+        # calculate accuracy
+        accuracy = self.accuracy(y_pred, y_target, loss.device.index)
+        # gather results
+        result = ptl.EvalResult(early_stop_on=None)
         result.log('val_loss', loss, prog_bar=True)
         result.log('val_acc', accuracy, prog_bar=True)
         return result
 
     def test_step(self, batch, batch_idx):
-        x, y = batch['x'], batch['y']
+        """
+        Lightning calls this inside the testing loop
+
+        :param batch:
+        :param batch_idx:
+        :return:
+        """
+        x, y_target = batch['x'], batch['y']
         y_pred = self.forward(x)
         # calculate loss
-        loss = self.loss(y_pred, y)
+        loss = self.loss(y_pred, y_target)
         # calculate accurracy
-        labels_hat = torch.argmax(y_pred, dim=1)  # change from one-hot encoding to nominal label
-        accuracy = self.acc(labels_hat, y)
+        accuracy = self.accuracy(y_pred, y_target, loss.device.index)
+        # gather results
         result = ptl.EvalResult()
         result.log('test_loss', loss, prog_bar=True)
         result.log('test_acc', accuracy, prog_bar=True)
@@ -360,7 +395,7 @@ class L_WavenetAbstractClassifier(ptl.LightningModule):
                           num_workers=DATA_LOADER_NUM_WORKERS)
 
 
-class L_WavenetClassifier(L_WavenetAbstractClassifier):
+class L_WavenetClassifier(L_AbstractClassifier):
     """
     Sample model to show how to define a template
     """
@@ -369,9 +404,12 @@ class L_WavenetClassifier(L_WavenetAbstractClassifier):
         super().__init__(hparams, num_classes, train_dataset, eval_dataset, test_dataset, *args, **kwargs)
         # build model
         self.model = WaveNetClassifier(num_classes)
-        summary(self.model, input_size=(1, WAVEFORM_MAX_SEQUENCE_LENGTH), device="cpu")
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr,
-                                          weight_decay=self.wd)
+        summary(self.model, input_size=(1, WAVEFORM_RANDOM_CROP_SEQUENCE_LENGTH), device="cpu")
+        self.optimizer = torch.optim.Adam(
+            self.model.parameters(),
+            lr=self.lr,
+            weight_decay=self.wd
+        )
 
     @staticmethod
     def add_model_specific_args(parent_parser, root_dir):  # pragma: no cover
@@ -394,7 +432,7 @@ class L_WavenetClassifier(L_WavenetAbstractClassifier):
         return parser
 
 
-class L_Conv1DClassifier(L_WavenetAbstractClassifier):
+class L_Conv1DClassifier(L_AbstractClassifier):
     """
     Sample model to show how to define a template
     """
@@ -430,7 +468,7 @@ class L_Conv1DClassifier(L_WavenetAbstractClassifier):
         return parser
 
 
-class L_WavenetTransformerClassifier(L_WavenetAbstractClassifier):
+class L_WavenetTransformerClassifier(L_AbstractClassifier):
     """
     Sample model to show how to define a template
     """
@@ -439,7 +477,7 @@ class L_WavenetTransformerClassifier(L_WavenetAbstractClassifier):
         super().__init__(hparams, num_classes, train_dataset, eval_dataset, test_dataset)
         # build model
         self.model = WaveNetTransformerClassifier(num_classes)
-        summary(self.model, input_size=(1, WAVEFORM_MAX_SEQUENCE_LENGTH), device="cpu")
+        summary(self.model, input_size=(1, WAVEFORM_RANDOM_CROP_SEQUENCE_LENGTH), device="cpu")
         self.optimizer = torch.optim.Adam(
             self.model.parameters(),
             lr=self.lr,
@@ -468,14 +506,13 @@ class L_WavenetTransformerClassifier(L_WavenetAbstractClassifier):
         return parser
 
 
-class L_WavenetLSTMClassifier(L_WavenetAbstractClassifier):
+class L_WavenetLSTMClassifier(L_AbstractClassifier):
     """
     Sample model to show how to define a template
     """
 
     def __init__(self, hparams, num_classes, train_dataset, eval_dataset, test_dataset, *args, **kwargs):
         super().__init__(hparams, num_classes, train_dataset, eval_dataset, test_dataset, *args, **kwargs)
-        # build model
         self.model = WaveNetLSTMClassifier(num_classes)
         # summary(self.model, input_size=(WNLSTM_BATCH_SIZE, 1, WAVEFORM_MAX_SEQUENCE_LENGTH), device="cpu")
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr, weight_decay=self.wd)
@@ -501,14 +538,13 @@ class L_WavenetLSTMClassifier(L_WavenetAbstractClassifier):
         return parser
 
 
-class L_RNNClassifier(L_WavenetAbstractClassifier):
+class L_RNNClassifier(L_AbstractClassifier):
     """
     Sample model to show how to define a template
     """
 
     def __init__(self, hparams, num_classes, train_dataset, eval_dataset, test_dataset, *args, **kwargs):
         super().__init__(hparams, num_classes, train_dataset, eval_dataset, test_dataset, *args, **kwargs)
-        # build model
         self.model = RNNClassifier(num_classes)
         # summary(self.model, input_size=(RNN1D_BATCH_SIZE, 1, WAVEFORM_MAX_SEQUENCE_LENGTH), device="cpu")
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr, weight_decay=self.wd)
@@ -534,30 +570,28 @@ class L_RNNClassifier(L_WavenetAbstractClassifier):
         return parser
 
 
-class L_ResNext50(ptl.LightningModule):
+class L_ResNext50(L_AbstractClassifier):
     """
     Sample model to show how to define a template
     """
 
     def __init__(self, hparams, num_classes, train_dataset, eval_dataset, test_dataset):
-        super(L_ResNext50, self).__init__()
-        self.hparams = hparams
-        self.lr = hparams.learning_rate
-        self.batch_size = hparams.batch_size
-        self.loss = torch.nn.CrossEntropyLoss()
-        self.train_dataset = train_dataset
-        self.eval_dataset = eval_dataset
-        self.test_dataset = test_dataset
-        # build model
+        super().__init__(hparams, num_classes, train_dataset, eval_dataset, test_dataset)
         self.model = resnext50_32x4d(num_classes=num_classes)
-        input_channels = 1
-        self.model.conv1 = Conv2d(input_channels, 64, kernel_size=7, stride=2, padding=3,
-                                  bias=False)
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
+        self.model.conv1 = Conv2d(
+            in_channels=1,
+            out_channels=64,
+            kernel_size=7,
+            stride=2,
+            padding=3,
+            bias=False
+        )
+        self.optimizer = torch.optim.Adam(
+            self.model.parameters(),
+            lr=self.lr,
+            weight_decay=self.wd
+        )
 
-    # ---------------------
-    # TRAINING
-    # ---------------------
     def forward(self, x):
         """
         No special modification required for lightning, define as you normally would
@@ -566,85 +600,6 @@ class L_ResNext50(ptl.LightningModule):
         """
         x = x.unsqueeze(1).float()
         return self.model(x)
-
-    def training_step(self, batch, batch_idx):
-        """
-        Lightning calls this inside the training loop
-        :param batch:
-        :return:
-        """
-        # forward pass
-        x, y = batch['x'], batch['y']
-        y_pred = self.forward(x)
-        # calculate loss
-        loss = self.loss(y_pred, y)
-        result = ptl.TrainResult(loss)
-        result.log('train_loss', loss, prog_bar=True)
-        return result
-
-    def validation_step(self, batch, batch_idx):
-        """
-        Lightning calls this inside the validation loop
-        :param batch:
-        :return:
-        """
-        x, y = batch['x'], batch['y']
-        y_pred = self.forward(x)
-        # calculate loss
-        loss = self.loss(y_pred, y)
-        # acc
-        labels_hat = torch.argmax(y_pred, dim=1)
-        accuracy = torch.sum(y == labels_hat).item() / (len(y) * 1.0)
-        accuracy = torch.tensor(accuracy)
-        if self.on_gpu:
-            accuracy = accuracy.cuda(loss.device.index)
-        result = ptl.EvalResult(checkpoint_on=loss)
-        result.log('val_loss', loss, prog_bar=True)
-        result.log('val_acc', accuracy, prog_bar=True)
-        return result
-
-    def test_step(self, batch, batch_idx):
-        """
-        Lightning calls this inside the validation loop
-        :param batch:
-        :return:
-        """
-        x, y = batch['x'], batch['y']
-        y_pred = self.forward(x)
-        # calculate loss
-        loss = self.loss(y_pred, y)
-        # acc
-        labels_hat = torch.argmax(y_pred, dim=1)
-        accuracy = torch.sum(y == labels_hat).item() / (len(y) * 1.0)
-        accuracy = torch.tensor(accuracy)
-        if self.on_gpu:
-            accuracy = accuracy.cuda(loss.device.index)
-        result = ptl.EvalResult(checkpoint_on=loss)
-        result.log('test_loss', loss, prog_bar=True)
-        result.log('test_acc', accuracy, prog_bar=True)
-        return result
-
-    # ---------------------
-    # TRAINING SETUP
-    # ---------------------
-    def configure_optimizers(self):
-        """
-        return whatever optimizers we want here
-        :return: list of optimizers
-        """
-        return [self.optimizer]
-
-    def train_dataloader(self):
-        return DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=True,
-                          num_workers=DATA_LOADER_NUM_WORKERS)
-
-    def val_dataloader(self):
-        return DataLoader(self.eval_dataset, batch_size=self.batch_size, shuffle=True,
-                          num_workers=DATA_LOADER_NUM_WORKERS)
-
-    def test_dataloader(self):
-        return DataLoader(self.test_dataset, batch_size=self.batch_size, shuffle=True,
-                          num_workers=DATA_LOADER_NUM_WORKERS)
 
     @staticmethod
     def add_model_specific_args(parent_parser, root_dir):  # pragma: no cover
@@ -657,6 +612,7 @@ class L_ResNext50(ptl.LightningModule):
         parser = ArgumentParser(parents=[parent_parser])
         parser.add_argument('--learning_rate', default=RESNET_V2_LR, type=float)
         parser.add_argument('--batch_size', default=RESNET_V2_BATCH_SIZE, type=int)
+        parser.add_argument('--weight_decay', default=RESNET_V2_WEIGHT_DECAY, type=float)
         parser.add_argument(
             '--distributed_backend',
             type=str,

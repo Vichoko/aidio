@@ -7,6 +7,7 @@ import pathlib
 from os import listdir
 
 import pytorch_lightning as ptl
+from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import TestTubeLogger
 
 from config import makedirs, MODELS_DATA_PATH, RAW_DATA_PATH
@@ -68,11 +69,19 @@ class AbstractHelper:
             profiler=False,  # for once is good
             auto_scale_batch_size=False,  # i prefer manually
             auto_lr_find=False,  # mostly diverges
-            distributed_backend='dp',  # doesnt fill on ddp
+            distributed_backend='ddp',  # doesnt fill on ddp
             precision=32,  # throws error on 16
             default_root_dir=self.save_dir,
             logger=logger,
-            resume_from_checkpoint=resume_from_checkpoint
+            resume_from_checkpoint=resume_from_checkpoint,
+            checkpoint_callback=ModelCheckpoint(
+                save_last=True,
+                save_top_k=1,
+                verbose=True,
+                monitor='val_acc',
+                mode='max',
+                prefix=''
+            )
         )
 
     @staticmethod
@@ -172,9 +181,8 @@ class GMMClassifierHelper(AbstractHelper):
         attribute and save_model methods.
         :return:
         """
-        if self.module.train_now() == 0:
-            self.module.save_model(self.save_dir)
-        self.module.eval_now()
+        self.module.start_training()
+        self.module.start_evaluation()
 
 
 class ResNext50Helper(AbstractHelper):
