@@ -293,7 +293,6 @@ class L_AbstractClassifier(ptl.LightningModule):
         self.train_dataset = train_dataset
         self.eval_dataset = eval_dataset
         self.test_dataset = test_dataset
-        self.acc = ptl.metrics.Accuracy(num_classes)
         # After this constructor should define self.model and self.optimizer
 
     def forward(self, x):
@@ -304,6 +303,21 @@ class L_AbstractClassifier(ptl.LightningModule):
         """
         return self.model(x)
 
+    def accuracy(self, y_pred, y_target, device_index):
+        """
+        Calculate accuracy metric between predicted output and target.
+        :param y_pred: shape (N, C) where C = number of classes, with class-wise probability prediction.
+        :param y_target: shape (N) with nominal encoding. Ex. Y = [0,0,1]
+        :param device_index: Integer of device that's being used. If model not on_gpu this param is ignored.
+        :return: torch.Tensor or torch.cuda.Tensor depending of gpu mode. With a value.
+        """
+        number_of_classes = int(y_pred.shape[1])
+        y_pred_nominal = torch.argmax(y_pred, dim=1)  # change from class-wise encoding (N, C) to nominal label (N, )
+        accuracy = torch.sum(torch.eq(y_target, y_pred_nominal)) / (number_of_classes * 1.0)
+        if self.on_gpu:
+            accuracy = accuracy.cuda(device_index)
+        return accuracy
+
     def training_step(self, batch, batch_idx):
         """
         Lightning calls this inside the training loop
@@ -311,18 +325,16 @@ class L_AbstractClassifier(ptl.LightningModule):
         :return:
         """
         # forward pass
-        x, y = batch['x'], batch['y']
+        x, y_target = batch['x'], batch['y']
         y_pred = self.forward(x)
         # calculate loss
-        loss = self.loss(y_pred, y)
+        loss = self.loss(y_pred, y_target)
         # calculate accurracy
-        labels_hat = torch.argmax(y_pred, dim=1)  # change from one-hot encoding to nominal label
-        accuracy = self.acc(labels_hat, y)
+        accuracy = self.accuracy(y_pred, y_target, loss.device.index)
         # gather results
         result = ptl.TrainResult(loss)
         result.log('train_loss', loss, prog_bar=True)
         result.log('train_acc', accuracy, prog_bar=True)
-
         return result
 
     def validation_step(self, batch, batch_idx):
@@ -331,13 +343,12 @@ class L_AbstractClassifier(ptl.LightningModule):
         :param batch:
         :return:
         """
-        x, y = batch['x'], batch['y']
+        x, y_target = batch['x'], batch['y']
         y_pred = self.forward(x)
         # calculate loss
-        loss = self.loss(y_pred, y)
+        loss = self.loss(y_pred, y_target)
         # calculate accuracy
-        labels_hat = torch.argmax(y_pred, dim=1)  # change from one-hot encoding to nominal label
-        accuracy = self.acc(labels_hat, y)
+        accuracy = self.accuracy(y_pred, y_target, loss.device.index)
         # gather results
         result = ptl.EvalResult(early_stop_on=None)
         result.log('val_loss', loss, prog_bar=True)
@@ -352,13 +363,12 @@ class L_AbstractClassifier(ptl.LightningModule):
         :param batch_idx:
         :return:
         """
-        x, y = batch['x'], batch['y']
+        x, y_target = batch['x'], batch['y']
         y_pred = self.forward(x)
         # calculate loss
-        loss = self.loss(y_pred, y)
+        loss = self.loss(y_pred, y_target)
         # calculate accurracy
-        labels_hat = torch.argmax(y_pred, dim=1)  # change from one-hot encoding to nominal label
-        accuracy = self.acc(labels_hat, y)
+        accuracy = self.accuracy(y_pred, y_target, loss.device.index)
         # gather results
         result = ptl.EvalResult()
         result.log('test_loss', loss, prog_bar=True)
