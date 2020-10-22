@@ -370,11 +370,11 @@ class L_AbstractClassifier(ptl.LightningModule):
                           num_workers=DATA_LOADER_NUM_WORKERS)
 
     def val_dataloader(self):
-        return DataLoader(self.eval_dataset, batch_size=self.batch_size, shuffle=True,
+        return DataLoader(self.eval_dataset, batch_size=self.batch_size,
                           num_workers=DATA_LOADER_NUM_WORKERS)
 
     def test_dataloader(self):
-        return DataLoader(self.test_dataset, batch_size=self.batch_size, shuffle=True,
+        return DataLoader(self.test_dataset, batch_size=self.batch_size,
                           num_workers=DATA_LOADER_NUM_WORKERS)
 
 
