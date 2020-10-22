@@ -1,16 +1,13 @@
 import os.path
-import os.path
+import numpy as np
 import time
 import typing
+import torch
 
-from torch import nn
-import torch.nn.functional as F
+from util.wavenet.wavenet_modules import dilate, DilatedQueue, constant_pad_1d
+from util.wavenet.audio_data import mu_law_expansion
 
-from util.wavenet.audio_data import *
-from util.wavenet.wavenet_modules import *
-
-
-class WaveNetModel(nn.Module):
+class WaveNetModel(torch.nn.Module):
     """
     A Complete Wavenet Model
 
@@ -72,13 +69,13 @@ class WaveNetModel(nn.Module):
         self.dilations = []
         self.dilated_queues = []
         # self.main_convs = nn.ModuleList()
-        self.filter_convs = nn.ModuleList()
-        self.gate_convs = nn.ModuleList()
-        self.residual_convs = nn.ModuleList()
-        self.skip_convs = nn.ModuleList()
+        self.filter_convs = torch.nn.ModuleList()
+        self.gate_convs = torch.nn.ModuleList()
+        self.residual_convs = torch.nn.ModuleList()
+        self.skip_convs = torch.nn.ModuleList()
 
         # 1x1 convolution to create channels
-        self.start_conv = nn.Conv1d(in_channels=self.classes,
+        self.start_conv = torch.nn.Conv1d(in_channels=self.classes,
                                     out_channels=residual_channels,
                                     kernel_size=1,
                                     bias=bias)
@@ -97,24 +94,24 @@ class WaveNetModel(nn.Module):
                                                         dtype=dtype))
 
                 # dilated convolutions
-                self.filter_convs.append(nn.Conv1d(in_channels=residual_channels,
+                self.filter_convs.append(torch.nn.Conv1d(in_channels=residual_channels,
                                                    out_channels=dilation_channels,
                                                    kernel_size=kernel_size,
                                                    bias=bias))
 
-                self.gate_convs.append(nn.Conv1d(in_channels=residual_channels,
+                self.gate_convs.append(torch.nn.Conv1d(in_channels=residual_channels,
                                                  out_channels=dilation_channels,
                                                  kernel_size=kernel_size,
                                                  bias=bias))
 
                 # 1x1 convolution for residual connection
-                self.residual_convs.append(nn.Conv1d(in_channels=dilation_channels,
+                self.residual_convs.append(torch.nn.Conv1d(in_channels=dilation_channels,
                                                      out_channels=residual_channels,
                                                      kernel_size=1,
                                                      bias=bias))
 
                 # 1x1 convolution for skip connection
-                self.skip_convs.append(nn.Conv1d(in_channels=dilation_channels,
+                self.skip_convs.append(torch.nn.Conv1d(in_channels=dilation_channels,
                                                  out_channels=skip_channels,
                                                  kernel_size=1,
                                                  bias=bias))
@@ -124,7 +121,7 @@ class WaveNetModel(nn.Module):
                 init_dilation = new_dilation
                 new_dilation *= 2
 
-        self.end_conv_1 = nn.Conv1d(in_channels=skip_channels,
+        self.end_conv_1 = torch.nn.Conv1d(in_channels=skip_channels,
                                     out_channels=self.end_channels,
                                     kernel_size=1,
                                     bias=True)
@@ -156,9 +153,9 @@ class WaveNetModel(nn.Module):
 
             # dilated convolution
             filter = self.filter_convs[i](residual)
-            filter = F.tanh(filter)
+            filter = torch.tanh(filter)
             gate = self.gate_convs[i](residual)
-            gate = F.sigmoid(gate)
+            gate = torch.sigmoid(gate)
             x = filter * gate
 
             # parametrized skip connection
@@ -175,7 +172,7 @@ class WaveNetModel(nn.Module):
             x = self.residual_convs[i](x)
             x = x + residual[:, :, (self.kernel_size - 1):]
 
-        x = F.relu(skip)
+        x = torch.nn.functional.relu(skip)
         x = self.end_conv_1(x)
         return x
 
@@ -213,7 +210,7 @@ class WaveNetModel(nn.Module):
         self.eval()
         if first_samples is None:
             first_samples = self.dtype(1).zero_()
-        generated = Variable(first_samples, volatile=True)
+        generated = torch.autograd.Variable(first_samples, volatile=True)
 
         num_pad = self.receptive_field - generated.size(0)
         if num_pad > 0:
@@ -221,7 +218,7 @@ class WaveNetModel(nn.Module):
             print("pad zero")
 
         for i in range(num_samples):
-            input = Variable(torch.FloatTensor(1, self.classes, self.receptive_field).zero_())
+            input = torch.autograd.Variable(torch.FloatTensor(1, self.classes, self.receptive_field).zero_())
             input = input.scatter_(1, generated[-self.receptive_field:].view(1, -1, self.receptive_field), 1.)
 
             x = self.wavenet(input,
@@ -229,11 +226,11 @@ class WaveNetModel(nn.Module):
 
             if temperature > 0:
                 x /= temperature
-                prob = F.softmax(x, dim=0)
+                prob = torch.nn.functional.softmax(x, dim=0)
                 prob = prob.cpu()
                 np_prob = prob.data.numpy()
                 x = np.random.choice(self.classes, p=np_prob)
-                x = Variable(torch.LongTensor([x]))  # np.array([x])
+                x = torch.autograd.Variable(torch.LongTensor([x]))  # np.array([x])
             else:
                 x = torch.max(x, 0)[1].float()
 
@@ -255,7 +252,7 @@ class WaveNetModel(nn.Module):
         self.eval()
         if first_samples is None:
             first_samples = torch.LongTensor(1).zero_() + (self.classes // 2)
-        first_samples = Variable(first_samples)
+        first_samples = torch.autograd.Variable(first_samples)
 
         # reset queues
         for queue in self.dilated_queues:
@@ -264,7 +261,7 @@ class WaveNetModel(nn.Module):
         num_given_samples = first_samples.size(0)
         total_samples = num_given_samples + num_samples
 
-        input = Variable(torch.FloatTensor(1, self.classes, 1).zero_())
+        input = torch.autograd.Variable(torch.FloatTensor(1, self.classes, 1).zero_())
         input = input.scatter_(1, first_samples[0:1].view(1, -1, 1), 1.)
 
         # fill queues with given samples
@@ -281,7 +278,7 @@ class WaveNetModel(nn.Module):
 
         # generate new samples
         generated = np.array([])
-        regularizer = torch.pow(Variable(torch.arange(self.classes)) - self.classes / 2., 2)
+        regularizer = torch.pow(torch.autograd.Variable(torch.arange(self.classes)) - self.classes / 2., 2)
         regularizer = regularizer.squeeze() * regularize
         tic = time.time()
         for i in range(num_samples):
@@ -293,7 +290,7 @@ class WaveNetModel(nn.Module):
             if temperature > 0:
                 # sample from softmax distribution
                 x /= temperature
-                prob = F.softmax(x, dim=0)
+                prob = torch.nn.functional.softmax(x, dim=0)
                 prob = prob.cpu()
                 np_prob = prob.data.numpy()
                 x = np.random.choice(self.classes, p=np_prob)
@@ -308,7 +305,7 @@ class WaveNetModel(nn.Module):
             generated = np.append(generated, o)
 
             # set new input
-            x = Variable(torch.from_numpy(x).type(torch.LongTensor))
+            x = torch.autograd.Variable(torch.from_numpy(x).type(torch.LongTensor))
             input.zero_()
             input = input.scatter_(1, x.view(1, -1, 1), 1.).view(1, self.classes, 1)
 
