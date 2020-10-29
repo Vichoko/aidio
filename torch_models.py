@@ -399,19 +399,23 @@ class WaveNetTransformerClassifier(nn.Module):
             WAVENET_OUTPUT_LENGTH,
             WAVENET_KERNEL_SIZE)
         # Conv1d to reduce sequence length from 180k to 2k
-        stride = 64
         self.conv1d_1 = nn.Conv1d(
             in_channels=WAVENET_END_CHANNELS,
             out_channels=256,
             kernel_size=4,
-            stride=stride,
+            stride=64,
             dilation=16
         )
-        self.conv1d_list = [self.conv1d_1, ]
-        max_seq_len = int(math.ceil(
-            WAVEFORM_RANDOM_CROP_SEQUENCE_LENGTH / (stride ** len(self.conv1d_list))
-        ))
-
+        self.conv1d_2 = nn.Conv1d(
+            in_channels=256,
+            out_channels=256,
+            kernel_size=12,
+            stride=12
+        )
+        self.conv1d_list = [self.conv1d_1, self.conv1d_2]
+        max_seq_len = int(
+            math.ceil(WAVEFORM_RANDOM_CROP_SEQUENCE_LENGTH / 64 / 12)
+        )
         self.positional_encoder = PositionalEncoding(WNTF_TRANSFORMER_D_MODEL, dropout=0.1, max_len=max_seq_len)
         self.transformer_encoder = nn.TransformerEncoder(
             nn.TransformerEncoderLayer(
