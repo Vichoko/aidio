@@ -1,4 +1,3 @@
-import pickle
 from argparse import ArgumentParser
 from collections import OrderedDict
 from os.path import isfile
@@ -12,7 +11,8 @@ from torchsummary import summary
 from torchvision.models import resnext50_32x4d
 
 from config import WAVENET_BATCH_SIZE, DATA_LOADER_NUM_WORKERS, RESNET_V2_BATCH_SIZE, WAVENET_LEARNING_RATE, \
-    WAVENET_WEIGHT_DECAY, WNTF_BATCH_SIZE, WNLSTM_BATCH_SIZE, WAVEFORM_RANDOM_CROP_SEQUENCE_LENGTH, GMM_PREDICT_BATCH_SIZE, \
+    WAVENET_WEIGHT_DECAY, WNTF_BATCH_SIZE, WNLSTM_BATCH_SIZE, WAVEFORM_RANDOM_CROP_SEQUENCE_LENGTH, \
+    GMM_PREDICT_BATCH_SIZE, \
     GMM_TRAIN_BATCH_SIZE, CONV1D_LEARNING_RATE, CONV1D_WEIGHT_DECAY, CONV1D_BATCH_SIZE, WNTF_LEARNING_RATE, \
     WNTF_WEIGHT_DECAY, WNLSTM_LEARNING_RATE, WNLSTM_WEIGHT_DECAY, RNN1D_BATCH_SIZE, RNN1D_LEARNING_RATE, \
     RNN1D_WEIGHT_DECAY, RESNET_V2_LR, RESNET_V2_WEIGHT_DECAY
@@ -54,7 +54,8 @@ class L_GMMClassifier(ptl.LightningModule):
                 self.model_path))
             return -1
         print('info: starting training')
-        print('info: skipping load and train of already trained GMMs {} found. '.format(self.trained_gmm_indices)) if self.trained_gmm_indices else None
+        print('info: skipping load and train of already trained GMMs {} found. '.format(
+            self.trained_gmm_indices)) if self.trained_gmm_indices else None
 
         batch_generator = self.train_dataloader()
         print('info: starting batch data loading...')
@@ -293,6 +294,9 @@ class L_AbstractClassifier(ptl.LightningModule):
         self.train_dataset = train_dataset
         self.eval_dataset = eval_dataset
         self.test_dataset = test_dataset
+        self.train_acc = ptl.metrics.Accuracy()
+        self.val_acc = ptl.metrics.Accuracy()
+        self.test_acc = ptl.metrics.Accuracy()
         # After this constructor should define self.model and self.optimizer
 
     def forward(self, x):
@@ -303,21 +307,6 @@ class L_AbstractClassifier(ptl.LightningModule):
         """
         return self.model(x)
 
-    def accuracy(self, y_pred, y_target, device_index):
-        """
-        Calculate accuracy metric between predicted output and target.
-        :param y_pred: shape (N, C) where C = number of classes, with class-wise probability prediction.
-        :param y_target: shape (N) with nominal encoding. Ex. Y = [0,0,1]
-        :param device_index: Integer of device that's being used. If model not on_gpu this param is ignored.
-        :return: torch.Tensor or torch.cuda.Tensor depending of gpu mode. With a value.
-        """
-        number_of_classes = int(y_pred.shape[1])
-        y_pred_nominal = torch.argmax(y_pred, dim=1)  # change from class-wise encoding (N, C) to nominal label (N, )
-        accuracy = torch.sum(torch.eq(y_target, y_pred_nominal)) / (number_of_classes * 1.0)
-        if self.on_gpu:
-            accuracy = accuracy.cuda(device_index)
-        return accuracy
-
     def training_step(self, batch, batch_idx):
         """
         Lightning calls this inside the training loop
@@ -327,15 +316,13 @@ class L_AbstractClassifier(ptl.LightningModule):
         # forward pass
         x, y_target = batch['x'], batch['y']
         y_pred = self.forward(x)
-        # calculate loss
+        # calculate metrics
         loss = self.loss(y_pred, y_target)
-        # calculate accurracy
-        accuracy = self.accuracy(y_pred, y_target, loss.device.index)
-        # gather results
-        result = ptl.TrainResult(loss)
-        result.log('train_loss', loss, prog_bar=True)
-        result.log('train_acc', accuracy, prog_bar=True)
-        return result
+        self.train_acc(y_pred, y_target)
+        # log metrics
+        self.log('train_loss', loss, prog_bar=True, )
+        self.log('train_acc', self.train_acc, prog_bar=True, )
+        return loss
 
     def validation_step(self, batch, batch_idx):
         """
@@ -345,15 +332,13 @@ class L_AbstractClassifier(ptl.LightningModule):
         """
         x, y_target = batch['x'], batch['y']
         y_pred = self.forward(x)
-        # calculate loss
+        # calculate metrics
         loss = self.loss(y_pred, y_target)
-        # calculate accuracy
-        accuracy = self.accuracy(y_pred, y_target, loss.device.index)
+        self.val_acc(y_pred, y_target)
         # gather results
-        result = ptl.EvalResult(early_stop_on=None)
-        result.log('val_loss', loss, prog_bar=True)
-        result.log('val_acc', accuracy, prog_bar=True)
-        return result
+        self.log('val_loss', loss, prog_bar=True, )
+        self.log('val_acc', self.val_acc, prog_bar=True, )
+        return loss
 
     def test_step(self, batch, batch_idx):
         """
@@ -365,15 +350,13 @@ class L_AbstractClassifier(ptl.LightningModule):
         """
         x, y_target = batch['x'], batch['y']
         y_pred = self.forward(x)
-        # calculate loss
+        # calculate metrics
         loss = self.loss(y_pred, y_target)
-        # calculate accurracy
-        accuracy = self.accuracy(y_pred, y_target, loss.device.index)
+        self.test_acc(y_pred, y_target)
         # gather results
-        result = ptl.EvalResult()
-        result.log('test_loss', loss, prog_bar=True)
-        result.log('test_acc', accuracy, prog_bar=True)
-        return result
+        self.log('test_loss', loss, prog_bar=True, )
+        self.log('test_acc', self.test_acc, prog_bar=True, )
+        return loss
 
     def configure_optimizers(self):
         """
@@ -387,11 +370,11 @@ class L_AbstractClassifier(ptl.LightningModule):
                           num_workers=DATA_LOADER_NUM_WORKERS)
 
     def val_dataloader(self):
-        return DataLoader(self.eval_dataset, batch_size=self.batch_size, shuffle=True,
+        return DataLoader(self.eval_dataset, batch_size=self.batch_size,
                           num_workers=DATA_LOADER_NUM_WORKERS)
 
     def test_dataloader(self):
-        return DataLoader(self.test_dataset, batch_size=self.batch_size, shuffle=True,
+        return DataLoader(self.test_dataset, batch_size=self.batch_size,
                           num_workers=DATA_LOADER_NUM_WORKERS)
 
 

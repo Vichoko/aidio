@@ -1,8 +1,8 @@
 import math
+import os
 import pickle
 import typing
 from concurrent.futures.thread import ThreadPoolExecutor
-from os import path
 
 import torch
 from sklearn import mixture
@@ -12,8 +12,8 @@ from torch.nn import functional as F
 
 from config import WAVENET_LAYERS, WAVENET_BLOCKS, WAVENET_DILATION_CHANNELS, WAVENET_RESIDUAL_CHANNELS, \
     WAVENET_SKIP_CHANNELS, \
-    WAVENET_END_CHANNELS, WAVENET_CLASSES, WAVENET_OUTPUT_LENGTH, WAVENET_KERNEL_SIZE, WAVENET_POOLING_KERNEL_SIZE, \
-    WAVENET_POOLING_STRIDE, LSTM_HIDDEN_SIZE, LSTM_NUM_LAYERS, LSTM_DROPOUT_PROB, WAVEFORM_RANDOM_CROP_SEQUENCE_LENGTH, \
+    WAVENET_END_CHANNELS, WAVENET_CLASSES, WAVENET_OUTPUT_LENGTH, WAVENET_KERNEL_SIZE, LSTM_HIDDEN_SIZE, \
+    LSTM_NUM_LAYERS, LSTM_DROPOUT_PROB, WAVEFORM_RANDOM_CROP_SEQUENCE_LENGTH, \
     WNTF_TRANSFORMER_D_MODEL, WNTF_TRANSFORMER_N_HEAD, WNTF_TRANSFORMER_N_LAYERS, FEATURES_DATA_PATH, \
     GMM_COMPONENT_NUMBER, \
     GMM_FIT_FRAME_LIMIT, WNTF_WAVENET_LAYERS, WNTF_WAVENET_BLOCKS, \
@@ -102,7 +102,7 @@ class GMMClassifier(nn.Module):
         :param path: Absolute path to the storage file to open.
         :return:
         """
-        assert not path.isfile(path), 'error: Saving GMM instance noted that {} already exists'.format(path)
+        assert not os.path.isfile(path), 'error: Saving GMM instance noted that {} already exists'.format(path)
         pickle.dump(self.gmm_list[gmm_idx], open(path, 'wb'))
 
     def load_gmm(self, gmm_idx: int, path):
@@ -141,40 +141,25 @@ class GMMClassifier(nn.Module):
         return y
 
 
-class PositionalEncoder(torch.nn.Module):
-    def __call__(self, *input, **kwargs) -> typing.Any:
-        """
-        Hack to fix '(input: (Any, ...), kwargs: dict) -> Any' warning in PyCharm auto-complete.
-        :param input:
-        :param kwargs:
-        :return:
-        """
-        return super().__call__(*input, **kwargs)
+class PositionalEncoding(nn.Module):
 
-    def __init__(self, d_model, max_seq_len=160):
-        super().__init__()
+    def __init__(self, d_model, dropout=0.1, max_len=5000):
+        super(PositionalEncoding, self).__init__()
         self.d_model = d_model
-        # pe = torch.zeros(max_seq_len, d_model)
-        pe = None
-        for i in range(0, d_model, 2):
-            pair = torch.sin(
-                torch.Tensor([pos / (10000 ** ((2 * i) / d_model)) for pos in range(max_seq_len)])).reshape(-1, 1)
-            even = torch.cos(
-                torch.Tensor([pos / (10000 ** ((2 * (i + 1)) / d_model)) for pos in range(max_seq_len)])).reshape(-1, 1)
-            if pe is None:
-                pe = torch.cat([pair, even], dim=1)
-            else:
-                pe = torch.cat([pe, pair, even], dim=1)
-        pe = pe.unsqueeze(0)
+        self.dropout = nn.Dropout(p=dropout)
+
+        pe = torch.zeros(max_len, d_model)
+        position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model))
+        pe[:, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term)
+        pe = pe.unsqueeze(0).transpose(0, 1)
         self.register_buffer('pe', pe)
 
     def forward(self, x):
-        with torch.no_grad():
-            x = x * math.sqrt(self.d_model)
-            seq_len = x.size(1)
-            pe = self.pe[:, :seq_len]
-            x = x + pe
-            return x
+        x = x * math.sqrt(self.d_model)
+        x = x + self.pe[:x.size(0), :]
+        return self.dropout(x)
 
 
 class Conv1DClassifier(nn.Module):
@@ -414,22 +399,24 @@ class WaveNetTransformerClassifier(nn.Module):
             WAVENET_OUTPUT_LENGTH,
             WAVENET_KERNEL_SIZE)
         # Conv1d to reduce sequence length from 180k to 2k
-        stride = 64
         self.conv1d_1 = nn.Conv1d(
             in_channels=WAVENET_END_CHANNELS,
             out_channels=256,
             kernel_size=4,
-            stride=stride,
+            stride=64,
             dilation=16
         )
-        self.conv1d_list = [self.conv1d_1, ]
-        max_seq_len = int(math.ceil(
-            WAVEFORM_RANDOM_CROP_SEQUENCE_LENGTH / (stride ** len(self.conv1d_list))
-        ))
-        self.positional_encoder = PositionalEncoder(
-            WNTF_TRANSFORMER_D_MODEL,
-            max_seq_len=max_seq_len
+        self.conv1d_2 = nn.Conv1d(
+            in_channels=256,
+            out_channels=256,
+            kernel_size=12,
+            stride=12
         )
+        self.conv1d_list = [self.conv1d_1, self.conv1d_2]
+        max_seq_len = int(
+            math.ceil(WAVEFORM_RANDOM_CROP_SEQUENCE_LENGTH / 64 / 12)
+        )
+        self.positional_encoder = PositionalEncoding(WNTF_TRANSFORMER_D_MODEL, dropout=0.1, max_len=max_seq_len)
         self.transformer_encoder = nn.TransformerEncoder(
             nn.TransformerEncoderLayer(
                 d_model=WNTF_TRANSFORMER_D_MODEL,
@@ -455,7 +442,7 @@ class WaveNetTransformerClassifier(nn.Module):
 
         # transformer expected input is n_data, n_sequence, wavenet_channels
         x = x.transpose(1, 2)  # (N, Cout, Lout, ) to (N, Lout, Cout)
-        # x = self.positional_encoder(x)
+        x = self.positional_encoder(x)
         x = self.transformer_encoder(x)  # shape  n_data, n_sequence, d_model
 
         # Max_pool expected input is (N, Cout, Lout)
