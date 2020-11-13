@@ -3,6 +3,7 @@ from collections import OrderedDict
 from os.path import isfile
 
 import pytorch_lightning as ptl
+import matplotlib.pyplot as plt
 import torch
 import tqdm
 from torch.nn import Conv2d
@@ -294,9 +295,27 @@ class L_AbstractClassifier(ptl.LightningModule):
         self.train_dataset = train_dataset
         self.eval_dataset = eval_dataset
         self.test_dataset = test_dataset
-        self.train_acc = ptl.metrics.Accuracy()
-        self.val_acc = ptl.metrics.Accuracy()
-        self.test_acc = ptl.metrics.Accuracy()
+
+        self.metrics = {
+            'train_acc': ptl.metrics.Accuracy(),
+            'train_recall': ptl.metrics.Recall(num_classes=num_classes),
+            'train_precision': ptl.metrics.Precision(num_classes=num_classes),
+            'train_fbeta': ptl.metrics.Fbeta(num_classes=num_classes),
+            # 'train_confmat': ptl.metrics.ConfusionMatrix(num_classes=num_classes),
+
+            'val_acc': ptl.metrics.Accuracy(),
+            'val_recall': ptl.metrics.Recall(num_classes=num_classes),
+            'val_precision': ptl.metrics.Precision(num_classes=num_classes),
+            'val_fbeta': ptl.metrics.Fbeta(num_classes=num_classes),
+            # 'val_confmat': ptl.metrics.ConfusionMatrix(num_classes=num_classes),
+
+            'test_acc': ptl.metrics.Accuracy(),
+            'test_recall': ptl.metrics.Recall(num_classes=num_classes),
+            'test_precision': ptl.metrics.Precision(num_classes=num_classes),
+            'test_fbeta': ptl.metrics.Fbeta(num_classes=num_classes),
+            'test_confmat': ptl.metrics.ConfusionMatrix(num_classes=num_classes),
+        }
+
         # After this constructor should define self.model and self.optimizer
 
     def forward(self, x):
@@ -318,10 +337,17 @@ class L_AbstractClassifier(ptl.LightningModule):
         y_pred = self.forward(x)
         # calculate metrics
         loss = self.loss(y_pred, y_target)
-        self.train_acc(y_pred, y_target)
+        self.metrics['train_acc'](y_pred, y_target)
+        self.metrics['train_recall'](y_pred, y_target)
+        self.metrics['train_precision'](y_pred, y_target)
+        self.metrics['train_fbeta'](y_pred, y_target)
+        # self.metrics['train_confmat'](y_pred, y_target)
         # log metrics
         self.log('train_loss', loss, prog_bar=True, )
-        self.log('train_acc', self.train_acc, prog_bar=True, )
+        self.log('train_acc', self.metrics['train_acc'], prog_bar=True, )
+        self.log('train_recall', self.metrics['train_recall'], prog_bar=True, )
+        self.log('train_precision', self.metrics['train_precision'], prog_bar=True, )
+        self.log('train_fbeta', self.metrics['train_fbeta'], prog_bar=True, )
         return loss
 
     def validation_step(self, batch, batch_idx):
@@ -334,10 +360,17 @@ class L_AbstractClassifier(ptl.LightningModule):
         y_pred = self.forward(x)
         # calculate metrics
         loss = self.loss(y_pred, y_target)
-        self.val_acc(y_pred, y_target)
+        self.metrics['val_acc'](y_pred, y_target)
+        self.metrics['val_recall'](y_pred, y_target)
+        self.metrics['val_precision'](y_pred, y_target)
+        self.metrics['val_fbeta'](y_pred, y_target)
+        # self.metrics['val_confmat'](y_pred, y_target)
         # gather results
         self.log('val_loss', loss, prog_bar=True, )
-        self.log('val_acc', self.val_acc, prog_bar=True, )
+        self.log('val_acc', self.metrics['train_acc'], prog_bar=True, )
+        self.log('val_recall', self.metrics['train_recall'], prog_bar=True, )
+        self.log('val_precision', self.metrics['train_precision'], prog_bar=True, )
+        self.log('val_fbeta', self.metrics['train_fbeta'], prog_bar=True, )
         return loss
 
     def test_step(self, batch, batch_idx):
@@ -352,11 +385,26 @@ class L_AbstractClassifier(ptl.LightningModule):
         y_pred = self.forward(x)
         # calculate metrics
         loss = self.loss(y_pred, y_target)
-        self.test_acc(y_pred, y_target)
+        self.metrics['test_acc'](y_pred, y_target)
+        self.metrics['test_recall'](y_pred, y_target)
+        self.metrics['test_precision'](y_pred, y_target)
+        self.metrics['test_fbeta'](y_pred, y_target)
+        self.metrics['test_confmat'](y_pred, y_target)
         # gather results
         self.log('test_loss', loss, prog_bar=True, )
-        self.log('test_acc', self.test_acc, prog_bar=True, )
+        self.log('train_acc', self.metrics['train_acc'], prog_bar=True, )
+        self.log('train_recall', self.metrics['train_recall'], prog_bar=True, )
+        self.log('train_precision', self.metrics['train_precision'], prog_bar=True, )
+        self.log('train_fbeta', self.metrics['train_fbeta'], prog_bar=True, )
         return loss
+
+    def test_epoch_end(self, outputs):
+        super().test_epoch_end(outputs)
+        epoch_confmat = self.metrics['test_confmat'].compute()
+        fig = plt.figure()
+        plt.imshow(epoch_confmat)
+        self.logger.experiment.add_figure('epoch_confmat', fig, global_step=self.global_step)
+        return
 
     def configure_optimizers(self):
         """
