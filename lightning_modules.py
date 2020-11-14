@@ -2,9 +2,8 @@ from argparse import ArgumentParser
 from collections import OrderedDict
 from os.path import isfile
 
-import pytorch_lightning as ptl
-import matplotlib.pyplot as plt
 import numpy as np
+import pytorch_lightning as ptl
 import torch
 import tqdm
 from torch.nn import Conv2d
@@ -135,10 +134,8 @@ class L_GMMClassifier(ptl.LightningModule):
         assert y[0].item() == batch_idx, 'error: batch index is different than a label ({} vs {})'.format(batch_idx,
                                                                                                           y[0].item())
         self.model.fit(x, y)
-        result = ptl.TrainResult()
-        return result
 
-    def backward(self, use_amp, loss, optimizer):
+    def backward(self, loss, optimizer, optimizer_idx, *args, **kwargs):
         return
 
     def validation_step(self, batch, batch_idx):
@@ -316,22 +313,11 @@ class L_AbstractClassifier(ptl.LightningModule):
 
         self.metrics = {
             'train_acc': ptl.metrics.Accuracy(),
-            'train_recall': ptl.metrics.Recall(num_classes=num_classes),
-            'train_precision': ptl.metrics.Precision(num_classes=num_classes),
-            'train_fbeta': ptl.metrics.Fbeta(num_classes=num_classes),
-            # 'train_confmat': ptl.metrics.ConfusionMatrix(num_classes=num_classes),
-
-            'val_acc2': ptl.metrics.Accuracy(),
-            'val_recall': ptl.metrics.Recall(num_classes=num_classes),
-            'val_precision': ptl.metrics.Precision(num_classes=num_classes),
-            'val_fbeta': ptl.metrics.Fbeta(num_classes=num_classes),
+            'val_acc': ptl.metrics.Accuracy(),
+            # 'val_recall': ptl.metrics.Recall(num_classes=num_classes),
+            # 'val_precision': ptl.metrics.Precision(num_classes=num_classes),
+            # 'val_fbeta': ptl.metrics.Fbeta(num_classes=num_classes),
             # 'val_confmat': ptl.metrics.ConfusionMatrix(num_classes=num_classes),
-
-            'test_acc': ptl.metrics.Accuracy(),
-            'test_recall': ptl.metrics.Recall(num_classes=num_classes),
-            'test_precision': ptl.metrics.Precision(num_classes=num_classes),
-            'test_fbeta': ptl.metrics.Fbeta(num_classes=num_classes),
-            #'test_confmat': ptl.metrics.ConfusionMatrix(num_classes=num_classes),
         }
 
         # After this constructor should define self.model and self.optimizer
@@ -355,17 +341,10 @@ class L_AbstractClassifier(ptl.LightningModule):
         y_pred = self.forward(x)
         # calculate metrics
         loss = self.loss(y_pred, y_target)
-        self.metrics['train_acc2'](y_pred, y_target)
-        self.metrics['train_recall'](y_pred, y_target)
-        self.metrics['train_precision'](y_pred, y_target)
-        self.metrics['train_fbeta'](y_pred, y_target)
-        # self.metrics['train_confmat'](y_pred, y_target)
+        self.metrics['train_acc'](y_pred, y_target)
         # log metrics
         self.log('train_loss', loss, prog_bar=True, )
         self.log('train_acc', self.metrics['train_acc'], prog_bar=True, )
-        self.log('train_recall', self.metrics['train_recall'], prog_bar=True, )
-        self.log('train_precision', self.metrics['train_precision'], prog_bar=True, )
-        self.log('train_fbeta', self.metrics['train_fbeta'], prog_bar=True, )
         return loss
 
     def validation_step(self, batch, batch_idx):
@@ -378,17 +357,10 @@ class L_AbstractClassifier(ptl.LightningModule):
         y_pred = self.forward(x)
         # calculate metrics
         loss = self.loss(y_pred, y_target)
-        self.metrics['val_acc2'](y_pred, y_target)
-        self.metrics['val_recall'](y_pred, y_target)
-        self.metrics['val_precision'](y_pred, y_target)
-        self.metrics['val_fbeta'](y_pred, y_target)
-        # self.metrics['val_confmat'](y_pred, y_target)
+        self.metrics['val_acc'](y_pred, y_target)
         # gather results
         self.log('val_loss', loss, prog_bar=True, )
         self.log('val_acc', self.metrics['train_acc'], prog_bar=True, )
-        self.log('val_recall', self.metrics['train_recall'], prog_bar=True, )
-        self.log('val_precision', self.metrics['train_precision'], prog_bar=True, )
-        self.log('val_fbeta', self.metrics['train_fbeta'], prog_bar=True, )
         return loss
 
     def test_step(self, batch, batch_idx):
