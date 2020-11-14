@@ -10,7 +10,7 @@ import torch
 
 state_dict_keys_to_remove = ['test_acc.total', 'test_acc.correct',
                              'val_acc.total', 'val_acc.correct',
-                             'train_acc.total', 'val_acc.correct', ]
+                             'train_acc.total', 'train_acc.correct', ]
 
 
 def main():
