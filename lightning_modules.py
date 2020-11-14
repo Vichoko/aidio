@@ -213,7 +213,24 @@ class L_GMMClassifier(ptl.LightningModule):
         :param batch:
         :return:
         """
-        return self.validation_step(batch, batch_idx)
+        x, y = batch['x'], batch['y']
+        y_pred = self.forward(x)
+        return {'y_pred': y_pred, 'y_target': y}
+
+    def test_epoch_end(self, outputs):
+        super().test_epoch_end(outputs)
+        y_pred = None
+        y_target = None
+        for output in outputs:
+            if y_pred is None and y_target is None:
+                y_pred = output['y_pred']
+                y_target = output['y_target']
+            else:
+                y_pred = torch.cat((y_pred, output['y_pred']))
+                y_target = torch.cat((y_target, output['y_target']))
+
+        np.save('y_pred.npy', y_pred.cpu())
+        np.save('y_target.npy', y_target.cpu())
 
     def test_end(self, outputs):
         """
@@ -384,21 +401,7 @@ class L_AbstractClassifier(ptl.LightningModule):
         """
         x, y_target = batch['x'], batch['y']
         y_pred = self.forward(x)
-        return {'y_target': y_target, 'y_pred': y_pred}        
-        # calculate metrics
-        #loss = self.loss(y_pred, y_target)
-        #self.metrics['test_acc'](y_pred, y_target)
-        # self.metrics['test_recall'](y_pred, y_target)
-        #self.metrics['test_precision'](y_pred, y_target)
-        #self.metrics['test_fbeta'](y_pred, y_target)
-        #self.metrics['test_confmat'](y_pred, y_target)
-        # gather results
-        #self.log('test_loss', loss, prog_bar=True, )
-        #self.log('train_acc', self.metrics['train_acc'], prog_bar=True, )
-        #self.log('train_recall', self.metrics['train_recall'], prog_bar=True, )
-        #self.log('train_precision', self.metrics['train_precision'], prog_bar=True, )
-        #self.log('train_fbeta', self.metrics['train_fbeta'], prog_bar=True, )
-        return loss
+        return {'y_target': y_target, 'y_pred': y_pred}
 
     def test_epoch_end(self, outputs):
         super().test_epoch_end(outputs)
@@ -411,12 +414,9 @@ class L_AbstractClassifier(ptl.LightningModule):
             else:
                 y_pred = torch.cat((y_pred, output['y_pred']))
                 y_target = torch.cat((y_target, output['y_target']))
-        
-        np.save(open('y_pred.npy', 'wb'), y_pred.cpu())
-        np.save(open('y_target.npy', 'wb'), y_target.cpu())
-        #self.log('y_pred', y_pred)
-        #self.log('y_target', y_target)      
-        return
+
+        np.save('y_pred.npy', y_pred.cpu())
+        np.save('y_target.npy', y_target.cpu())
 
     def configure_optimizers(self):
         """
