@@ -69,19 +69,21 @@ class AbstractHelper:
             profiler=False,  # for once is good
             auto_scale_batch_size=False,  # i prefer manually
             auto_lr_find=False,  # mostly diverges
-            distributed_backend='ddp',  # doesnt fill on ddp
+            # distributed_backend='ddp',  # doesnt fill on ddp
             precision=32,  # throws error on 16
             default_root_dir=self.save_dir,
             logger=logger,
             resume_from_checkpoint=resume_from_checkpoint,
-            checkpoint_callback=ModelCheckpoint(
-                save_last=True,
-                save_top_k=1,
-                verbose=True,
-                monitor='val_acc',
-                mode='max',
-                prefix=''
-            )
+            callbacks=[
+                ModelCheckpoint(
+                    save_last=True,
+                    save_top_k=1,
+                    verbose=True,
+                    monitor='val_acc',
+                    mode='max',
+                    prefix=''
+                ),
+            ]
         )
 
     @staticmethod

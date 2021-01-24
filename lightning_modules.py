@@ -2,6 +2,7 @@ from argparse import ArgumentParser
 from collections import OrderedDict
 from os.path import isfile
 
+import numpy as np
 import pytorch_lightning as ptl
 import torch
 import tqdm
@@ -133,10 +134,8 @@ class L_GMMClassifier(ptl.LightningModule):
         assert y[0].item() == batch_idx, 'error: batch index is different than a label ({} vs {})'.format(batch_idx,
                                                                                                           y[0].item())
         self.model.fit(x, y)
-        result = ptl.TrainResult()
-        return result
 
-    def backward(self, use_amp, loss, optimizer):
+    def backward(self, loss, optimizer, optimizer_idx, *args, **kwargs):
         return
 
     def validation_step(self, batch, batch_idx):
@@ -211,7 +210,24 @@ class L_GMMClassifier(ptl.LightningModule):
         :param batch:
         :return:
         """
-        return self.validation_step(batch, batch_idx)
+        x, y = batch['x'], batch['y']
+        y_pred = self.forward(x)
+        return {'y_pred': y_pred, 'y_target': y}
+
+    def test_epoch_end(self, outputs):
+        super().test_epoch_end(outputs)
+        y_pred = None
+        y_target = None
+        for output in outputs:
+            if y_pred is None and y_target is None:
+                y_pred = output['y_pred']
+                y_target = output['y_target']
+            else:
+                y_pred = torch.cat((y_pred, output['y_pred']))
+                y_target = torch.cat((y_target, output['y_target']))
+
+        np.save('y_pred.npy', y_pred.cpu())
+        np.save('y_target.npy', y_target.cpu())
 
     def test_end(self, outputs):
         """
@@ -294,9 +310,16 @@ class L_AbstractClassifier(ptl.LightningModule):
         self.train_dataset = train_dataset
         self.eval_dataset = eval_dataset
         self.test_dataset = test_dataset
-        self.train_acc = ptl.metrics.Accuracy()
-        self.val_acc = ptl.metrics.Accuracy()
-        self.test_acc = ptl.metrics.Accuracy()
+
+        self.metrics = {
+            'train_acc': ptl.metrics.Accuracy(),
+            'val_acc': ptl.metrics.Accuracy(),
+            # 'val_recall': ptl.metrics.Recall(num_classes=num_classes),
+            # 'val_precision': ptl.metrics.Precision(num_classes=num_classes),
+            # 'val_fbeta': ptl.metrics.Fbeta(num_classes=num_classes),
+            # 'val_confmat': ptl.metrics.ConfusionMatrix(num_classes=num_classes),
+        }
+
         # After this constructor should define self.model and self.optimizer
 
     def forward(self, x):
@@ -318,10 +341,10 @@ class L_AbstractClassifier(ptl.LightningModule):
         y_pred = self.forward(x)
         # calculate metrics
         loss = self.loss(y_pred, y_target)
-        self.train_acc(y_pred, y_target)
+        self.metrics['train_acc'](y_pred, y_target)
         # log metrics
         self.log('train_loss', loss, prog_bar=True, )
-        self.log('train_acc', self.train_acc, prog_bar=True, )
+        self.log('train_acc', self.metrics['train_acc'], prog_bar=True, )
         return loss
 
     def validation_step(self, batch, batch_idx):
@@ -334,10 +357,10 @@ class L_AbstractClassifier(ptl.LightningModule):
         y_pred = self.forward(x)
         # calculate metrics
         loss = self.loss(y_pred, y_target)
-        self.val_acc(y_pred, y_target)
+        self.metrics['val_acc'](y_pred, y_target)
         # gather results
         self.log('val_loss', loss, prog_bar=True, )
-        self.log('val_acc', self.val_acc, prog_bar=True, )
+        self.log('val_acc', self.metrics['train_acc'], prog_bar=True, )
         return loss
 
     def test_step(self, batch, batch_idx):
@@ -350,13 +373,22 @@ class L_AbstractClassifier(ptl.LightningModule):
         """
         x, y_target = batch['x'], batch['y']
         y_pred = self.forward(x)
-        # calculate metrics
-        loss = self.loss(y_pred, y_target)
-        self.test_acc(y_pred, y_target)
-        # gather results
-        self.log('test_loss', loss, prog_bar=True, )
-        self.log('test_acc', self.test_acc, prog_bar=True, )
-        return loss
+        return {'y_target': y_target, 'y_pred': y_pred}
+
+    def test_epoch_end(self, outputs):
+        super().test_epoch_end(outputs)
+        y_pred = None
+        y_target = None
+        for output in outputs:
+            if y_pred is None and y_target is None:
+                y_pred = output['y_pred']
+                y_target = output['y_target']
+            else:
+                y_pred = torch.cat((y_pred, output['y_pred']))
+                y_target = torch.cat((y_target, output['y_target']))
+
+        np.save('y_pred.npy', y_pred.cpu())
+        np.save('y_target.npy', y_target.cpu())
 
     def configure_optimizers(self):
         """
