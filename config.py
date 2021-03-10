@@ -2,7 +2,7 @@ import pathlib
 from os import makedirs as _makedirs
 
 # General Settings
-NUMBER_OF_CLASSES = 4
+NUMBER_OF_CLASSES = 2
 RANDOM_SEED = 69
 
 
@@ -102,7 +102,7 @@ OUNMIX_MODEL = 'umxhq'
 DUMMY_EXAMPLES_PER_CLASS = 1
 
 # GMM
-GMM_PREDICT_BATCH_SIZE = 200
+GMM_PREDICT_BATCH_SIZE = 100
 GMM_TRAIN_BATCH_SIZE = None  # used in data sampler of data loader; None is all posible
 GMM_COMPONENT_NUMBER = 64
 GMM_RANDOM_CROM_FRAME_LENGTH = 12 * 100  # 100 are 1 second; used on data loader; max is 1101
@@ -186,7 +186,7 @@ WNTF_FC2_OUTPUT_DIM = 64
 # WaveNetLSTM
 # WN
 WNLSTM_MAX_SIZE = 4
-WNLSTM_BATCH_SIZE = 6
+WNLSTM_BATCH_SIZE = 28
 WNLSTM_WAVENET_LAYERS = 4
 WNLSTM_WAVENET_BLOCKS = 3
 WNLSTM_LEARNING_RATE = 0.0001
