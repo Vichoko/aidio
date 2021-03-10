@@ -377,6 +377,7 @@ class L_AbstractClassifier(ptl.LightningModule):
 
     def test_epoch_end(self, outputs):
         super().test_epoch_end(outputs)
+        print(self.model.inter_computations)
         y_pred = None
         y_target = None
         for output in outputs:

@@ -346,6 +346,7 @@ class WaveNetLSTMClassifier(nn.Module):
         )
         self.fc2 = nn.Linear(LSTM_FC1_OUTPUT_DIM, LSTM_FC2_OUTPUT_DIM)
         self.fc3 = nn.Linear(LSTM_FC2_OUTPUT_DIM, num_classes)
+        self.inter_computations = {'wn': [], 'lstm': [], 'pooling': [], 'fc1': [], 'fc3':[]}
 
     def forward(self, x):
         x = self.wavenet.forward(x)
@@ -354,21 +355,26 @@ class WaveNetLSTMClassifier(nn.Module):
         # x.shape is n_data, n_channels, n_sequence
         # rnn expected input is n_sequence, n_data, wavenet_channels
         x = x.transpose(0, 2).transpose(1, 2)
+        self.inter_computations['wn'].append(x)
         # print('info: feeding lstm...')
         self.enc_lstm.flatten_parameters()
         x, _ = self.enc_lstm(x)  # shape n_sequence, n_data, lstm_hidden_size * 2
         x = x.transpose(0, 1)  # (Lout, N, Cout, ) -> (N, Lout, Cout, )
         x = x.transpose(1, 2)  # (N, Lout, Cout, ) -> (N, Cout, Lout, )
+        self.inter_computations['lstm'].append(x)
         # AdaptativeMaxPooling
         # Max_pool expected input is (N, Cout, Lout)
         x = self.max_pool(x)
         x = self.avg_pool(x)
         x = x.squeeze(2)
+        self.inter_computations['pooling'].append(x)
         # x final shape is n_data, lstm_hidden_size * 2
         # simple classifier
         x = F.relu(self.fc1(x))
+        self.inter_computations['fc1'].append(x)
         x = F.relu(self.fc2(x))
         x = self.fc3(x)
+        self.inter_computations['fc1'].append(x)
         return x
 
 

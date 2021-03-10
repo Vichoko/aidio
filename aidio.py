@@ -45,8 +45,8 @@ if __name__ == '__main__':
         raise NotImplementedError
 
     # call as subprocess for failure managing
-    errno = -666
-    while errno != 0:
-        print('info: calling module {}'.format(module))
-        errno = subprocess.call(cmd)
-        print('debug: cmd call ended with errno = {}'.format(errno))
+    # errno = -666
+    # while errno != 0:
+    print('info: calling module {}'.format(module))
+    errno = subprocess.call(cmd)
+    print('debug: cmd call ended with errno = {}'.format(errno))
