@@ -377,9 +377,11 @@ class L_AbstractClassifier(ptl.LightningModule):
 
     def test_epoch_end(self, outputs):
         super().test_epoch_end(outputs)
-        print(self.model.inter_computations)
+
+
         y_pred = None
         y_target = None
+
         for output in outputs:
             if y_pred is None and y_target is None:
                 y_pred = output['y_pred']
@@ -388,8 +390,22 @@ class L_AbstractClassifier(ptl.LightningModule):
                 y_pred = torch.cat((y_pred, output['y_pred']))
                 y_target = torch.cat((y_target, output['y_target']))
 
-        np.save('y_pred.npy', y_pred.cpu())
-        np.save('y_target.npy', y_target.cpu())
+        np.save('embeddings/y_pred.npy', y_pred.cpu())
+        np.save('embeddings/y_target.npy', y_target.cpu())
+
+        # reduce intermediate computations
+        out_dict = {}
+        for k, list_of_tvectors in self.model.inter_computations.items():
+            accumulator = None
+            for tvector in list_of_tvectors:
+                if accumulator is None:
+                    accumulator = tvector
+                else:
+                    accumulator = torch.cat((accumulator, tvector))
+            out_dict[k] = accumulator
+        # export as npy
+        for k, v in out_dict.items():
+            np.save('embeddings/{}.npy'.format(k), v)
 
     def configure_optimizers(self):
         """

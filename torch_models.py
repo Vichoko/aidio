@@ -346,7 +346,7 @@ class WaveNetLSTMClassifier(nn.Module):
         )
         self.fc2 = nn.Linear(LSTM_FC1_OUTPUT_DIM, LSTM_FC2_OUTPUT_DIM)
         self.fc3 = nn.Linear(LSTM_FC2_OUTPUT_DIM, num_classes)
-        self.inter_computations = {'wn': [], 'lstm': [], 'pooling': [], 'fc1': [], 'fc3':[]}
+        self.inter_computations = {'wn': [], 'lstm': [], 'pooling': [], 'fc1': [], 'fc3': []}
 
     def forward(self, x):
         x = self.wavenet.forward(x)
@@ -374,7 +374,7 @@ class WaveNetLSTMClassifier(nn.Module):
         self.inter_computations['fc1'].append(x.cpu())
         x = F.relu(self.fc2(x))
         x = self.fc3(x)
-        self.inter_computations['fc1'].append(x.cpu())
+        self.inter_computations['fc3'].append(x.cpu())
         return x
 
 
