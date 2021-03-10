@@ -69,7 +69,7 @@ class AbstractHelper:
             profiler=False,  # for once is good
             auto_scale_batch_size=False,  # i prefer manually
             auto_lr_find=False,  # mostly diverges
-            # distributed_backend='ddp',  # doesnt fill on ddp
+            distributed_backend='dp',  # doesnt fill on ddp
             precision=32,  # throws error on 16
             default_root_dir=self.save_dir,
             logger=logger,
